@@ -4,6 +4,7 @@ const system = {
 
     init() {
         console.log("CosmOS Initializing...");
+        State.load();
         setTimeout(() => {
             const boot = document.getElementById('boot-overlay');
             if (boot) boot.style.opacity = '0';
@@ -86,15 +87,31 @@ const system = {
                             <div class="stat-box">
                                 <label>PRAISE</label>
                                 <div id="val-praise" class="stat-value">0</div>
+                                <div class="stat-rate">+<span id="val-praise-rate">0</span>/s</div>
                             </div>
                             <div class="stat-box">
                                 <label>OFFERINGS</label>
                                 <div id="val-offerings" class="stat-value">0</div>
                             </div>
+                            <div class="stat-box">
+                                <label>SOULS</label>
+                                <div id="val-souls" class="stat-value">0</div>
+                                <div class="stat-rate">+<span id="val-soul-rate">0</span>/s</div>
+                            </div>
                         </div>
                         <div class="actions">
-                            <button class="win-btn divine-btn" onclick="game.manualPraise()">Perform Miracle</button>
-                            <button class="win-btn" onclick="game.buyAutomator('seraph')">Commence Seraphic Automaton (10 Praise)</button>
+                            <button class="win-btn divine-btn" onclick="game.manualPraise(event)">Perform Miracle</button>
+                            <button class="win-btn" data-automaton="seraph" onclick="game.buyAutomator('seraph', event)">Commence Seraphic Automaton (10 Praise)</button>
+                            <button class="win-btn" data-automaton="cherub" onclick="game.buyAutomator('cherub', event)">Compile Cherubic Processor (5 Offerings)</button>
+                        </div>
+                        <div class="skills-section">
+                            <h3 class="section-title">Divine Powers</h3>
+                            <button class="win-btn skill-btn" id="skill-divine-intervention" onclick="game.activateDivineIntervention()">Divine Intervention (2× prod, 10m)</button>
+                            <button class="win-btn skill-btn" id="skill-temporal-rift" onclick="game.activateTemporalRift()">Temporal Rift (Simulate 1hr)</button>
+                        </div>
+                        <div class="upgrades-section">
+                            <h3 class="section-title">Divine Upgrades</h3>
+                            <div id="upgrades-list" class="upgrades-container"></div>
                         </div>
                         <div id="engine-log">Connecting to Divine Stream...</div>
                     </div>
@@ -102,17 +119,103 @@ const system = {
                 onOpen: () => {
                     ui.syncResources();
                     ui.initCoreCanvas();
+                    ui.updateUpgrades();
+                    ui.updateSeraphButton();
+                    ui.updateCherubButton();
                 }
             },
             'settings': {
                 title: 'Divine Settings',
                 initialHTML: `
-                    <div>
+                    <div class="settings-panel">
+                        <h3>Divine Reboot (Prestige)</h3>
+                        <div class="prestige-section">
+                            <div class="prestige-info">
+                                <div class="stat-line"><strong>Prestige Level:</strong> <span id="prestige-level">0</span></div>
+                                <div class="stat-line"><strong>Total Divinity Points:</strong> <span id="divinity-points">0</span></div>
+                                <div class="stat-line"><strong>Current Bonus:</strong> +<span id="prestige-bonus">0</span>%</div>
+                                <div class="stat-line prestige-gain"><strong>Next Prestige:</strong> +<span id="divinity-gain">0</span> Divinity Points</div>
+                            </div>
+                            <button class="win-btn prestige-btn" id="prestige-button" onclick="game.performPrestige()">Divine Reboot</button>
+                            <p class="prestige-description">Reset progress to gain permanent bonuses. Keeps Mandates, Achievements, and Documents.</p>
+                        </div>
+
                         <h3>System Restoration</h3>
                         <button class="win-btn" onclick="State.save()">Force Auto-Save</button>
-                        <button class="win-btn" onclick="localStorage.clear(); location.reload()">Reset Universe</button>
+                        <button class="win-btn" onclick="if(confirm('Reset all progress?')) {localStorage.clear(); location.reload();}">Reset Universe</button>
+
+                        <h3 class="achievements-header">Divine Achievements</h3>
+                        <div id="achievements-list" class="achievements-container"></div>
+
+                        <h3>Statistics</h3>
+                        <div class="stats-display">
+                            <div class="stat-line"><strong>Total Clicks:</strong> <span id="stat-clicks">0</span></div>
+                            <div class="stat-line"><strong>Total Praise Earned:</strong> <span id="stat-praise">0</span></div>
+                            <div class="stat-line"><strong>Achievements:</strong> <span id="stat-achievements">0/15</span></div>
+                        </div>
                     </div>
-                `
+                `,
+                onOpen: () => {
+                    ui.updateAchievements();
+                    ui.updateStats();
+                    ui.updatePrestigeInfo();
+                }
+            },
+            'mandates': {
+                title: 'Divine Mandates',
+                initialHTML: `
+                    <div class="mandates-panel">
+                        <h3>Path of Creation</h3>
+                        <div id="mandate-creation" class="mandate-branch"></div>
+
+                        <h3>Path of Maintenance</h3>
+                        <div id="mandate-maintenance" class="mandate-branch"></div>
+
+                        <h3>Path of Entropy</h3>
+                        <div id="mandate-entropy" class="mandate-branch"></div>
+                    </div>
+                `,
+                onOpen: () => {
+                    ui.updateMandates();
+                }
+            },
+            'dimensions': {
+                title: 'Dimension Explorer',
+                initialHTML: `
+                    <div class="dimensions-panel">
+                        <div class="dimension-tabs">
+                            <button class="dimension-tab active" id="tab-primordial" onclick="ui.switchDimension('primordial')">Primordial Sector</button>
+                            <button class="dimension-tab" id="tab-void" onclick="ui.switchDimension('void')">Void Dimension</button>
+                        </div>
+
+                        <div id="dimension-content" class="dimension-content">
+                            <!-- Dynamically populated based on current dimension -->
+                        </div>
+                    </div>
+                `,
+                onOpen: () => {
+                    ui.renderDimensionContent();
+                }
+            },
+            'notepad': {
+                title: 'Notepad - Recovered Documents',
+                initialHTML: `
+                    <div class="notepad-panel">
+                        <div class="document-sidebar">
+                            <h3>Documents</h3>
+                            <div id="document-list" class="document-list"></div>
+                        </div>
+                        <div class="document-viewer">
+                            <div id="document-title" class="document-title">Select a document</div>
+                            <div id="document-content" class="document-content">
+                                <em>No document selected.</em>
+                            </div>
+                        </div>
+                    </div>
+                `,
+                onOpen: () => {
+                    ui.renderDocumentList();
+                }
             }
         };
         return configs[id] || { title: 'Unknown App', initialHTML: 'ERROR' };
