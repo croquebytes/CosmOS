@@ -128,15 +128,25 @@ Track your progress on features and improvements. Check off items as you complet
 
 ## 🎨 Polish & Quality of Life
 
-### Better Automation
-- [ ] Add "Buy 10" button for automatons
-- [ ] Add "Buy Max" button for automatons
-- [ ] Show cost of next purchase
+### Balance Pass ✅ COMPLETE
+- [x] Analyze progression pacing (first prestige timing)
+- [x] Slow down Soul production (Cherub: 1/sec → 0.2/sec)
+- [x] Adjust prestige formula (sqrt(souls/100) → sqrt(souls/2500))
+- [x] Increase mandate costs by 2x (100/200/500/1000)
+- [x] Increase Void unlock cost (100 → 200 Souls)
+- [x] Increase Soul cap (1000 → 2000)
+
+**Status**: ✅ Complete! Target progression: ~2+ hours to first prestige (was 25 minutes).
+
+### Better Automation ✅ COMPLETE
+- [x] Add "Buy 10" button for automatons
+- [x] Add "Buy Max" button for automatons
+- [x] Show cost of next purchase
 - [ ] Add auto-purchase toggles (buy when can afford)
 - [ ] Show total production breakdown
 - [ ] Add "efficiency rating" display
 
-**Estimated time**: 3-4 hours
+**Status**: ✅ Buy 10/Max buttons added for all automatons (Seraphs, Cherubs, Wraiths, Phantoms)!
 
 ### Improved Canvas Animation
 - [ ] Particle effects on manual miracles
@@ -147,16 +157,17 @@ Track your progress on features and improvements. Check off items as you complet
 
 **Estimated time**: 2-3 hours
 
-### Keyboard Shortcuts
-- [ ] Alt+F4 to close windows
-- [ ] Numbers 1-9 for window switching
-- [ ] Space to perform miracle
-- [ ] M for Divine Mandates
-- [ ] D for Dimensions
-- [ ] S for Settings
-- [ ] Escape to close focused window
+### Keyboard Shortcuts ✅ COMPLETE
+- [x] Space to perform miracle
+- [x] M for Divine Mandates
+- [x] D for Dimensions
+- [x] S for Settings
+- [x] C for Universal Engine Console
+- [x] N for Notepad
+- [x] Escape to close focused window
+- [ ] Numbers 1-9 for window switching (optional)
 
-**Estimated time**: 1-2 hours
+**Status**: ✅ All main keyboard shortcuts implemented!
 
 ### Settings Improvements
 - [ ] Notation toggle (suffixes vs scientific)
@@ -240,9 +251,111 @@ Track your progress on features and improvements. Check off items as you complet
 
 ---
 
+## 🎰 Casino, Adversary & Desktop Apps Implementation (2026-01-20)
+
+**Implementation Plan**: See [IMPLEMENTATION_PLAN_Casino_Adversary_Apps.md](IMPLEMENTATION_PLAN_Casino_Adversary_Apps.md)
+
+### Phase 1: Foundation ✅ COMPLETE
+- [x] Add state structures for Casino, Adversary, Task Manager, Recycle Bin
+- [x] Add TaskManagerProcesses data (12 processes)
+- [x] Add AchievementList data (40 achievements, 5 tiers)
+- [x] Add DocumentManifest data (15 documents)
+- [x] Update State.load() deep merge logic
+
+**Status**: ✅ All foundational structures in place
+
+### Phase 2: Documents System ✅ COMPLETE
+- [x] Create DocumentManifest in state.js (15 documents)
+- [x] Add unlockDocument(), checkDocumentUnlocks(), getDocumentContent() to game.js
+- [x] Create document viewer UI in ui.js with category filtering
+- [x] Update notepad app config with 12 category tabs
+- [x] Add document notification styling
+- [x] Test document unlocking (conditions work correctly)
+
+**Status**: ✅ All 15 documents with unlock conditions, markdown rendering, category filtering
+
+### Phase 3: Achievement System ✅ COMPLETE
+- [x] Replace old AchievementList (15) with new system (40 achievements)
+- [x] Implement 5-tier system (Bronze/Silver/Gold/Platinum/Secret)
+- [x] Update checkAchievements() with new condition format
+- [x] Add unlockAchievement() with automatic reward application
+- [x] Enhance achievement notifications with tier-specific styling
+- [x] Redesign Settings achievement panel with tier grouping
+- [x] Add achievement progress tracking throughout game actions
+- [x] Add tier-specific CSS styling
+
+**Status**: ✅ 40 achievements across 5 tiers with automatic rewards and beautiful UI
+
+### Phase 4: Task Manager ✅ COMPLETE
+- [x] Create Task Manager window config in system.js
+- [x] Add Task Manager UI functions (updateTaskManagerList, endProcess)
+- [x] Add process callbacks (already in TaskManagerProcesses)
+- [x] Add Task Manager CSS styling (table, statuses, critical highlighting)
+- [x] Add Task Manager desktop icon
+
+**Status**: ✅ 12 processes with callbacks, easter eggs, document unlocks
+
+### Phase 5: Recycle Bin ✅ COMPLETE
+- [x] Create Recycle Bin window config
+- [x] Add sacrifice mechanics (delete resources for bonuses)
+- [x] Add trash item system
+- [x] Add restoration mechanics
+- [x] Add CSS styling
+- [x] Add desktop icon
+
+**Status**: ✅ Recycle Bin with resource sacrifice, item restoration, and patch execution
+
+### Phase 6: Casino Host Bark Engine ✅ COMPLETE
+- [x] Implement bark system in game.js (selectHostBark, weighted random)
+- [x] Add bark cooldowns and weighting
+- [x] Add bark display UI (notification system)
+- [x] Add 80 bark lines from content pack (already in state.js)
+- [x] Test rare whisper triggers (lore whispers with 1% chance)
+- [x] Add bark notification CSS styling
+
+**Status**: ✅ 80 Host barks with weighted selection, cooldowns, and lore whispers
+
+### Phase 7: Adversary Scene Engine ⏳ PENDING
+- [ ] Create scene engine with dialogue trees
+- [ ] Add player choice system
+- [ ] Implement scene persistence
+- [ ] Add Adversary barks
+- [ ] Create scene UI
+
+**Estimated time**: 6-8 hours
+
+### Phase 8: Casino Mini-Games ⏳ PENDING
+- [ ] 8A: Solitaire (5-6 hours)
+- [ ] 8B: Slots (2-3 hours)
+- [ ] 8C: Plinko (1-2 hours)
+- [ ] Fate Token economy
+
+**Estimated time**: 8-10 hours
+
+### Phase 9: Integration & Polish ⏳ PENDING
+- [ ] Connect all systems
+- [ ] Balance tuning
+- [ ] Bug fixes
+- [ ] Visual polish
+
+**Estimated time**: 4-5 hours
+
+### Phase 10: Testing & Balancing ⏳ PENDING
+- [ ] Full playthrough testing
+- [ ] Balance adjustments
+- [ ] Content verification
+- [ ] Achievement testing
+
+**Estimated time**: 6-8 hours
+
+**Current Progress**: 6/10 phases complete (Foundation, Documents, Achievements, Task Manager, Recycle Bin, Casino Host Barks)
+**Next Phase**: Adversary Scene Engine OR continue with testing
+
+---
+
 ## Notes
 
-**Current Status**: Phase 2 - Core gameplay loop established
+**Current Status**: Casino/Adversary Implementation - Phase 6 Complete (Recycle Bin + Host Barks)
 
 **Next Milestone**: Complete Week 1 priorities (Upgrades, Visual Feedback, Achievements)
 

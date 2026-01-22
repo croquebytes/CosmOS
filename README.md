@@ -85,17 +85,43 @@ A blend of seemingly contradictory tones that create something unique:
 
 ## Current Status
 
-**Phase 2 of 3**: Core gameplay loop established
-- ✅ Boot sequence & desktop environment
-- ✅ Window management system
-- ✅ Resource generation (Praise, Offerings, Souls)
-- ✅ Divine Core visualization
-- ✅ Save/load persistence
-- 🚧 Dimensional expansion
-- 🚧 Divine Mandates skill tree
-- 📋 Prestige mechanics
-- 📋 Narrative integration
-- 📋 Polish and balancing
+**Casino/Adversary Implementation**: 6/10 phases complete
+
+### ✅ Core Systems (Complete)
+- **Boot Sequence**: Authentic OS boot with startup sounds and loading screen
+- **Desktop Environment**: Fully functional retro desktop with icons and taskbar
+- **Window Management**: Draggable, closeable, focusable windows with proper layering
+- **Resource Generation**: 6 resource types (Praise, Offerings, Souls, Darkness, Shadows, Echoes)
+- **Divine Core**: Animated particle visualization of universal energy
+- **Save/Load**: Complete persistence with localStorage + offline progress
+- **Upgrades**: 8 progressive upgrades with unlock conditions
+- **Automatons**: 4 automaton types (Seraphs, Cherubs, Wraiths, Phantoms)
+- **Divine Mandates**: 15-node skill tree across 3 branches (Creation/Maintenance/Entropy)
+- **Active Skills**: Divine Intervention (2x production) + Temporal Rift (time skip)
+- **Divine Events**: Golden-cookie style random bonuses
+- **Dimensions**: Primordial + Void dimensions with unique resources
+- **Prestige**: Divine Reboot system with Divinity Points multipliers
+
+### ✅ Casino/Adversary Systems (Phases 1-6 Complete)
+- **Documents System**: 15 lore documents with unlock conditions, category filtering, markdown rendering
+- **Achievement System**: 40 achievements across 5 tiers (Bronze/Silver/Gold/Platinum/Secret) with automatic rewards
+- **Task Manager**: 12 system processes with termination callbacks, easter eggs, and document unlocks
+- **Recycle Bin**: Resource sacrifice mechanics, item restoration, Adversary patch execution
+- **Casino Host Barks**: 80 personality-driven dialogue lines with weighted selection, cooldowns, and rare whispers
+- **Adversary Foundation**: NULL.OPERATOR system with patch execution and alternate prestige paths
+
+### 🚧 In Progress (Phases 7-10)
+- **Adversary Scene Engine**: Branching dialogue trees with player choices
+- **Casino Mini-Games**: Solitaire, Slots, Plinko with Fate Token economy
+- **Casino Integration**: Full casino window with Host personality
+- **Testing & Balance**: Comprehensive stress testing and progression tuning
+
+### 📋 Planned Features
+- **Cosmic Defrag**: Second prestige layer
+- **Protocol System**: Challenge modes
+- **Additional Dimensions**: Chronos, Quantum, Primordial
+- **More Desktop Apps**: Paint, Command Prompt, Registry Editor
+- **Statistics Window**: Charts and progress tracking
 
 ## Development Approach
 
@@ -106,21 +132,71 @@ This is both a **learning journey** and a **real game for real players**. Develo
 3. **Player-focused**: Balance experimentation with user experience
 4. **Scope management**: Endless ambition, disciplined execution
 
+## Latest Updates (Phase 5-6)
+
+### 🎰 Casino Host Bark System
+A mysterious casino host who comments on your actions with 80 unique dialogue lines:
+- **Contextual Barks**: Different responses for wins, losses, streaks, and idle moments
+- **Weighted Selection**: Some lines are rarer than others
+- **Cooldown System**: Individual bark cooldowns + global rate limiting
+- **Lore Whispers**: Rare 1% chance whispers with special golden styling and hints about the deeper narrative
+- **Persistent Personality**: The Host remembers what you've heard and adapts
+
+### 🗑️ Recycle Bin & Sacrifice System
+Delete resources for permanent power:
+- **Resource Sacrifice**: Convert resources into permanent percentage bonuses to ALL production
+- **Item Management**: Restore accidentally deleted items or sacrifice them for power
+- **Adversary Patch**: Execute the NULL.OPERATOR discipline patch to unlock alternate prestige paths
+- **Achievement Easter Egg**: Try deleting an achievement... if you dare
+- **Sacrifice Tracking**: Total sacrifice value displayed, counts toward achievements
+
+### 📄 Enhanced Document System
+Discover the truth through paperwork:
+- **15 Lore Documents**: HR memos, legal disclaimers, incident reports, training manuals, and mysterious logs
+- **11 Categories**: Organized filing system (HR, Legal, Logs, Incident, Training, Memo, Ad, Archive, Casino, System, Inbox)
+- **Dynamic Unlocking**: Documents unlock based on achievements, actions, and milestones
+- **Markdown Rendering**: Full document viewer with formatted text
+- **Narrative Delivery**: Learn about the Watchers, Sector 7G, the Adversary, and the true nature of CosmOS™
+
+### 🏆 40-Achievement System
+Five tiers of accomplishments:
+- **Bronze Tier** (12): Early milestones and basic actions
+- **Silver Tier** (10): Intermediate goals and progression markers
+- **Gold Tier** (8): Advanced achievements requiring dedication
+- **Platinum Tier** (2): Elite accomplishments for true operators
+- **Secret Tier** (8): Hidden achievements with mysterious unlock conditions
+- **Automatic Rewards**: Achievements grant permanent bonuses, unlock documents, or reveal easter eggs
+- **Tiered Notifications**: Beautiful toast notifications with tier-specific styling
+
+### 💻 Task Manager
+Manage (or mismanage) system processes:
+- **12 System Processes**: Each with unique CPU/memory usage and descriptions
+- **Process Termination**: End processes to see what breaks (or what you unlock)
+- **Critical Processes**: Some processes are protected... but you can try
+- **Easter Eggs**: Click certain processes to discover hidden messages and unlock documents
+- **Achievement Integration**: Ending processes tracks toward achievements
+- **Narrative Hooks**: Task Manager interactions reveal lore about Sector 7G, the Watchers, and system corruption
+
 ## Repository Structure
 
 ```
 CosmOS/
-├── README.md                 # This file - vision and goals
-├── IMPLEMENTATION_PLAN.md    # Technical roadmap and phase planning
-├── IDEAS.md                  # Feature brainstorming and gameplay concepts
-├── REFERENCES.md             # Code snippets, patterns, and design references
-├── index.html                # Main entry point
-├── style.css                 # Retro-divine styling
-└── js/
-    ├── state.js              # Game state & persistence
-    ├── system.js             # Window management & OS functionality
-    ├── ui.js                 # UI updates & canvas visualization
-    └── game.js               # Core game loop & mechanics
+├── README.md                          # This file - vision and goals
+├── IMPLEMENTATION_PLAN_Casino_Adversary_Apps.md  # Current implementation roadmap
+├── TESTING_GUIDE.md                   # Comprehensive testing procedures
+├── TODO.md                            # Project task tracker
+├── IDEAS.md                           # Feature brainstorming
+├── REFERENCES.md                      # Code patterns and references
+├── index.html                         # Main entry point
+├── style.css                          # Retro-divine styling
+├── js/
+│   ├── state.js                       # Game state, data definitions, persistence
+│   ├── system.js                      # Window management & app configs
+│   ├── ui.js                          # UI updates, notifications, canvas
+│   └── game.js                        # Core loop, achievements, bark system
+└── docs/
+    └── CosmOS_Content_Pack/
+        └── docs/                      # 15 markdown lore documents
 ```
 
 ## How to Play (Local Development)

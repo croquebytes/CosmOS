@@ -1,0 +1,722 @@
+[
+  {
+    "Line ID": "CAS-HOST-001",
+    "Context": "Greeting",
+    "Trigger": "casino_enter",
+    "Text": "Welcome, darling. Leave your certainty at the door—security will confiscate it anyway.",
+    "Weight": 3,
+    "Cooldown(s)": 10,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-002",
+    "Context": "Greeting",
+    "Trigger": "casino_enter",
+    "Text": "Back again? Fate loves repeat customers. Especially the ones who think they’re different.",
+    "Weight": 3,
+    "Cooldown(s)": 10,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-003",
+    "Context": "Greeting",
+    "Trigger": "casino_enter",
+    "Text": "Ah, Operator. Pull up a chair. The house has been expecting you since before you were born.",
+    "Weight": 3,
+    "Cooldown(s)": 10,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-004",
+    "Context": "Greeting",
+    "Trigger": "casino_enter",
+    "Text": "Step lightly. Probability is waxed and freshly polished.",
+    "Weight": 3,
+    "Cooldown(s)": 10,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-005",
+    "Context": "Greeting",
+    "Trigger": "casino_enter",
+    "Text": "I run a clean establishment. Dirty miracles go in the back room.",
+    "Weight": 3,
+    "Cooldown(s)": 10,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-006",
+    "Context": "Intro",
+    "Trigger": "casino_first_visit",
+    "Text": "Rules are simple: you wager what you can’t afford to lose, and I pretend it was your idea.",
+    "Weight": 2,
+    "Cooldown(s)": 0,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-007",
+    "Context": "Intro",
+    "Trigger": "casino_first_visit",
+    "Text": "Every game here is honest—honestly unfair.",
+    "Weight": 2,
+    "Cooldown(s)": 0,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-008",
+    "Context": "Intro",
+    "Trigger": "casino_first_visit",
+    "Text": "If you hear whispers in the walls, don’t worry. That’s just compliance monitoring.",
+    "Weight": 2,
+    "Cooldown(s)": 0,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-009",
+    "Context": "Intro",
+    "Trigger": "casino_first_visit",
+    "Text": "House policy: no refunds, no prophecies, no crying on the felt.",
+    "Weight": 2,
+    "Cooldown(s)": 0,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-010",
+    "Context": "BetPrompt",
+    "Trigger": "casino_bet_prompt",
+    "Text": "How brave are you feeling in measurable units?",
+    "Weight": 4,
+    "Cooldown(s)": 2,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-011",
+    "Context": "BetPrompt",
+    "Trigger": "casino_bet_prompt",
+    "Text": "Place your bet. Fate is impatient and so am I.",
+    "Weight": 4,
+    "Cooldown(s)": 2,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-012",
+    "Context": "BetPrompt",
+    "Trigger": "casino_bet_prompt",
+    "Text": "Wager small if you want to feel safe. Wager big if you want to feel alive.",
+    "Weight": 4,
+    "Cooldown(s)": 2,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-013",
+    "Context": "BetPrompt",
+    "Trigger": "casino_bet_prompt",
+    "Text": "Tell me what you want… then tell me what you’ll risk for it.",
+    "Weight": 4,
+    "Cooldown(s)": 2,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-014",
+    "Context": "BetPrompt",
+    "Trigger": "casino_bet_prompt",
+    "Text": "Spin the wheel, flip the card, roll the bones—same ritual, different costume.",
+    "Weight": 4,
+    "Cooldown(s)": 2,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-015",
+    "Context": "WinSmall",
+    "Trigger": "casino_win_small",
+    "Text": "A win! Adorable. Don’t get attached.",
+    "Weight": 5,
+    "Cooldown(s)": 1,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-016",
+    "Context": "WinSmall",
+    "Trigger": "casino_win_small",
+    "Text": "Congratulations. The universe shrugged in your favor.",
+    "Weight": 5,
+    "Cooldown(s)": 1,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-017",
+    "Context": "WinSmall",
+    "Trigger": "casino_win_small",
+    "Text": "Luck adores confidence. Confidence adores denial.",
+    "Weight": 5,
+    "Cooldown(s)": 1,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-018",
+    "Context": "WinSmall",
+    "Trigger": "casino_win_small",
+    "Text": "Take it. Put it somewhere it can’t be taken back—like a memory.",
+    "Weight": 5,
+    "Cooldown(s)": 1,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-019",
+    "Context": "WinSmall",
+    "Trigger": "casino_win_small",
+    "Text": "You see? Reality can be kind. Briefly.",
+    "Weight": 5,
+    "Cooldown(s)": 1,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-020",
+    "Context": "WinBig",
+    "Trigger": "casino_win_big",
+    "Text": "Oh! That one had teeth. Keep smiling—Fate hates a smug face.",
+    "Weight": 3,
+    "Cooldown(s)": 1,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-021",
+    "Context": "WinBig",
+    "Trigger": "casino_win_big",
+    "Text": "A big win. Somewhere, a timeline just got jealous.",
+    "Weight": 3,
+    "Cooldown(s)": 1,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-022",
+    "Context": "WinBig",
+    "Trigger": "casino_win_big",
+    "Text": "Look at you—making statistics cry.",
+    "Weight": 3,
+    "Cooldown(s)": 1,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-023",
+    "Context": "WinBig",
+    "Trigger": "casino_win_big",
+    "Text": "Jackpot energy. Try not to spend it on something sentimental.",
+    "Weight": 3,
+    "Cooldown(s)": 1,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-024",
+    "Context": "NearMiss",
+    "Trigger": "casino_near_miss",
+    "Text": "So close. That’s not bad luck—that’s theater.",
+    "Weight": 2,
+    "Cooldown(s)": 3,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-025",
+    "Context": "NearMiss",
+    "Trigger": "casino_near_miss",
+    "Text": "Did you feel it? The world leaning toward you… then stepping away.",
+    "Weight": 2,
+    "Cooldown(s)": 3,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-026",
+    "Context": "NearMiss",
+    "Trigger": "casino_near_miss",
+    "Text": "Near misses are how Fate practices honesty without committing to it.",
+    "Weight": 2,
+    "Cooldown(s)": 3,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-027",
+    "Context": "LoseSmall",
+    "Trigger": "casino_lose_small",
+    "Text": "Probability apologizes. It won’t do it again.",
+    "Weight": 5,
+    "Cooldown(s)": 1,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-028",
+    "Context": "LoseSmall",
+    "Trigger": "casino_lose_small",
+    "Text": "Ouch. Don’t worry—pain is just data with attitude.",
+    "Weight": 5,
+    "Cooldown(s)": 1,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-029",
+    "Context": "LoseSmall",
+    "Trigger": "casino_lose_small",
+    "Text": "Loss builds character. Character is overrated.",
+    "Weight": 5,
+    "Cooldown(s)": 1,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-030",
+    "Context": "LoseSmall",
+    "Trigger": "casino_lose_small",
+    "Text": "The house thanks you for your donation to cosmic stability.",
+    "Weight": 5,
+    "Cooldown(s)": 1,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-031",
+    "Context": "LoseSmall",
+    "Trigger": "casino_lose_small",
+    "Text": "Ah—classic outcome. You’ll get used to it.",
+    "Weight": 5,
+    "Cooldown(s)": 1,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-032",
+    "Context": "LoseBig",
+    "Trigger": "casino_lose_big",
+    "Text": "That one stung, didn’t it? Hold still—Fate is writing a lesson on your ribs.",
+    "Weight": 3,
+    "Cooldown(s)": 1,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-033",
+    "Context": "LoseBig",
+    "Trigger": "casino_lose_big",
+    "Text": "Big loss. Big feelings. Big reason to come back.",
+    "Weight": 3,
+    "Cooldown(s)": 1,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-034",
+    "Context": "LoseBig",
+    "Trigger": "casino_lose_big",
+    "Text": "You wagered like a god. You paid like a mortal.",
+    "Weight": 3,
+    "Cooldown(s)": 1,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-035",
+    "Context": "WinStreak",
+    "Trigger": "casino_win_streak",
+    "Text": "Five wins in a row? Careful—confidence is how Fate marks targets.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-036",
+    "Context": "WinStreak",
+    "Trigger": "casino_win_streak",
+    "Text": "You’re on a streak. I’ve seen this story end two ways. Neither is polite.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-037",
+    "Context": "WinStreak",
+    "Trigger": "casino_win_streak",
+    "Text": "Keep going. I love watching someone outrun their own common sense.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-038",
+    "Context": "WinStreak",
+    "Trigger": "casino_win_streak",
+    "Text": "Ten wins… darling, you’re flirting with a rule you don’t understand.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-039",
+    "Context": "LoseStreak",
+    "Trigger": "casino_lose_streak",
+    "Text": "Three losses. Don’t take it personally—Fate doesn’t even know your name. Usually.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-040",
+    "Context": "LoseStreak",
+    "Trigger": "casino_lose_streak",
+    "Text": "Five losses. If you start blaming the universe, remember: you manage it.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-041",
+    "Context": "LoseStreak",
+    "Trigger": "casino_lose_streak",
+    "Text": "Ten losses. At this point, we should charge you rent.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-042",
+    "Context": "LoseStreak",
+    "Trigger": "casino_lose_streak",
+    "Text": "Fifteen losses… wow. Here—take a free chip. I can’t watch this anymore.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-043",
+    "Context": "Idle",
+    "Trigger": "casino_idle_30s",
+    "Text": "Staring at the table won’t change the odds. It will change your posture.",
+    "Weight": 2,
+    "Cooldown(s)": 15,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-044",
+    "Context": "Idle",
+    "Trigger": "casino_idle_30s",
+    "Text": "If you’re waiting for a sign, consider the neon: ‘HOUSE ALWAYS WINS.’",
+    "Weight": 2,
+    "Cooldown(s)": 15,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-045",
+    "Context": "Idle",
+    "Trigger": "casino_idle_30s",
+    "Text": "Silence is also a bet, darling. You’re wagering time.",
+    "Weight": 2,
+    "Cooldown(s)": 15,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-046",
+    "Context": "Exit",
+    "Trigger": "casino_exit",
+    "Text": "Leaving already? Take care—Fate hates being ignored.",
+    "Weight": 3,
+    "Cooldown(s)": 0,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-047",
+    "Context": "Exit",
+    "Trigger": "casino_exit",
+    "Text": "Go on, Operator. Your universe won’t exploit itself.",
+    "Weight": 3,
+    "Cooldown(s)": 0,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-048",
+    "Context": "Exit",
+    "Trigger": "casino_exit",
+    "Text": "Come back when you’re ready to risk something real.",
+    "Weight": 3,
+    "Cooldown(s)": 0,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-049",
+    "Context": "Return",
+    "Trigger": "casino_return",
+    "Text": "Welcome back. I didn’t move. Fate doesn’t like to be seen walking.",
+    "Weight": 3,
+    "Cooldown(s)": 0,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-050",
+    "Context": "Return",
+    "Trigger": "casino_return",
+    "Text": "Returning so soon? I’ll pretend you missed me.",
+    "Weight": 3,
+    "Cooldown(s)": 0,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-051",
+    "Context": "LoreWhisper",
+    "Trigger": "casino_rare_whisper",
+    "Text": "(whisper) The Watchers don’t gamble. They already saw the outcome. They come here to feel surprised.",
+    "Weight": 1,
+    "Cooldown(s)": 120,
+    "Notes": "Rare (1%)"
+  },
+  {
+    "Line ID": "CAS-HOST-052",
+    "Context": "LoreWhisper",
+    "Trigger": "casino_rare_whisper",
+    "Text": "(whisper) Sector 7G keeps a guest list. Some names belong to people who were never born.",
+    "Weight": 1,
+    "Cooldown(s)": 120,
+    "Notes": "Rare (1%)"
+  },
+  {
+    "Line ID": "CAS-HOST-053",
+    "Context": "LoreWhisper",
+    "Trigger": "casino_rare_whisper",
+    "Text": "(whisper) Divine Reboot doesn’t erase anything. It just changes who gets to remember.",
+    "Weight": 1,
+    "Cooldown(s)": 120,
+    "Notes": "Rare (1%)"
+  },
+  {
+    "Line ID": "CAS-HOST-054",
+    "Context": "LoreWhisper",
+    "Trigger": "casino_rare_whisper",
+    "Text": "(whisper) CMS called this place ‘Morale.’ I call it ‘Containment.’",
+    "Weight": 1,
+    "Cooldown(s)": 120,
+    "Notes": "Rare (1%)"
+  },
+  {
+    "Line ID": "CAS-HOST-055",
+    "Context": "LoreWhisper",
+    "Trigger": "casino_rare_whisper",
+    "Text": "(whisper) If you ever meet your reflection… don’t shake hands. That’s how it spreads.",
+    "Weight": 1,
+    "Cooldown(s)": 120,
+    "Notes": "Rare (1%)"
+  },
+  {
+    "Line ID": "CAS-HOST-056",
+    "Context": "LoreWhisper",
+    "Trigger": "casino_rare_whisper",
+    "Text": "(whisper) Luck is administered. Like medicine. Like poison.",
+    "Weight": 1,
+    "Cooldown(s)": 120,
+    "Notes": "Rare (1%)"
+  },
+  {
+    "Line ID": "CAS-HOST-057",
+    "Context": "LoreWhisper",
+    "Trigger": "casino_rare_whisper",
+    "Text": "(whisper) The house edge? It’s called fine print.",
+    "Weight": 1,
+    "Cooldown(s)": 120,
+    "Notes": "Rare (1%)"
+  },
+  {
+    "Line ID": "CAS-HOST-058",
+    "Context": "LoreWhisper",
+    "Trigger": "casino_rare_whisper",
+    "Text": "(whisper) There are branches where you never became Operator. Fate says those are the happiest.",
+    "Weight": 1,
+    "Cooldown(s)": 120,
+    "Notes": "Rare (1%)"
+  },
+  {
+    "Line ID": "CAS-HOST-059",
+    "Context": "LoreWhisper",
+    "Trigger": "casino_rare_whisper",
+    "Text": "(whisper) Every jackpot is borrowed from a world that just collapsed.",
+    "Weight": 1,
+    "Cooldown(s)": 120,
+    "Notes": "Rare (1%)"
+  },
+  {
+    "Line ID": "CAS-HOST-060",
+    "Context": "LoreWhisper",
+    "Trigger": "casino_rare_whisper",
+    "Text": "(whisper) They say there’s an exit. They don’t mention it’s one-way for your name.",
+    "Weight": 1,
+    "Cooldown(s)": 120,
+    "Notes": "Rare (1%)"
+  },
+  {
+    "Line ID": "CAS-HOST-061",
+    "Context": "LoreWhisper",
+    "Trigger": "casino_rare_whisper",
+    "Text": "(whisper) Listen—do you hear the BIOS? It sings when someone quits.",
+    "Weight": 1,
+    "Cooldown(s)": 120,
+    "Notes": "Rare (1%)"
+  },
+  {
+    "Line ID": "CAS-HOST-062",
+    "Context": "LoreWhisper",
+    "Trigger": "casino_rare_whisper",
+    "Text": "(whisper) Don’t run the patch in your Recycle Bin. Or do. I won’t judge. I’ll only watch.",
+    "Weight": 1,
+    "Cooldown(s)": 120,
+    "Notes": "Rare (1%)"
+  },
+  {
+    "Line ID": "CAS-HOST-063",
+    "Context": "Special",
+    "Trigger": "casino_special_event",
+    "Text": "Cash out? Sensible. I hate that.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-064",
+    "Context": "Special",
+    "Trigger": "casino_special_event",
+    "Text": "You’re reading the odds? That’s cute. They won’t save you.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-065",
+    "Context": "Special",
+    "Trigger": "casino_special_event",
+    "Text": "Tap the dealer again and I’ll charge you for attention.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-066",
+    "Context": "Special",
+    "Trigger": "casino_special_event",
+    "Text": "Ah, the ‘double down’ button. The most honest confession in the building.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-067",
+    "Context": "Special",
+    "Trigger": "casino_special_event",
+    "Text": "If you’re here for fairness, try a monastery.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-068",
+    "Context": "Special",
+    "Trigger": "casino_special_event",
+    "Text": "A jackpot this loud attracts auditors. Smile like you meant it.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-069",
+    "Context": "Special",
+    "Trigger": "casino_special_event",
+    "Text": "Odds panel open. I hope you enjoy fiction.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-070",
+    "Context": "Special",
+    "Trigger": "casino_special_event",
+    "Text": "You can’t bribe Fate. But you can flatter it.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-071",
+    "Context": "Special",
+    "Trigger": "casino_special_event",
+    "Text": "The table is hot. The universe is hotter.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-072",
+    "Context": "Special",
+    "Trigger": "casino_special_event",
+    "Text": "Remember: every win is a loan. Interest is paid in regret.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-073",
+    "Context": "Special",
+    "Trigger": "casino_special_event",
+    "Text": "You can walk away anytime. That’s what all addicts say.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-074",
+    "Context": "Special",
+    "Trigger": "casino_special_event",
+    "Text": "A tie! Fate couldn’t decide. Imagine being so indecisive you become law.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-075",
+    "Context": "Special",
+    "Trigger": "casino_special_event",
+    "Text": "Dealer’s choice? Darling, I always choose.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-076",
+    "Context": "Special",
+    "Trigger": "casino_special_event",
+    "Text": "This chip smells like fear. Keep it. It matches your eyes.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-077",
+    "Context": "Special",
+    "Trigger": "casino_special_event",
+    "Text": "Betting the minimum is still betting your time.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-078",
+    "Context": "Special",
+    "Trigger": "casino_special_event",
+    "Text": "Betting the maximum is still betting your pride.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-079",
+    "Context": "Special",
+    "Trigger": "casino_special_event",
+    "Text": "Sometimes the best move is not playing. We don’t offer that option.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  },
+  {
+    "Line ID": "CAS-HOST-080",
+    "Context": "Special",
+    "Trigger": "casino_special_event",
+    "Text": "If you hear a second voice in my mouth, no you didn’t.",
+    "Weight": 2,
+    "Cooldown(s)": 5,
+    "Notes": ""
+  }
+]

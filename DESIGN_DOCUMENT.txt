@@ -1,0 +1,685 @@
+═══════════════════════════════════════════════════════════════
+                    CosmOS - COMPLETE DESIGN DOCUMENT
+═══════════════════════════════════════════════════════════════
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎮 GAME OVERVIEW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CORE CONCEPT
+────────────
+CosmOS is an incremental/idle game disguised as a retro Windows 98-style
+operating system where you play as a divine entity managing the creation
+and maintenance of reality itself. The game blends resource management,
+dimension exploration, and narrative mystery with a comedic-yet-existential
+tone.
+
+GENRE FUSION
+────────────
+• Incremental/Idle Game: Click to generate Praise → Buy automatons →
+  Prestige for permanent bonuses
+• Dimension Management: Multiple realms with unique resources and mechanics
+• Narrative Mystery: Uncover the truth about the cosmos through found
+  documents
+• Mini-Game Hub: Casino, Solitaire, card battles (planned)
+
+CORE LOOP
+─────────
+1. Generate resources (Praise → Offerings → Souls)
+2. Purchase automatons and upgrades
+3. Unlock new dimensions and mechanics
+4. Discover lore through gameplay milestones
+5. Prestige to grow stronger
+6. Face increasing existential questions about the nature of reality
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🌌 ESTABLISHED NARRATIVE & LORE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+THE SETUP: WHO/WHAT ARE YOU?
+────────────────────────────
+
+YOU ARE: An unnamed divine entity operating through "CosmOS™ BIOS" - a
+cosmic operating system that manages reality. You're not explicitly God,
+but you're god-like. The game is deliberately vague about whether you're:
+  • A genuine deity
+  • An AI managing a simulation
+  • A bureaucrat in a celestial corporation
+  • Something unknowable
+
+KEY ESTABLISHED FACTS
+────────────────────
+
+1. THE OPERATING SYSTEM IS REAL (from boot screen)
+   • "Celestial Micro-Systems" manufactures the BIOS
+   • Version 4.2.0.69 (comedic version number)
+   • System existed long before you (copyright "1,000,000,000,000 BC")
+   • Sector 7G is corrupted (warning during boot)
+
+2. YOU'RE NOT THE FIRST (implied)
+   • The system is pre-built with infrastructure
+   • Automatons have names (Seraphs, Cherubs) suggesting previous operators
+   • Documents are "recovered" not "written by you"
+   • Achievements track "total" metrics suggesting prior runs
+
+3. THE COSMOS HAS LAYERS (from dimensions)
+   • Primordial Dimension: Original, stable reality
+   • Void Dimension: "Darker reflection," unstable
+   • More dimensions planned (Chronos, Quantum)
+   • Each dimension has unique physics/resources
+
+4. THERE'S CORPORATE BUREAUCRACY (from documents)
+   • Reference to "Maintenance Department"
+   • Forms, protocols, employee training
+   • Dark humor about cosmic HR policies
+
+5. SOMETHING WENT WRONG (implied)
+   • Void dimension is described as "darker reflection"
+   • Boot warning about corrupted sectors
+   • Documents suggest previous failures
+   • Prestige (Divine Reboot) implies cyclical collapse
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 CURRENT LORE (From Existing Documents)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DOCUMENT 1: "Welcome to Infinity 2.0"
+──────────────────────────────────────
+• Frames the game as an onboarding manual
+• Implies reality management is a job
+• "Infinity 1.0" existed and presumably failed
+• Corporate tone, darkly comedic
+
+DOCUMENT 2: "On the Nature of Praise"
+──────────────────────────────────────
+• Philosophy piece about worship
+• Questions whether divine entities create mortals for praise or vice versa
+• Introduces existential uncertainty
+
+DOCUMENT 3: "Seraph Automation Guidelines"
+───────────────────────────────────────────
+• Technical manual for automatons
+• Treats divine beings as machines
+• Warns against self-awareness in automatons (foreshadowing?)
+
+DOCUMENT 4: "Void Safety Manual"
+─────────────────────────────────
+• Warns about Void dimension dangers
+• References "Void Safety Inspector (probably doesn't exist)"
+• Implies the Void is memory-corrupting
+• KEY QUOTE: "The deeper you go into the Void, the harder it is to
+  remember what light looks like"
+
+[8 More Documents Exist - covering achievements, mandates, souls, etc.]
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🕳️ IDENTIFIED PLOT HOLES & QUESTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+MAJOR GAPS
+──────────
+
+1. WHO CREATED THE SYSTEM?
+   • CosmOS BIOS existed a trillion years ago
+   • Who made Celestial Micro-Systems?
+   • Are they still around?
+   • Are YOU a product of the system or separate?
+
+2. WHAT IS DIVINE REBOOT (PRESTIGE) ACTUALLY?
+   • You reset reality but keep knowledge (mandates, achievements)
+   • Does time actually rewind?
+   • Do mortals remember?
+   • Why does resetting make you stronger?
+
+3. WHAT HAPPENED TO PREVIOUS OPERATORS?
+   • Documents imply you're not the first
+   • Where did they go?
+   • Did they quit, ascend, or fail?
+   • Is the "corruption" their fault?
+
+4. WHY DOES THE VOID EXIST?
+   • Is it natural or created?
+   • Is it entropy, evil, or just "different"?
+   • Why does it mirror the Primordial?
+   • Is it spreading?
+
+5. WHAT IS SECTOR 7G?
+   • Mentioned in boot screen as corrupted
+   • Never explained
+   • Is it a dimension? A system file? A metaphor?
+
+6. THE ADVERSARY (planned)
+   • Where do they come from?
+   • Are they from a collapsed timeline?
+   • Are they literally anti-you or a corrupted version?
+   • What do they want?
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎭 NARRATIVE TONES & THEMES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CURRENT ESTABLISHED TONES
+─────────────────────────
+
+1. BUREAUCRATIC ABSURDISM (The Hitchhiker's Guide to the Galaxy)
+   • Cosmic HR departments
+   • Forms for divine powers
+   • Employee manuals for reality
+
+2. EXISTENTIAL COMEDY (The Stanley Parable, Portal)
+   • Questions about free will
+   • Uncertainty about your own nature
+   • Dark humor about infinity
+
+3. COSMIC HORROR LITE (SCP Foundation)
+   • Reality glitches
+   • Memory corruption in the Void
+   • Things that "probably don't exist"
+   • Underlying dread beneath comedy
+
+4. META-GAMING (The Beginner's Guide)
+   • Acknowledging it's a game
+   • Breaking the fourth wall subtly
+   • Windows 98 aesthetic is deliberate pastiche
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚧 CURRENT WORK-IN-PROGRESS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+IMPLEMENTED SYSTEMS
+───────────────────
+✓ Core resource loop (Praise/Offerings/Souls)
+✓ Two dimensions (Primordial, Void)
+✓ Prestige system (Divine Reboot)
+✓ Divine Mandates (skill trees)
+✓ Achievements (15 total)
+✓ Lore documents (10 written)
+✓ Active skills (Divine Intervention, Temporal Rift)
+✓ Divine Events (golden cookie style)
+✓ Adoration meta-currency system
+✓ Prophet & Follower mechanics
+✓ Divine Globe (dimension management)
+✓ Adoration Shop
+✓ Settings (export/import saves, notation modes)
+
+IN DEVELOPMENT
+──────────────
+◆ Fate's Casino (mini-game hub)
+◆ Solitaire implementation
+◆ Task Manager app
+◆ Recycle Bin mechanics
+
+PLANNED BUT NOT STARTED
+────────────────────────
+□ The Adversary (antagonist character)
+□ Card battle system
+□ Slots, Plinko gambling
+□ Timeline mechanics (Past/Present/Future)
+□ Paint app
+□ Additional dimensions
+□ Third prestige layer ("Cosmic Defrag")
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔮 FUTURE PLANS & EXPANSION IDEAS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DIMENSION EXPANSION
+───────────────────
+• Chronos Dimension: Time-themed (tick rate manipulation)
+• Quantum Dimension: Probability-based (superposition states)
+• Aether Dimension: Pure energy (antimatter resources)
+• Null Dimension: Complete void (danger zone, high risk/reward)
+
+PRESTIGE LAYERS
+───────────────
+1. Divine Reboot (Current) - Reset for Divinity Points
+2. Cosmic Defrag (Planned) - Reset Divinity for Fragments
+3. ??? Total System Wipe - Ultimate prestige?
+
+ENDGAME CONTENT
+───────────────
+• Confront the source of corruption
+• Merge or destroy dimensions
+• Ascend beyond the system itself
+• Multiple endings based on choices?
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❓ NARRATIVE QUESTIONS FOR YOU TO ANSWER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+═══════════════════════════════════════════════════════════════
+SECTION 1: WORLD-BUILDING
+═══════════════════════════════════════════════════════════════
+
+Q1: THE SYSTEM'S ORIGIN
+───────────────────────
+• Who/what is Celestial Micro-Systems?
+• Are they benevolent, neutral, or sinister?
+• Do they have competitors? (Infernal Corp? Chaos Industries?)
+• Is there a cosmic market for reality management software?
+
+Q2: YOUR ROLE
+──────────────
+• Are you hired, elected, or self-appointed?
+• Do you have a boss? Coworkers?
+• What's your employment contract like?
+• Can you be fired? Promoted?
+
+Q3: THE MULTIVERSE
+───────────────────
+• How many realities exist?
+• Are they managed by different operators?
+• Can realities interact or merge?
+• Is there a "root reality" or original template?
+
+Q4: MORTALS & WORSHIP
+──────────────────────
+• Do mortals actually exist in your cosmos?
+• Are they simulated or real?
+• Do they know about you?
+• What happens to them during prestige?
+
+
+═══════════════════════════════════════════════════════════════
+SECTION 2: THE ADVERSARY (Your Anti-Self)
+═══════════════════════════════════════════════════════════════
+
+Q5: IDENTITY & ORIGIN
+──────────────────────
+Which concept resonates with you?
+
+OPTION A: A version of you from a timeline where you chose entropy
+
+OPTION B: A corrupted backup of you from failed system restore
+
+OPTION C: A rival operator managing a competing cosmos
+
+OPTION D: Your own doubts/fears given form
+
+OPTION E: Something else entirely (describe):
+
+Q6: MOTIVATION
+──────────────
+What do they want?
+  □ To replace you?
+  □ To destroy all realities?
+  □ To prove entropy is superior to order?
+  □ To free you from endless cycles?
+  □ Other:
+
+Are they evil or just different?
+
+Q7: PERSONALITY & VOICE
+────────────────────────
+• Serious and threatening?
+• Darkly comedic like everything else?
+• Disturbingly friendly?
+• Chaotic and unpredictable?
+
+Write a sample dialogue line for them:
+
+Example: "You keep building. I keep tearing down. We're both wasting
+our time, but at least I'm honest about it."
+
+YOUR VERSION:
+
+
+Q8: NAME
+────────
+  □ Just "The Adversary"
+  □ Give them a proper name:
+  □ A title: (e.g., "The Unmaker," "The Null Operator," "Your Better Self")
+  □ A code name: (e.g., "User_ENTROPY_01," "System.Shadow")
+
+
+═══════════════════════════════════════════════════════════════
+SECTION 3: CORRUPTION & CONFLICT
+═══════════════════════════════════════════════════════════════
+
+Q9: SECTOR 7G
+─────────────
+• What is it?
+• Why is it corrupted?
+• Can it be fixed or must it be deleted?
+• Is it the source of the Void?
+
+Q10: THE VOID'S PURPOSE
+───────────────────────
+Is the Void:
+  □ A mistake?
+  □ A necessary counterbalance?
+  □ A virus in the system?
+  □ An alternate dimension with equal validity?
+
+Should you cleanse it or embrace it?
+
+Q11: ENDGAME CHOICES
+────────────────────
+What's the final goal? Multiple paths?
+
+PATH A: Restore all dimensions to perfect order
+PATH B: Embrace chaos and entropy
+PATH C: Merge order and chaos into balance
+PATH D: Escape the system entirely
+PATH E: Delete everything and start fresh
+
+Which feels right? Or a different ending?
+
+
+═══════════════════════════════════════════════════════════════
+SECTION 4: TONE & THEMES
+═══════════════════════════════════════════════════════════════
+
+Q12: COMEDY VS. COSMIC HORROR BALANCE
+──────────────────────────────────────
+Current ratio feels 70% comedy / 30% existential dread
+
+• Should it get darker as you progress?
+• Should late-game documents be unsettling?
+• Is the horror real or just part of the simulation?
+
+Q13: META-NARRATIVE
+────────────────────
+• How much should the game acknowledge it's a game?
+• Should there be an "in-universe" explanation for saving/loading?
+• Does the player = the operator, or are they separate?
+• Should there be a hidden "true" ending that breaks the fourth wall?
+
+Q14: PHILOSOPHY
+───────────────
+What's the game's core message?
+  □ "Infinity is meaningless without purpose"
+  □ "Order and chaos need each other"
+  □ "You can't escape cycles, only understand them"
+  □ "It's okay to not know the answers"
+  □ Other:
+
+
+═══════════════════════════════════════════════════════════════
+SECTION 5: CASINO & GAMBLING LORE
+═══════════════════════════════════════════════════════════════
+
+Q15: FATE'S CASINO
+──────────────────
+Who runs it?
+  □ A neutral third party?
+  □ A cosmic trickster god?
+  □ An automated system like you?
+  □ The Adversary in disguise?
+  □ Other:
+
+Q16: FATE TOKENS
+────────────────
+What are they really?
+  □ Crystallized probability
+  □ Fragments of alternate timelines
+  □ Currency from deleted dimensions
+  □ Just fun game tokens with no lore
+  □ Other:
+
+Q17: THE ADVERSARY BATTLE
+──────────────────────────
+Why would they play a card game with you?
+
+Is the battle:
+  □ A proxy war (can't fight directly)?
+  □ A sport/game between operators?
+  □ A test of skill to determine cosmic dominance?
+  □ A distraction while they do something else?
+  □ Other:
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 WRITING PROMPTS (Pick 1-3 to Flesh Out)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+═══════════════════════════════════════════════════════════════
+CHARACTER DEVELOPMENT
+═══════════════════════════════════════════════════════════════
+
+PROMPT 1: Write a "performance review" for yourself
+────────────────────────────────────────────────────
+From Celestial Micro-Systems HR
+• What are your strengths? Weaknesses?
+• Are you meeting your metrics?
+• Any improvement suggestions?
+
+WRITE HERE:
+
+
+
+
+PROMPT 2: Write the Adversary's introduction
+─────────────────────────────────────────────
+• First time they appear
+• How do they present themselves?
+• What's their opening move?
+• Dialogue sample
+
+WRITE HERE:
+
+
+
+
+PROMPT 3: Write a conversation between you and your boss
+──────────────────────────────────────────────────────────
+• Who is your boss?
+• What do they want from you?
+• Are they supportive or critical?
+
+WRITE HERE:
+
+
+
+
+═══════════════════════════════════════════════════════════════
+WORLD LORE
+═══════════════════════════════════════════════════════════════
+
+PROMPT 4: Write the "Terms of Service" for reality management
+──────────────────────────────────────────────────────────────
+• What are you agreeing to when you become an operator?
+• Hidden clauses?
+• Loopholes?
+
+WRITE HERE:
+
+
+
+
+PROMPT 5: Write a competitor's advertisement
+─────────────────────────────────────────────
+"Tired of CosmOS's bugs? Try Infernal Systems Pro!"
+• What do they offer?
+• Why is it tempting?
+
+WRITE HERE:
+
+
+
+
+PROMPT 6: Write a maintenance log entry for Sector 7G
+──────────────────────────────────────────────────────
+• What went wrong?
+• Who tried to fix it?
+• Why did they give up?
+
+WRITE HERE:
+
+
+
+
+═══════════════════════════════════════════════════════════════
+DOCUMENTS TO ADD
+═══════════════════════════════════════════════════════════════
+
+PROMPT 7: "Employee Handbook: Chapter 6 - Dealing with
+           Existential Crises"
+──────────────────────────────────────────────────────
+• How to cope when mortals question reality
+• Recommended mantras
+• When to file a support ticket
+
+WRITE HERE:
+
+
+
+
+PROMPT 8: "Incident Report: The Void Dimension"
+────────────────────────────────────────────────
+• Official report on how it formed
+• Conflicting witness statements
+• Redacted sections
+
+WRITE HERE:
+
+
+
+
+PROMPT 9: "Message from the Adversary"
+───────────────────────────────────────
+A document that appears after 5 prestiges
+• Taunting, mysterious, or philosophical?
+• Sets up their eventual appearance
+
+WRITE HERE:
+
+
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 SPECIFIC DESIGN DECISIONS NEEDED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+═══════════════════════════════════════════════════════════════
+FOR CASINO IMPLEMENTATION
+═══════════════════════════════════════════════════════════════
+
+Q-CASINO-1: Should Fate's Casino have a "host" character?
+──────────────────────────────────────────────────────────
+  □ Voice lines that comment on wins/losses
+  □ A personality (cheerful dealer vs. ominous fortune teller)
+  □ Just a sterile interface
+  □ Other:
+
+Q-CASINO-2: Should gambling have long-term consequences?
+─────────────────────────────────────────────────────────
+  □ Can you get "addicted" (compulsion mechanic)
+  □ Should there be a "gambling debt" system
+  □ Keep it consequence-free fun
+  □ Other:
+
+Q-CASINO-3: Should there be "banned" items/options if you cheat?
+─────────────────────────────────────────────────────────────────
+• What if players use save scumming?
+• Acknowledge it in-universe or ignore it?
+
+YOUR ANSWER:
+
+
+═══════════════════════════════════════════════════════════════
+FOR TASK MANAGER
+═══════════════════════════════════════════════════════════════
+
+Q-TASK-1: Should Task Manager reveal hidden info?
+──────────────────────────────────────────────────
+  □ Easter eggs in process names
+  □ A "hidden process" that's suspicious
+  □ Foreshadowing of future content
+  □ All of the above
+  □ None - keep it simple
+
+Q-TASK-2: Should it have actual game impact?
+─────────────────────────────────────────────
+  □ "Ending" a process temporarily disables an automaton
+  □ Diagnostic tools that boost performance
+  □ Pure flavor text only
+  □ Other:
+
+
+═══════════════════════════════════════════════════════════════
+FOR RECYCLE BIN
+═══════════════════════════════════════════════════════════════
+
+Q-BIN-1: Should deleted achievements be truly gone?
+────────────────────────────────────────────────────
+  □ Permanent with restore option
+  □ Some achievements can never be restored
+  □ Always recoverable for a price
+  □ Other:
+
+Q-BIN-2: What if you delete ALL achievements?
+──────────────────────────────────────────────
+  □ Secret ending
+  □ Achievement for deleting achievements
+  □ Unlock special "Nihilist" title
+  □ Nothing special
+  □ Other:
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 PRIORITIES & NEXT STEPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+IMMEDIATE (Next Session)
+─────────────────────────
+1. Finalize Adversary character concept
+2. Answer Q1-Q7 above for casino/apps
+3. Write 1-2 new documents to set up casino/adversary
+4. Begin Phase 1 implementation (Solitaire + Casino foundation)
+
+SHORT-TERM (This Week)
+──────────────────────
+1. Complete mini-game hub
+2. Add Task Manager + Recycle Bin
+3. Flesh out Fate Token economy
+4. Playtest balance
+
+MEDIUM-TERM (Next 2 Weeks)
+───────────────────────────
+1. Implement The Adversary battle
+2. Add 3-5 more lore documents
+3. Create timeline mechanics
+4. Add 1-2 new dimensions
+
+LONG-TERM (Before Release)
+───────────────────────────
+1. Complete endgame content
+2. Multiple endings
+3. Polish all systems
+4. Full playthrough balance pass
+5. Itch.io release!
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💭 FINAL THOUGHTS & PROMPTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Take your time with these questions. The narrative depth will make
+CosmOS feel special. Think about:
+
+• What surprised you about the world as we built it?
+• What themes resonate with you personally?
+• What would make players remember this game years later?
+• What's the emotional arc? (Comedy → Mystery → ???)
+
+When you're ready, come back with answers to any/all questions, or
+just stream-of-consciousness ideas. We'll integrate them and continue
+building!
+
+
+═══════════════════════════════════════════════════════════════
+                      DOCUMENT ENDS HERE
+         Save this somewhere safe - it's your design bible now!
+═══════════════════════════════════════════════════════════════
+
+Created: 2026-01-10
+For: CosmOS v1.0+ Development
+Status: Living Document - Update as needed

@@ -53,6 +53,29 @@ const game = {
             vd.totalDarknessEarned += darknessGain;
         }
 
+        // === PROPHET & FOLLOWER PRODUCTION ===
+        for (const dimKey in State.followers) {
+            const followerData = State.followers[dimKey];
+            const assignedProphets = State.prophets.assignments[dimKey] || 0;
+            const timelineBonus = State.timelines.effects[State.timelines.current].followerBonus || 1;
+
+            const followerGain = (assignedProphets * followerData.baseGrowthRate *
+                                 State.prophets.feedingBonus * timelineBonus) / 60;
+            followerData.count += followerGain;
+        }
+
+        // === ADORATION PRODUCTION ===
+        let totalAdorationGain = 0;
+        for (const dimKey in State.followers) {
+            const followerData = State.followers[dimKey];
+            const adorationFromDim = (followerData.count * followerData.adorationRate) / 60;
+            totalAdorationGain += adorationFromDim;
+        }
+
+        const timelineAdorationBonus = State.timelines.effects[State.timelines.current].adorationBonus || 1;
+        State.adoration += totalAdorationGain * timelineAdorationBonus;
+        State.adoration = Math.min(State.adoration, State.adorationCaps.cosmetics);
+
         // Check Divine Event expiration
         if (State.divineEvent && now >= State.divineEvent.expiresAt) {
             ui.hideDivineEvent();
@@ -63,6 +86,10 @@ const game = {
         if (!this.frameCount) this.frameCount = 0;
         this.frameCount++;
         if (this.frameCount >= 60) {
+            // Update runtime tracking
+            const runtimeMinutes = Math.floor((Date.now() - State.startTime) / 60000);
+            State.runtime.totalMinutes = runtimeMinutes;
+
             this.checkAchievements();
             this.checkDocuments();
             this.frameCount = 0;
@@ -94,6 +121,10 @@ const game = {
         State.resources.praise = Math.min(State.resources.praise, State.resourceCaps.praise);
         State.totalPraiseEarned += clickPower;
         State.totalClicks++;
+
+        // Track for achievements
+        State.achievementProgress.praise_clicks = (State.achievementProgress.praise_clicks || 0) + 1;
+        State.totalStats.praiseGained = (State.totalStats.praiseGained || 0) + clickPower;
 
         // Check if at cap
         if (State.resources.praise >= State.resourceCaps.praise) {
@@ -130,6 +161,10 @@ const game = {
                 State.automatons.seraphCount++;
                 State.pps += 1;
                 ui.log(`Seraph assigned. Praise influx stabilized. (${State.automatons.seraphCount} total)`);
+
+                // Track for achievements
+                State.achievementProgress.buy_seraph_count = (State.achievementProgress.buy_seraph_count || 0) + 1;
+
                 ui.updateUpgrades(); // Refresh upgrades visibility
                 this.checkAchievements(); // Check for achievements
 
@@ -157,6 +192,10 @@ const game = {
                 State.automatons.cherubCount++;
                 State.sps += 1;
                 ui.log(`Cherub compiled. Soul synthesis initiated. (${State.automatons.cherubCount} total)`);
+
+                // Track for achievements
+                State.achievementProgress.buy_cherub_count = (State.achievementProgress.buy_cherub_count || 0) + 1;
+
                 ui.updateUpgrades(); // Refresh upgrades visibility
                 this.checkAchievements(); // Check for achievements
 
@@ -231,35 +270,78 @@ const game = {
             if (State.achievements[achievement.id]) return;
 
             // Check if conditions met
-            if (achievement.check()) {
-                State.achievements[achievement.id] = {
-                    unlocked: true,
-                    unlockedAt: Date.now()
-                };
-                ui.showAchievementToast(achievement);
-                ui.log(`Achievement unlocked: ${achievement.name}`);
+            try {
+                if (achievement.condition && achievement.condition()) {
+                    this.unlockAchievement(achievement.id);
+                }
+            } catch (e) {
+                // Condition check failed, skip silently
             }
         });
     },
 
-    checkDocuments() {
-        DocumentList.forEach(doc => {
-            // Skip if already unlocked
-            if (State.unlockedDocuments.includes(doc.id)) return;
+    unlockAchievement(achId) {
+        const achievement = AchievementList.find(a => a.id === achId);
+        if (!achievement) {
+            console.error(`Achievement ${achId} not found`);
+            return false;
+        }
 
-            // Check if unlock condition met
-            if (doc.unlockCondition()) {
-                State.unlockedDocuments.push(doc.id);
+        // Skip if already unlocked
+        if (State.achievements[achievement.id]) {
+            return false;
+        }
 
-                // Show notification
-                ui.log(`New document available: ${doc.title}`);
+        // Mark as unlocked
+        State.achievements[achievement.id] = {
+            unlocked: true,
+            unlockedAt: Date.now(),
+            tier: achievement.tier
+        };
 
-                // Show notepad icon if not already visible
-                if (!State.unlockedApps.includes('notepad')) {
-                    State.unlockedApps.push('notepad');
-                }
+        // Apply reward if exists
+        if (achievement.reward) {
+            try {
+                achievement.reward();
+            } catch (e) {
+                console.error(`Achievement reward error for ${achId}:`, e);
             }
-        });
+        }
+
+        // Show notification
+        ui.showAchievementToast(achievement);
+        ui.log(`[ACHIEVEMENT] ${achievement.name}`);
+
+        // Update achievement progress trackers
+        const tierCounts = {
+            Bronze: 0,
+            Silver: 0,
+            Gold: 0,
+            Platinum: 0,
+            Secret: 0
+        };
+
+        for (const id in State.achievements) {
+            const ach = AchievementList.find(a => a.id === id);
+            if (ach && ach.tier) {
+                tierCounts[ach.tier]++;
+            }
+        }
+
+        State.achievementProgress.total_achievements = Object.keys(State.achievements).length;
+
+        State.save();
+        return true;
+    },
+
+    checkDocuments() {
+        // Call the new document unlock system
+        this.checkDocumentUnlocks();
+
+        // Show notepad icon if documents are unlocked
+        if (State.documents.collected.length > 0 && !State.unlockedApps.includes('notepad')) {
+            State.unlockedApps.push('notepad');
+        }
     },
 
     getSeraphCost() {
@@ -270,6 +352,90 @@ const game = {
     getCherubCost() {
         const baseCost = 5;
         return Math.floor(baseCost * Math.pow(1.20, State.automatons.cherubCount) * State.automatons.cherubCostMultiplier);
+    },
+
+    // Calculate total cost for buying N automatons (geometric series)
+    calculateBulkCost(baseCost, growthRate, currentCount, quantity, costMultiplier) {
+        let total = 0;
+        for (let i = 0; i < quantity; i++) {
+            total += Math.floor(baseCost * Math.pow(growthRate, currentCount + i) * costMultiplier);
+        }
+        return total;
+    },
+
+    // Calculate max affordable automatons
+    getMaxAffordable(baseCost, growthRate, currentCount, currentResource, costMultiplier) {
+        let count = 0;
+        let totalCost = 0;
+
+        while (true) {
+            const nextCost = Math.floor(baseCost * Math.pow(growthRate, currentCount + count) * costMultiplier);
+            if (totalCost + nextCost > currentResource) break;
+            totalCost += nextCost;
+            count++;
+            if (count >= 1000) break; // Safety limit
+        }
+
+        return count;
+    },
+
+    // Buy multiple automatons at once
+    buyAutomatorBulk(type, quantity) {
+        if (type === 'seraph') {
+            const baseCost = 10;
+            const growthRate = 1.15;
+
+            let buyAmount = quantity;
+            if (quantity === 'max') {
+                buyAmount = this.getMaxAffordable(baseCost, growthRate, State.automatons.seraphCount,
+                    State.resources.praise, State.automatons.seraphCostMultiplier);
+            }
+
+            if (buyAmount === 0) {
+                ui.log(`Cannot afford any Seraphs.`);
+                return;
+            }
+
+            const totalCost = this.calculateBulkCost(baseCost, growthRate, State.automatons.seraphCount,
+                buyAmount, State.automatons.seraphCostMultiplier);
+
+            if (State.resources.praise >= totalCost) {
+                State.resources.praise -= totalCost;
+                State.automatons.seraphCount += buyAmount;
+                State.pps += buyAmount;
+                ui.log(`${buyAmount} Seraphs assigned. Praise influx stabilized. (${State.automatons.seraphCount} total)`);
+                ui.updateUpgrades();
+                this.checkAchievements();
+                ui.screenPulse('rgba(74, 144, 226, 0.3)');
+            }
+        } else if (type === 'cherub') {
+            const baseCost = 5;
+            const growthRate = 1.20;
+
+            let buyAmount = quantity;
+            if (quantity === 'max') {
+                buyAmount = this.getMaxAffordable(baseCost, growthRate, State.automatons.cherubCount,
+                    State.resources.offerings, State.automatons.cherubCostMultiplier);
+            }
+
+            if (buyAmount === 0) {
+                ui.log(`Cannot afford any Cherubs.`);
+                return;
+            }
+
+            const totalCost = this.calculateBulkCost(baseCost, growthRate, State.automatons.cherubCount,
+                buyAmount, State.automatons.cherubCostMultiplier);
+
+            if (State.resources.offerings >= totalCost) {
+                State.resources.offerings -= totalCost;
+                State.automatons.cherubCount += buyAmount;
+                State.sps += buyAmount;
+                ui.log(`${buyAmount} Cherubs compiled. Soul synthesis initiated. (${State.automatons.cherubCount} total)`);
+                ui.updateUpgrades();
+                this.checkAchievements();
+                ui.screenPulse('rgba(156, 39, 176, 0.3)');
+            }
+        }
     },
 
     activateDivineIntervention() {
@@ -287,6 +453,10 @@ const game = {
         skill.active = true;
         skill.endsAt = now + skill.duration;
         skill.cooldownEndsAt = now + skill.duration + skill.cooldown;
+
+        // Track for achievements
+        State.achievementProgress.use_divine_intervention = (State.achievementProgress.use_divine_intervention || 0) + 1;
+
         ui.log(`Divine Intervention activated! 2× production for 10 minutes.`);
         ui.screenPulse('rgba(255, 215, 0, 0.4)');
     },
@@ -312,6 +482,9 @@ const game = {
         State.resources.praise = Math.min(State.resources.praise + praiseGain, State.resourceCaps.praise);
         State.resources.offerings = Math.min(State.resources.offerings + offeringGain, State.resourceCaps.offerings);
         State.resources.souls = Math.min(State.resources.souls + soulGain, State.resourceCaps.souls);
+
+        // Track for achievements
+        State.achievementProgress.use_temporal_rift = (State.achievementProgress.use_temporal_rift || 0) + 1;
 
         skill.cooldownEndsAt = now + skill.cooldown;
         ui.log(`Temporal Rift opened! Simulated 1 hour of production.`);
@@ -390,6 +563,9 @@ const game = {
         // Mark as purchased and apply effect
         State.purchasedMandates[mandateId] = true;
         mandate.effect();
+
+        // Track for achievements
+        State.achievementProgress.buy_mandate_count = (State.achievementProgress.buy_mandate_count || 0) + 1;
 
         ui.log(`Divine Mandate enacted: ${mandate.name}`);
         ui.screenPulse('rgba(138, 43, 226, 0.3)');
@@ -496,10 +672,69 @@ const game = {
         return Math.floor(baseCost * Math.pow(1.20, vd.automatons.phantomCount) * vd.automatons.phantomCostMultiplier);
     },
 
+    // Buy multiple void automatons at once
+    buyVoidAutomatorBulk(type, quantity) {
+        const vd = State.dimensions.void;
+
+        if (type === 'wraith') {
+            const baseCost = 10;
+            const growthRate = 1.15;
+
+            let buyAmount = quantity;
+            if (quantity === 'max') {
+                buyAmount = this.getMaxAffordable(baseCost, growthRate, vd.automatons.wraithCount,
+                    vd.resources.darkness, vd.automatons.wraithCostMultiplier);
+            }
+
+            if (buyAmount === 0) {
+                ui.log(`Cannot afford any Wraiths.`, 'void');
+                return;
+            }
+
+            const totalCost = this.calculateBulkCost(baseCost, growthRate, vd.automatons.wraithCount,
+                buyAmount, vd.automatons.wraithCostMultiplier);
+
+            if (vd.resources.darkness >= totalCost) {
+                vd.resources.darkness -= totalCost;
+                vd.automatons.wraithCount += buyAmount;
+                vd.dps += buyAmount;
+                ui.log(`${buyAmount} Wraiths summoned. Darkness flows. (${vd.automatons.wraithCount} total)`, 'void');
+                ui.updateUpgrades();
+                ui.screenPulse('rgba(156, 39, 176, 0.3)');
+            }
+        } else if (type === 'phantom') {
+            const baseCost = 5;
+            const growthRate = 1.20;
+
+            let buyAmount = quantity;
+            if (quantity === 'max') {
+                buyAmount = this.getMaxAffordable(baseCost, growthRate, vd.automatons.phantomCount,
+                    vd.resources.shadows, vd.automatons.phantomCostMultiplier);
+            }
+
+            if (buyAmount === 0) {
+                ui.log(`Cannot afford any Phantoms.`, 'void');
+                return;
+            }
+
+            const totalCost = this.calculateBulkCost(baseCost, growthRate, vd.automatons.phantomCount,
+                buyAmount, vd.automatons.phantomCostMultiplier);
+
+            if (vd.resources.shadows >= totalCost) {
+                vd.resources.shadows -= totalCost;
+                vd.automatons.phantomCount += buyAmount;
+                vd.eps += buyAmount;
+                ui.log(`${buyAmount} Phantoms manifested. Echoes resonate. (${vd.automatons.phantomCount} total)`, 'void');
+                ui.updateUpgrades();
+                ui.screenPulse('rgba(74, 20, 140, 0.3)');
+            }
+        }
+    },
+
     // === PRESTIGE SYSTEM ===
     calculateDivinityPoints() {
-        // Formula: sqrt(totalSouls / 100) - rewards exponential growth
-        const basePoints = Math.floor(Math.sqrt(State.resources.souls / 100));
+        // Formula: sqrt(totalSouls / 2500) - rewards exponential growth
+        const basePoints = Math.floor(Math.sqrt(State.resources.souls / 2500));
         return Math.max(basePoints, 0);
     },
 
@@ -540,6 +775,9 @@ const game = {
         State.totalDivinityPoints += divinityGain;
         State.divinityPointMultiplier = 1 + (State.totalDivinityPoints * 0.1); // 10% per point
 
+        // Track for achievements
+        State.achievementProgress.prestige_count = (State.achievementProgress.prestige_count || 0) + 1;
+
         // Reset resources
         State.resources = {
             praise: 0,
@@ -551,7 +789,7 @@ const game = {
         State.resourceCaps = {
             praise: 1000,
             offerings: 100,
-            souls: 1000
+            souls: 2000
         };
 
         // Reset automatons
@@ -561,7 +799,7 @@ const game = {
             seraphProduction: 1,
             cherubCount: 0,
             cherubCostMultiplier: 1,
-            cherubProduction: 1
+            cherubProduction: 0.2
         };
 
         // Reset production rates
@@ -660,6 +898,387 @@ const game = {
             ui.updateCherubButton();
             ui.renderDimensionContent();
         }, 500);
+    },
+
+    // === RECYCLE BIN SYSTEM ===
+    addToRecycleBin(item) {
+        // Item structure: { id, name, type, description, sacrificeValue, deletable, onRestore, onDelete }
+        State.recycleBin.items.push(item);
+        ui.log(`Item moved to Recycle Bin: ${item.name}`);
+        State.save();
+
+        // If Recycle Bin window is open, update it
+        if (State.recycleBin.opened) {
+            ui.updateRecycleBinList();
+        }
+    },
+
+    // Helper to create resource sacrifice items
+    createResourceSacrifice(resourceType, amount) {
+        if (!State.resources[resourceType] || State.resources[resourceType] < amount) {
+            ui.log(`Insufficient ${resourceType} to sacrifice.`);
+            return;
+        }
+
+        // Deduct resources
+        State.resources[resourceType] -= amount;
+
+        // Calculate sacrifice value (percentage bonus)
+        const sacrificeValues = {
+            praise: 0.1,
+            offerings: 0.5,
+            souls: 2.0,
+            darkness: 1.0,
+            shadows: 3.0,
+            echoes: 5.0
+        };
+
+        const baseValue = sacrificeValues[resourceType] || 0.1;
+        const totalValue = Math.floor(amount * baseValue * 100) / 100;
+
+        const item = {
+            id: `sacrifice_${resourceType}_${Date.now()}`,
+            name: `${amount} ${resourceType}`,
+            type: 'resource',
+            description: `Sacrificed resources. Can be converted to permanent bonuses.`,
+            sacrificeValue: totalValue,
+            deletable: true,
+            onRestore: () => {
+                // Restore resources
+                State.resources[resourceType] = (State.resources[resourceType] || 0) + amount;
+                ui.log(`Restored ${amount} ${resourceType}.`);
+            },
+            onDelete: null
+        };
+
+        this.addToRecycleBin(item);
+    },
+
+    // === CASINO HOST BARK SYSTEM ===
+    selectHostBark(trigger, context = null) {
+        // Filter barks by trigger and context
+        let eligibleBarks = CasinoHostBarks.filter(bark => {
+            if (bark.trigger !== trigger) return false;
+            if (context && bark.context !== context) return false;
+            return this.canBarkPlay(bark);
+        });
+
+        if (eligibleBarks.length === 0) {
+            return null; // No barks available
+        }
+
+        // Weighted random selection
+        const totalWeight = eligibleBarks.reduce((sum, bark) => sum + (bark.weight || 1), 0);
+        let random = Math.random() * totalWeight;
+
+        for (const bark of eligibleBarks) {
+            random -= (bark.weight || 1);
+            if (random <= 0) {
+                return bark;
+            }
+        }
+
+        return eligibleBarks[0]; // Fallback
+    },
+
+    canBarkPlay(bark) {
+        const now = Date.now();
+
+        // Check global cooldown (minimum 2 seconds between ANY barks)
+        const lastBarkTime = State.casino.hostDialogue.lastBarkTime || 0;
+        if (now - lastBarkTime < 2000) {
+            return false;
+        }
+
+        // Check individual bark cooldown
+        const barkCooldowns = State.casino.hostDialogue.barkCooldowns || {};
+        const lastPlayed = barkCooldowns[bark.id] || 0;
+        const cooldownMs = (bark.cooldown || 10) * 1000;
+
+        return (now - lastPlayed) >= cooldownMs;
+    },
+
+    triggerHostBark(trigger, context = null, forceDisplay = false) {
+        const bark = this.selectHostBark(trigger, context);
+
+        if (!bark) {
+            return null; // No bark available
+        }
+
+        // Update bark state
+        const now = Date.now();
+        State.casino.hostDialogue.lastBarkId = bark.id;
+        State.casino.hostDialogue.lastBarkTime = now;
+        State.casino.hostDialogue.barkCooldowns = State.casino.hostDialogue.barkCooldowns || {};
+        State.casino.hostDialogue.barkCooldowns[bark.id] = now;
+
+        // Track lore whispers (rare lines)
+        if (bark.context === 'Lore Whisper') {
+            State.casino.hostDialogue.loreWhispersHeard = State.casino.hostDialogue.loreWhispersHeard || [];
+            if (!State.casino.hostDialogue.loreWhispersHeard.includes(bark.id)) {
+                State.casino.hostDialogue.loreWhispersHeard.push(bark.id);
+            }
+        }
+
+        // Display bark (will be handled by UI when casino is open)
+        if (forceDisplay || State.casino.visited) {
+            ui.displayHostBark(bark);
+        }
+
+        return bark;
+    },
+
+    // Attempt to trigger a lore whisper (1% chance)
+    attemptLoreWhisper() {
+        if (Math.random() < 0.01) {
+            // Select a random lore whisper
+            this.triggerHostBark('casino_idle_30s', 'Lore Whisper');
+        }
+    },
+
+    // === PROPHET SYSTEM ===
+    assignProphet(amount) {
+        const currentDim = ui.selectedGlobeDimension || 'primordial';
+
+        if (amount > 0) {
+            if (State.prophets.available < amount) {
+                ui.log('Not enough available Prophets.');
+                return;
+            }
+            State.prophets.available -= amount;
+            State.prophets.assignments[currentDim] = (State.prophets.assignments[currentDim] || 0) + amount;
+            ui.log(`Assigned ${amount} Prophet(s) to ${currentDim} dimension.`);
+        } else {
+            const assigned = State.prophets.assignments[currentDim] || 0;
+            if (assigned < Math.abs(amount)) {
+                ui.log('Not enough Prophets assigned to this dimension.');
+                return;
+            }
+            State.prophets.available += Math.abs(amount);
+            State.prophets.assignments[currentDim] -= Math.abs(amount);
+            ui.log(`Recalled ${Math.abs(amount)} Prophet(s) from ${currentDim} dimension.`);
+        }
+
+        ui.updateGlobeDisplay();
+    },
+
+    feedProphets(resourceType, amount) {
+        if (State.resources[resourceType] < amount) {
+            ui.log(`Insufficient ${resourceType} to feed Prophets.`);
+            return;
+        }
+
+        State.resources[resourceType] -= amount;
+
+        const bonuses = {
+            praise: { multiplier: 1.1, duration: 300000 },
+            offerings: { multiplier: 1.2, duration: 300000 },
+            souls: { multiplier: 1.5, duration: 600000 }
+        };
+
+        const bonus = bonuses[resourceType];
+        State.prophets.feedingBonus *= bonus.multiplier;
+
+        ui.log(`Fed ${amount} ${resourceType} to Prophets. Growth boosted by ${(bonus.multiplier - 1) * 100}%!`);
+        ui.screenPulse('rgba(138, 43, 226, 0.3)');
+
+        setTimeout(() => {
+            State.prophets.feedingBonus /= bonus.multiplier;
+            ui.log('Prophet feeding bonus expired.');
+        }, bonus.duration);
+    },
+
+    // === DIVINE CALLS ===
+    answerCall(resourceType) {
+        const now = Date.now();
+
+        if (now < State.divineCalls.lastAnswered + State.divineCalls.cooldown) {
+            const remaining = Math.ceil((State.divineCalls.lastAnswered + State.divineCalls.cooldown - now) / 1000);
+            ui.log(`Divine Calls on cooldown. ${remaining}s remaining.`);
+            return;
+        }
+
+        const conversion = State.divineCalls.conversionRates[resourceType];
+        if (!conversion) return;
+
+        if (State.resources[resourceType] < conversion.cost) {
+            ui.log(`Need ${conversion.cost} ${resourceType} to answer this call.`);
+            return;
+        }
+
+        State.resources[resourceType] -= conversion.cost;
+        State.adoration += conversion.adorationGain;
+        State.divineCalls.lastAnswered = now;
+
+        ui.log(`Answered Divine Call: +${conversion.adorationGain} Adoration`);
+        ui.screenPulse('rgba(255, 215, 0, 0.4)');
+        ui.updateDivineCallsDisplay();
+    },
+
+    // === ADORATION SHOP ===
+    purchaseShopItem(category, itemId) {
+        const item = ShopItemList.find(i => i.id === itemId && i.category === category);
+        if (!item) return;
+
+        if (!item.upgradable && State.adorationShop[category][itemId]) {
+            ui.log('Item already purchased.');
+            return;
+        }
+
+        if (State.adoration < item.cost) {
+            ui.log('Insufficient Adoration.');
+            return;
+        }
+
+        State.adoration -= item.cost;
+
+        if (item.upgradable) {
+            State.adorationShop[category][itemId] = (State.adorationShop[category][itemId] || 0) + 1;
+        } else {
+            State.adorationShop[category][itemId] = true;
+        }
+
+        item.effect();
+        ui.log(`Purchased: ${item.name}`);
+        ui.renderShopContent(category);
+    },
+
+    // === SAVE MANAGEMENT ===
+    exportSave() {
+        try {
+            const saveData = JSON.stringify(State);
+            const compressed = btoa(saveData); // Base64 encode
+
+            const textarea = document.getElementById('export-save-text');
+            if (textarea) {
+                textarea.value = compressed;
+                textarea.select();
+
+                // Use modern Clipboard API
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(compressed).then(() => {
+                        ui.log('Save exported and copied to clipboard!');
+                    }).catch(() => {
+                        ui.log('Save exported (copy manually from text box).');
+                    });
+                } else {
+                    ui.log('Save exported (copy manually from text box).');
+                }
+            }
+        } catch (error) {
+            ui.log('Error exporting save: ' + error.message);
+        }
+    },
+
+    importSave() {
+        const textarea = document.getElementById('import-save-text');
+        if (!textarea || !textarea.value) {
+            ui.log('Please paste a save string first.');
+            return;
+        }
+
+        if (!confirm('This will overwrite your current save. Are you sure?')) {
+            return;
+        }
+
+        try {
+            const compressed = textarea.value.trim();
+            const saveData = atob(compressed); // Base64 decode
+            const parsed = JSON.parse(saveData);
+
+            // Validate it's a CosmOS save
+            if (!parsed.resources || !parsed.pps) {
+                throw new Error('Invalid save format');
+            }
+
+            // Clear localStorage and load the imported save
+            localStorage.setItem('cosmos_save', saveData);
+            location.reload(); // Reload to apply the imported save
+        } catch (error) {
+            ui.log('Error importing save: Invalid or corrupted save data.');
+        }
+    },
+
+    hardReset() {
+        if (!confirm('⚠️ HARD RESET WARNING ⚠️\n\nThis will DELETE ALL progress including:\n- All resources\n- All upgrades\n- All achievements\n- All unlocks\n- Prestige progress\n\nThis action CANNOT be undone!\n\nAre you ABSOLUTELY sure?')) {
+            return;
+        }
+
+        if (!confirm('Final confirmation: Really delete everything and start fresh?')) {
+            return;
+        }
+
+        localStorage.removeItem('cosmos_save');
+        ui.log('Hard reset complete. Reloading...');
+        ui.screenPulse('rgba(255, 0, 0, 0.6)');
+
+        setTimeout(() => {
+            location.reload();
+        }, 1000);
+    },
+
+    // === DOCUMENT SYSTEM ===
+    unlockDocument(docId) {
+        // Check if already unlocked
+        if (State.documents.collected.includes(docId)) {
+            return false;
+        }
+
+        // Find document in manifest
+        const doc = DocumentManifest.find(d => d.id === docId);
+        if (!doc) {
+            console.error(`Document ${docId} not found in manifest`);
+            return false;
+        }
+
+        // Add to collected list
+        State.documents.collected.push(docId);
+
+        // Add to category
+        if (State.documents.categories[doc.category]) {
+            State.documents.categories[doc.category].push(docId);
+        }
+
+        // Update achievement progress
+        State.achievementProgress.docs_collected = State.documents.collected.length;
+
+        // Show notification
+        ui.showDocumentNotification(doc);
+
+        ui.log(`[DOCUMENT UNLOCKED] ${doc.title}`);
+        State.save();
+        return true;
+    },
+
+    checkDocumentUnlocks() {
+        // Check all documents in manifest for unlock conditions
+        for (const doc of DocumentManifest) {
+            if (!State.documents.collected.includes(doc.id)) {
+                try {
+                    if (doc.unlockCondition()) {
+                        this.unlockDocument(doc.id);
+                    }
+                } catch (e) {
+                    // Condition check failed, skip silently
+                }
+            }
+        }
+    },
+
+    getDocumentContent(docId) {
+        // This will load document content from the content pack files
+        // For now, return a placeholder - we'll implement file loading in ui.js
+        const doc = DocumentManifest.find(d => d.id === docId);
+        if (!doc) return null;
+
+        return {
+            id: doc.id,
+            title: doc.title,
+            filename: doc.filename,
+            category: doc.category,
+            // Content will be loaded by UI from /docs/CosmOS_Content_Pack/docs/
+            contentPath: `/docs/CosmOS_Content_Pack/docs/${doc.id}_${doc.filename.replace(/\//g, '__')}.md`
+        };
     }
 };
 

@@ -1,0 +1,322 @@
+[
+  {
+    "Ach ID": "ACH-001",
+    "Name": "First Light",
+    "Tier": "Bronze",
+    "Condition": "praise_total >= 1",
+    "Reward/Effect": "+0.5% Praise gain",
+    "Flavor text": "A universe begins with attention."
+  },
+  {
+    "Ach ID": "ACH-002",
+    "Name": "Heard (Once)",
+    "Tier": "Bronze",
+    "Condition": "praise_clicks >= 100",
+    "Reward/Effect": "+1% click power",
+    "Flavor text": "The first prayer is a test ping."
+  },
+  {
+    "Ach ID": "ACH-003",
+    "Name": "Offerings Accepted",
+    "Tier": "Bronze",
+    "Condition": "offerings_total >= 10",
+    "Reward/Effect": "+1% Offering value",
+    "Flavor text": "The altar has a receipt printer."
+  },
+  {
+    "Ach ID": "ACH-004",
+    "Name": "Soul Inventory",
+    "Tier": "Bronze",
+    "Condition": "souls_total >= 1",
+    "Reward/Effect": "+1% Soul gain",
+    "Flavor text": "New item acquired: conscience (optional)."
+  },
+  {
+    "Ach ID": "ACH-005",
+    "Name": "Junior Operator",
+    "Tier": "Bronze",
+    "Condition": "runtime_minutes >= 30",
+    "Reward/Effect": "Unlock cosmetic badge",
+    "Flavor text": "You’ve been here long enough to be blamed."
+  },
+  {
+    "Ach ID": "ACH-006",
+    "Name": "Blessed Update",
+    "Tier": "Bronze",
+    "Condition": "buy_mandate_count >= 1",
+    "Reward/Effect": "+1% Mandate efficiency",
+    "Flavor text": "A patch is just a prayer with paperwork."
+  },
+  {
+    "Ach ID": "ACH-007",
+    "Name": "Department Approved",
+    "Tier": "Bronze",
+    "Condition": "buy_seraph_count >= 1",
+    "Reward/Effect": "Unlock doc: HR snippet",
+    "Flavor text": "Automation is divinity’s love language."
+  },
+  {
+    "Ach ID": "ACH-008",
+    "Name": "Cherub Pilot",
+    "Tier": "Bronze",
+    "Condition": "buy_cherub_count >= 1",
+    "Reward/Effect": "+1% automation speed",
+    "Flavor text": "Tiny hands, big consequences."
+  },
+  {
+    "Ach ID": "ACH-009",
+    "Name": "First Defragment",
+    "Tier": "Bronze",
+    "Condition": "use_divine_intervention >= 1",
+    "Reward/Effect": "+1% skill cooldown recovery",
+    "Flavor text": "Miracles: now with less latency."
+  },
+  {
+    "Ach ID": "ACH-010",
+    "Name": "Temporal Glitch",
+    "Tier": "Bronze",
+    "Condition": "use_temporal_rift >= 1",
+    "Reward/Effect": "+1% time manipulation duration",
+    "Flavor text": "Time looked away. You moved."
+  },
+  {
+    "Ach ID": "ACH-011",
+    "Name": "Do Not Touch",
+    "Tier": "Bronze",
+    "Condition": "open_taskmgr >= 1",
+    "Reward/Effect": "None",
+    "Flavor text": "Curiosity is a process leak."
+  },
+  {
+    "Ach ID": "ACH-012",
+    "Name": "Void Tourist",
+    "Tier": "Bronze",
+    "Condition": "enter_void >= 1",
+    "Reward/Effect": "+1% Void resource gain",
+    "Flavor text": "The mirror smiled first."
+  },
+  {
+    "Ach ID": "ACH-013",
+    "Name": "Praise Economy",
+    "Tier": "Silver",
+    "Condition": "praise_total >= 1e6",
+    "Reward/Effect": "+2% Praise gain",
+    "Flavor text": "Scale turns devotion into currency."
+  },
+  {
+    "Ach ID": "ACH-014",
+    "Name": "Ritual Regular",
+    "Tier": "Silver",
+    "Condition": "daily_login_streak >= 7",
+    "Reward/Effect": "+2% all gains for 24h",
+    "Flavor text": "Habit is the most reliable faith."
+  },
+  {
+    "Ach ID": "ACH-015",
+    "Name": "Angel Factory",
+    "Tier": "Silver",
+    "Condition": "buy_seraph_count >= 25",
+    "Reward/Effect": "+3% automation speed",
+    "Flavor text": "Batch-produced holiness."
+  },
+  {
+    "Ach ID": "ACH-016",
+    "Name": "Mandate Collector",
+    "Tier": "Silver",
+    "Condition": "buy_mandate_count >= 10",
+    "Reward/Effect": "+3% Mandate efficiency",
+    "Flavor text": "Rules are easier than wisdom."
+  },
+  {
+    "Ach ID": "ACH-017",
+    "Name": "Void Navigator",
+    "Tier": "Silver",
+    "Condition": "void_depth_reached >= 25",
+    "Reward/Effect": "+3% Void stability",
+    "Flavor text": "You stopped flinching."
+  },
+  {
+    "Ach ID": "ACH-018",
+    "Name": "Paperwork Deity",
+    "Tier": "Silver",
+    "Condition": "docs_collected >= 10",
+    "Reward/Effect": "Unlock folder teaser: CMS/INTERNAL",
+    "Flavor text": "Divinity, filed alphabetically."
+  },
+  {
+    "Ach ID": "ACH-019",
+    "Name": "Reroll Reality",
+    "Tier": "Silver",
+    "Condition": "prestige_count >= 1",
+    "Reward/Effect": "+2% starting resources after Prestige",
+    "Flavor text": "You pressed reset with both hands."
+  },
+  {
+    "Ach ID": "ACH-020",
+    "Name": "Branching Out",
+    "Tier": "Silver",
+    "Condition": "prestige_count >= 3",
+    "Reward/Effect": "Unlock doc: Branch Viewer memo",
+    "Flavor text": "Your past keeps happening elsewhere."
+  },
+  {
+    "Ach ID": "ACH-021",
+    "Name": "Luck Auditor",
+    "Tier": "Silver",
+    "Condition": "casino_games_played >= 200",
+    "Reward/Effect": "+5% Fate Token gain",
+    "Flavor text": "Probability now files reports on you."
+  },
+  {
+    "Ach ID": "ACH-022",
+    "Name": "Edge Case",
+    "Tier": "Silver",
+    "Condition": "trigger_any_warning >= 10",
+    "Reward/Effect": "Unlock cosmetic: “Caution Stripe”",
+    "Flavor text": "Reality is held together by assumptions."
+  },
+  {
+    "Ach ID": "ACH-023",
+    "Name": "Million Names",
+    "Tier": "Gold",
+    "Condition": "mortals_created_total >= 1e6",
+    "Reward/Effect": "+5% Praise gain",
+    "Flavor text": "Someone is always saying your name."
+  },
+  {
+    "Ach ID": "ACH-024",
+    "Name": "Soul Ledger",
+    "Tier": "Gold",
+    "Condition": "souls_total >= 1e5",
+    "Reward/Effect": "+5% Soul gain",
+    "Flavor text": "Your inventory weighs a little more."
+  },
+  {
+    "Ach ID": "ACH-025",
+    "Name": "Void Artisan",
+    "Tier": "Gold",
+    "Condition": "void_upgrades_bought >= 15",
+    "Reward/Effect": "+5% Void resource gain",
+    "Flavor text": "You learned to shape absence."
+  },
+  {
+    "Ach ID": "ACH-026",
+    "Name": "Not My First Cosmos",
+    "Tier": "Gold",
+    "Condition": "prestige_count >= 5",
+    "Reward/Effect": "+5% starting resources after Prestige",
+    "Flavor text": "You reboot like it’s a habit."
+  },
+  {
+    "Ach ID": "ACH-027",
+    "Name": "Process Whisperer",
+    "Tier": "Gold",
+    "Condition": "taskmgr_actions >= 50",
+    "Reward/Effect": "+3% automation speed",
+    "Flavor text": "You speak fluent machine-prayer."
+  },
+  {
+    "Ach ID": "ACH-028",
+    "Name": "Dimensional Portfolio",
+    "Tier": "Gold",
+    "Condition": "dimensions_unlocked >= 4",
+    "Reward/Effect": "+5% global gain",
+    "Flavor text": "Diversify your realities."
+  },
+  {
+    "Ach ID": "ACH-029",
+    "Name": "Cosmic Defrag (Prep)",
+    "Tier": "Gold",
+    "Condition": "prestige_count >= 7",
+    "Reward/Effect": "Unlock prestige teaser: Cosmic Defrag",
+    "Flavor text": "Your fragments are learning to align."
+  },
+  {
+    "Ach ID": "ACH-030",
+    "Name": "Archive Diver",
+    "Tier": "Gold",
+    "Condition": "view_archived_branch >= 1",
+    "Reward/Effect": "Unlock doc: Archived Branch Postmortem",
+    "Flavor text": "You visited a world you left behind."
+  },
+  {
+    "Ach ID": "ACH-031",
+    "Name": "Operator of Record",
+    "Tier": "Platinum",
+    "Condition": "prestige_count >= 10",
+    "Reward/Effect": "+10% starting resources after Prestige",
+    "Flavor text": "Your signature is on every reboot."
+  },
+  {
+    "Ach ID": "ACH-032",
+    "Name": "Stability Engineer",
+    "Tier": "Platinum",
+    "Condition": "stability_metric >= 0.95 for 30m",
+    "Reward/Effect": "+10% global gain (while maintained)",
+    "Flavor text": "You made a gentle universe. It’s suspicious."
+  },
+  {
+    "Ach ID": "ACH-S-001",
+    "Name": "I Can Fix Her",
+    "Tier": "Secret",
+    "Condition": "attempt_repair_sector7g >= 1",
+    "Reward/Effect": "Unlock doc: Sector7G log",
+    "Flavor text": "You cannot."
+  },
+  {
+    "Ach ID": "ACH-S-002",
+    "Name": "House Edge",
+    "Tier": "Secret",
+    "Condition": "casino_win_streak >= 10",
+    "Reward/Effect": "Bonus: Fate Tokens +10% for 1h",
+    "Flavor text": "Fate noticed. Fate smiled."
+  },
+  {
+    "Ach ID": "ACH-S-003",
+    "Name": "Nihilist (Trial)",
+    "Tier": "Secret",
+    "Condition": "delete_achievement_from_recyclebin >= 1",
+    "Reward/Effect": "Cosmetic title: “Meaningless”",
+    "Flavor text": "You looked at meaning and clicked Remove."
+  },
+  {
+    "Ach ID": "ACH-S-004",
+    "Name": "The Exit That Isn’t",
+    "Tier": "Secret",
+    "Condition": "discover_resign_command >= 1",
+    "Reward/Effect": "Unlock doc: ToS addendum",
+    "Flavor text": "Button not found. Keep working."
+  },
+  {
+    "Ach ID": "ACH-S-005",
+    "Name": "Mirror Login",
+    "Tier": "Secret",
+    "Condition": "adversary_contacted == true",
+    "Reward/Effect": "Unlock Adversary scene replay",
+    "Flavor text": "You typed your own name. It answered."
+  },
+  {
+    "Ach ID": "ACH-S-006",
+    "Name": "Checksum Lullaby",
+    "Tier": "Secret",
+    "Condition": "hear_hidden_boot_line >= 1",
+    "Reward/Effect": "Unlock rare boot voice line",
+    "Flavor text": "The BIOS hummed your obituary."
+  },
+  {
+    "Ach ID": "ACH-S-007",
+    "Name": "Employee of the Eon",
+    "Tier": "Secret",
+    "Condition": "open_cms_hr_portal >= 1",
+    "Reward/Effect": "Unlock doc: HR ticket",
+    "Flavor text": "Your benefits include existential dread."
+  },
+  {
+    "Ach ID": "ACH-S-008",
+    "Name": "Lucky Actually",
+    "Tier": "Secret",
+    "Condition": "casino_lose_streak >= 15",
+    "Reward/Effect": "Unlock Host pity line set",
+    "Flavor text": "Bad luck also keeps records."
+  }
+]
