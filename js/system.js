@@ -1,6 +1,8 @@
 const system = {
     windows: {},
     zIndex: 100,
+    windowStates: {},
+    snapThreshold: 26,
 
     init() {
         console.log("CosmOS Initializing...");
@@ -14,6 +16,7 @@ const system = {
         this.updateClock();
         setInterval(() => this.updateClock(), 1000);
         this.initKeyboardShortcuts();
+        window.addEventListener('resize', () => this.handleViewportResize());
     },
 
     initKeyboardShortcuts() {
@@ -68,23 +71,44 @@ const system = {
                 e.preventDefault();
                 this.closeTopWindow();
             }
+
+            // Alt + Arrow: Window snap controls for top window
+            if (e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                const topWindowId = this.getTopWindowId();
+                if (!topWindowId) return;
+
+                if (e.code === 'ArrowLeft') {
+                    e.preventDefault();
+                    this.snapWindow(topWindowId, 'left');
+                } else if (e.code === 'ArrowRight') {
+                    e.preventDefault();
+                    this.snapWindow(topWindowId, 'right');
+                } else if (e.code === 'ArrowUp') {
+                    e.preventDefault();
+                    this.toggleMaximize(topWindowId);
+                }
+            }
         });
     },
 
-    closeTopWindow() {
-        // Find the window with highest z-index
+    getTopWindowId() {
         let topWindow = null;
         let maxZ = 0;
 
         for (const id in this.windows) {
             const win = this.windows[id];
-            const z = parseInt(win.style.zIndex) || 0;
+            const z = parseInt(win.style.zIndex, 10) || 0;
             if (z > maxZ) {
                 maxZ = z;
                 topWindow = id;
             }
         }
 
+        return topWindow;
+    },
+
+    closeTopWindow() {
+        const topWindow = this.getTopWindowId();
         if (topWindow) {
             this.closeApp(topWindow);
         }
@@ -99,6 +123,222 @@ const system = {
         }
     },
 
+    getWorkspaceRect() {
+        const taskbar = document.getElementById('taskbar');
+        const taskbarHeight = taskbar ? taskbar.offsetHeight : 32;
+        return {
+            left: 0,
+            top: 0,
+            width: window.innerWidth,
+            height: Math.max(200, window.innerHeight - taskbarHeight)
+        };
+    },
+
+    getDefaultWindowSize(id) {
+        const appSizes = {
+            console: { width: 690, height: 620 },
+            settings: { width: 680, height: 610 },
+            mandates: { width: 520, height: 560 },
+            dimensions: { width: 640, height: 580 },
+            notepad: { width: 820, height: 610 },
+            divineglobe: { width: 780, height: 630 },
+            divinecalls: { width: 620, height: 520 },
+            adorationshop: { width: 650, height: 560 },
+            taskmgr: { width: 860, height: 560 },
+            recyclebin: { width: 700, height: 560 }
+        };
+
+        return appSizes[id] || { width: 620, height: 560 };
+    },
+
+    clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+    },
+
+    setWindowBounds(win, bounds) {
+        win.style.left = `${Math.round(bounds.left)}px`;
+        win.style.top = `${Math.round(bounds.top)}px`;
+        win.style.width = `${Math.round(bounds.width)}px`;
+        win.style.height = `${Math.round(bounds.height)}px`;
+    },
+
+    getWindowBounds(win) {
+        const rect = win.getBoundingClientRect();
+        return {
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height
+        };
+    },
+
+    clampWindowToWorkspace(win) {
+        const workspace = this.getWorkspaceRect();
+        const rect = this.getWindowBounds(win);
+
+        const minWidth = 320;
+        const minHeight = 220;
+        const width = this.clamp(rect.width, minWidth, Math.max(minWidth, workspace.width - 8));
+        const height = this.clamp(rect.height, minHeight, Math.max(minHeight, workspace.height - 8));
+        const left = this.clamp(rect.left, 0, Math.max(0, workspace.width - width));
+        const top = this.clamp(rect.top, 0, Math.max(0, workspace.height - height));
+
+        this.setWindowBounds(win, { left, top, width, height });
+    },
+
+    cacheNormalBounds(id) {
+        const win = this.windows[id];
+        if (!win) return;
+
+        this.windowStates[id] = this.windowStates[id] || { mode: 'normal', normalBounds: null };
+        this.windowStates[id].normalBounds = this.getWindowBounds(win);
+    },
+
+    setWindowMode(id, mode) {
+        this.windowStates[id] = this.windowStates[id] || { mode: 'normal', normalBounds: null };
+        this.windowStates[id].mode = mode;
+
+        const win = this.windows[id];
+        if (!win) return;
+
+        if (mode === 'normal') {
+            win.classList.remove('window-snapped');
+        } else {
+            win.classList.add('window-snapped');
+        }
+
+        this.updateWindowControlState(id);
+    },
+
+    updateWindowControlState(id) {
+        const state = this.windowStates[id];
+        const win = this.windows[id];
+        if (!state || !win) return;
+
+        const maximizeBtn = win.querySelector('[data-action="maximize"]');
+        if (maximizeBtn) {
+            maximizeBtn.innerText = state.mode === 'maximized' ? 'N' : 'O';
+            maximizeBtn.title = state.mode === 'maximized' ? 'Restore' : 'Maximize';
+        }
+    },
+
+    applyInitialWindowLayout(id, win) {
+        const workspace = this.getWorkspaceRect();
+        const defaultSize = this.getDefaultWindowSize(id);
+
+        if (window.innerWidth <= 900) {
+            const mobileBounds = {
+                left: 4,
+                top: 4,
+                width: Math.max(300, workspace.width - 8),
+                height: Math.max(220, workspace.height - 8)
+            };
+            this.setWindowBounds(win, mobileBounds);
+            this.windowStates[id] = {
+                mode: 'maximized',
+                normalBounds: { ...mobileBounds }
+            };
+            return;
+        }
+
+        const width = this.clamp(defaultSize.width, 320, Math.max(320, workspace.width - 16));
+        const height = this.clamp(defaultSize.height, 220, Math.max(220, workspace.height - 16));
+        const cascadeOffset = Object.keys(this.windows).length * 24;
+        const left = this.clamp(36 + cascadeOffset, 0, Math.max(0, workspace.width - width));
+        const top = this.clamp(30 + cascadeOffset, 0, Math.max(0, workspace.height - height));
+        const bounds = { left, top, width, height };
+
+        this.setWindowBounds(win, bounds);
+        this.windowStates[id] = {
+            mode: 'normal',
+            normalBounds: { ...bounds }
+        };
+    },
+
+    restoreWindow(id) {
+        const win = this.windows[id];
+        const state = this.windowStates[id];
+        if (!win || !state || !state.normalBounds) return;
+
+        this.setWindowBounds(win, state.normalBounds);
+        this.setWindowMode(id, 'normal');
+        this.clampWindowToWorkspace(win);
+    },
+
+    toggleMaximize(id, forceMaximize = false) {
+        const win = this.windows[id];
+        if (!win) return;
+
+        this.focusWindow(id);
+        this.windowStates[id] = this.windowStates[id] || { mode: 'normal', normalBounds: null };
+        const state = this.windowStates[id];
+
+        if (state.mode === 'maximized' && !forceMaximize) {
+            this.restoreWindow(id);
+            return;
+        }
+
+        if (state.mode === 'normal' || !state.normalBounds) {
+            this.cacheNormalBounds(id);
+        }
+
+        const workspace = this.getWorkspaceRect();
+        this.setWindowBounds(win, {
+            left: 0,
+            top: 0,
+            width: workspace.width,
+            height: workspace.height
+        });
+        this.setWindowMode(id, 'maximized');
+    },
+
+    snapWindow(id, direction) {
+        const win = this.windows[id];
+        if (!win || !['left', 'right'].includes(direction)) return;
+
+        this.focusWindow(id);
+        this.windowStates[id] = this.windowStates[id] || { mode: 'normal', normalBounds: null };
+        const state = this.windowStates[id];
+
+        if (state.mode === 'normal' || !state.normalBounds) {
+            this.cacheNormalBounds(id);
+        }
+
+        const workspace = this.getWorkspaceRect();
+        const halfWidth = Math.floor(workspace.width / 2);
+        const width = direction === 'left' ? halfWidth : workspace.width - halfWidth;
+        const left = direction === 'left' ? 0 : halfWidth;
+
+        this.setWindowBounds(win, {
+            left,
+            top: 0,
+            width,
+            height: workspace.height
+        });
+        this.setWindowMode(id, direction);
+    },
+
+    handleViewportResize() {
+        for (const id in this.windows) {
+            const win = this.windows[id];
+            const mode = this.windowStates[id]?.mode || 'normal';
+
+            if (window.innerWidth <= 900) {
+                this.toggleMaximize(id, true);
+                continue;
+            }
+
+            if (mode === 'maximized') {
+                this.toggleMaximize(id, true);
+            } else if (mode === 'left' || mode === 'right') {
+                this.snapWindow(id, mode);
+            } else {
+                this.clampWindowToWorkspace(win);
+                this.cacheNormalBounds(id);
+            }
+        }
+    },
+
     openApp(id) {
         if (this.windows[id]) {
             this.focusWindow(id);
@@ -108,9 +348,8 @@ const system = {
         const win = document.createElement('div');
         win.className = 'window';
         win.id = `win-${id}`;
-        win.style.left = '100px';
-        win.style.top = '100px';
         win.style.zIndex = ++this.zIndex;
+        win.dataset.appId = id;
 
         const appConfig = this.getAppConfig(id);
 
@@ -118,16 +357,23 @@ const system = {
             <div class="window-title-bar" onmousedown="system.startDrag(event, '${id}')">
                 <div class="window-title">${appConfig.title}</div>
                 <div class="window-controls">
+                    <button data-action="snap-left" title="Snap Left" onclick="system.snapWindow('${id}', 'left')">&lt;</button>
+                    <button data-action="maximize" title="Maximize" onclick="system.toggleMaximize('${id}')">O</button>
+                    <button data-action="snap-right" title="Snap Right" onclick="system.snapWindow('${id}', 'right')">&gt;</button>
                     <button onclick="system.closeApp('${id}')">X</button>
                 </div>
             </div>
             <div class="window-content app-${id}" id="content-${id}">
                 ${appConfig.initialHTML}
             </div>
+            <div class="window-resize-handle" title="Resize" onmousedown="system.startResize(event, '${id}')"></div>
         `;
 
         document.getElementById('window-layer').appendChild(win);
         this.windows[id] = win;
+        this.applyInitialWindowLayout(id, win);
+        this.updateWindowControlState(id);
+        win.addEventListener('mousedown', () => this.focusWindow(id));
 
         if (appConfig.onOpen) appConfig.onOpen();
     },
@@ -136,6 +382,7 @@ const system = {
         if (this.windows[id]) {
             this.windows[id].remove();
             delete this.windows[id];
+            delete this.windowStates[id];
         }
     },
 
@@ -192,6 +439,48 @@ const system = {
                             <button class="win-btn skill-btn" id="skill-divine-intervention" onclick="game.activateDivineIntervention()">Divine Intervention (2× prod, 10m)</button>
                             <button class="win-btn skill-btn" id="skill-temporal-rift" onclick="game.activateTemporalRift()">Temporal Rift (Simulate 1hr)</button>
                         </div>
+                        <div class="loop-section">
+                            <h3 class="section-title">Active Loops</h3>
+                            <div class="loop-grid">
+                                <div class="loop-card">
+                                    <div class="loop-card-title">Miracle Streak</div>
+                                    <div class="loop-value"><span id="loop-streak-count">0</span> chain • <span id="loop-streak-multi">1.00×</span></div>
+                                    <div class="loop-meter">
+                                        <div class="loop-meter-fill streak-fill" id="loop-streak-fill"></div>
+                                    </div>
+                                    <div class="loop-meta">Best: <span id="loop-best-streak">0</span></div>
+                                </div>
+                                <div class="loop-card">
+                                    <div class="loop-card-title">Celestial Overclock</div>
+                                    <div class="loop-value" id="loop-overclock-status">Charging...</div>
+                                    <div class="loop-meter">
+                                        <div class="loop-meter-fill overclock-fill" id="loop-overclock-fill"></div>
+                                    </div>
+                                    <button class="win-btn loop-action-btn" id="btn-overclock" onclick="game.activateOverclock()">Trigger Overclock</button>
+                                </div>
+                            </div>
+
+                            <div class="directive-card">
+                                <div class="directive-header">
+                                    <div class="loop-card-title">Divine Directive</div>
+                                    <div class="loop-meta">Completed: <span id="directive-completed-count">0</span></div>
+                                </div>
+                                <div id="directive-title" class="directive-title">Calibrating directive feed...</div>
+                                <div class="loop-meter">
+                                    <div class="loop-meter-fill directive-fill" id="directive-progress-fill"></div>
+                                </div>
+                                <div id="directive-progress-text" class="directive-progress-text">0 / 0</div>
+                                <div id="directive-reward" class="directive-reward">Reward: --</div>
+                                <div class="directive-actions">
+                                    <button class="win-btn loop-action-btn" id="btn-claim-directive" onclick="game.claimDirectiveReward()">Claim Reward</button>
+                                    <button class="win-btn loop-action-btn" id="btn-reroll-directive" onclick="game.rerollDirective()">Reroll (-10 charge)</button>
+                                </div>
+                            </div>
+
+                            <div class="loop-footnote">
+                                Divine Event Chain: <span id="loop-event-chain">0</span> (Best: <span id="loop-best-event-chain">0</span>)
+                            </div>
+                        </div>
                         <div class="upgrades-section">
                             <h3 class="section-title">Divine Upgrades</h3>
                             <div id="upgrades-list" class="upgrades-container"></div>
@@ -205,6 +494,9 @@ const system = {
                     ui.updateUpgrades();
                     ui.updateSeraphButton();
                     ui.updateCherubButton();
+                    game.ensureLoopState();
+                    game.ensureDirective();
+                    ui.updateLoopPanels();
                 }
             },
             'settings': {
@@ -529,6 +821,7 @@ const system = {
                 onOpen: () => {
                     // Track for achievement
                     State.achievementProgress.open_taskmgr = (State.achievementProgress.open_taskmgr || 0) + 1;
+                    State.taskManager.openCount = (State.taskManager.openCount || 0) + 1;
                     ui.updateTaskManagerList();
                 }
             },
@@ -573,26 +866,111 @@ const system = {
 
     startDrag(e, id) {
         const win = this.windows[id];
+        if (!win) return;
+        e.preventDefault();
+
+        // Ignore drags started from control buttons.
+        if (e.target.closest('.window-controls')) {
+            return;
+        }
+
         this.focusWindow(id);
 
-        let pos1 = 0, pos2 = 0, pos3 = e.clientX, pos4 = e.clientY;
+        this.windowStates[id] = this.windowStates[id] || { mode: 'normal', normalBounds: null };
+        const state = this.windowStates[id];
 
-        const dragMove = (e) => {
-            pos1 = pos3 - e.clientX;
-            pos2 = pos4 - e.clientY;
-            pos3 = e.clientX;
-            pos4 = e.clientY;
-            win.style.top = (win.offsetTop - pos2) + "px";
-            win.style.left = (win.offsetLeft - pos1) + "px";
+        // Dragging a snapped/maximized window first restores it to normal bounds.
+        if (state.mode !== 'normal' && state.normalBounds) {
+            this.setWindowBounds(win, state.normalBounds);
+            this.setWindowMode(id, 'normal');
+        }
+
+        const startRect = this.getWindowBounds(win);
+        const offsetX = e.clientX - startRect.left;
+        const offsetY = e.clientY - startRect.top;
+        document.body.classList.add('dragging-window');
+
+        const dragMove = (moveEvent) => {
+            const workspace = this.getWorkspaceRect();
+            const width = win.getBoundingClientRect().width;
+            const height = win.getBoundingClientRect().height;
+            const nextLeft = this.clamp(moveEvent.clientX - offsetX, 0, Math.max(0, workspace.width - width));
+            const nextTop = this.clamp(moveEvent.clientY - offsetY, 0, Math.max(0, workspace.height - height));
+            win.style.left = `${Math.round(nextLeft)}px`;
+            win.style.top = `${Math.round(nextTop)}px`;
         };
 
-        const stopDrag = () => {
+        const stopDrag = (upEvent) => {
             document.removeEventListener('mousemove', dragMove);
             document.removeEventListener('mouseup', stopDrag);
+            document.body.classList.remove('dragging-window');
+
+            const workspace = this.getWorkspaceRect();
+            const clientX = upEvent.clientX;
+            const clientY = upEvent.clientY;
+
+            if (clientY <= (workspace.top + this.snapThreshold)) {
+                this.toggleMaximize(id, true);
+                return;
+            }
+            if (clientX <= (workspace.left + this.snapThreshold)) {
+                this.snapWindow(id, 'left');
+                return;
+            }
+            if (clientX >= (workspace.left + workspace.width - this.snapThreshold)) {
+                this.snapWindow(id, 'right');
+                return;
+            }
+
+            this.setWindowMode(id, 'normal');
+            this.clampWindowToWorkspace(win);
+            this.cacheNormalBounds(id);
         };
 
         document.addEventListener('mousemove', dragMove);
         document.addEventListener('mouseup', stopDrag);
+    },
+
+    startResize(e, id) {
+        const win = this.windows[id];
+        if (!win) return;
+        e.preventDefault();
+
+        this.focusWindow(id);
+        this.windowStates[id] = this.windowStates[id] || { mode: 'normal', normalBounds: null };
+        const state = this.windowStates[id];
+
+        if (state.mode !== 'normal' && state.normalBounds) {
+            this.setWindowBounds(win, state.normalBounds);
+            this.setWindowMode(id, 'normal');
+        }
+
+        const startRect = this.getWindowBounds(win);
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const minWidth = 320;
+        const minHeight = 220;
+        document.body.classList.add('resizing-window');
+
+        const resizeMove = (moveEvent) => {
+            const workspace = this.getWorkspaceRect();
+            const width = this.clamp(startRect.width + (moveEvent.clientX - startX), minWidth, workspace.width - startRect.left);
+            const height = this.clamp(startRect.height + (moveEvent.clientY - startY), minHeight, workspace.height - startRect.top);
+            win.style.width = `${Math.round(width)}px`;
+            win.style.height = `${Math.round(height)}px`;
+        };
+
+        const stopResize = () => {
+            document.removeEventListener('mousemove', resizeMove);
+            document.removeEventListener('mouseup', stopResize);
+            document.body.classList.remove('resizing-window');
+            this.clampWindowToWorkspace(win);
+            this.cacheNormalBounds(id);
+            this.setWindowMode(id, 'normal');
+        };
+
+        document.addEventListener('mousemove', resizeMove);
+        document.addEventListener('mouseup', stopResize);
     }
 };
 

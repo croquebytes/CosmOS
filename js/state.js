@@ -106,6 +106,33 @@ const State = {
     // Random Events
     divineEvent: null, // {x, y, value, expiresAt}
 
+    // Active Gameplay Loops
+    loopSystems: {
+        miracleStreak: 0,
+        bestMiracleStreak: 0,
+        lastMiracleClickAt: 0,
+        lastStreakDecayAt: 0,
+
+        divineEventChain: 0,
+        bestDivineEventChain: 0,
+        lastDivineEventClaimAt: 0,
+        totalDivineEventsClaimed: 0,
+
+        overclock: {
+            charge: 0,
+            active: false,
+            endsAt: 0,
+            duration: 30000 // 30 seconds
+        },
+
+        directives: {
+            active: null,
+            completed: 0,
+            rerolls: 0,
+            lastCompletedAt: 0
+        }
+    },
+
     // System Settings
     epoch: 0,
     startTime: Date.now(),
@@ -243,6 +270,7 @@ const State = {
         opened: false,
         openCount: 0,
         processesEnded: [],
+        endedProcesses: [], // compatibility key for older UI references
         warnings: {
             sector7g: 0,
             voidMirror: 0,
@@ -405,6 +433,13 @@ const State = {
             // Deep merge settings
             if (parsed.settings) Object.assign(this.settings, parsed.settings);
 
+            // Deep merge loop systems
+            if (parsed.loopSystems) {
+                Object.assign(this.loopSystems, parsed.loopSystems);
+                if (parsed.loopSystems.overclock) Object.assign(this.loopSystems.overclock, parsed.loopSystems.overclock);
+                if (parsed.loopSystems.directives) Object.assign(this.loopSystems.directives, parsed.loopSystems.directives);
+            }
+
             // Deep merge casino
             if (parsed.casino) {
                 Object.assign(this.casino, parsed.casino);
@@ -424,6 +459,19 @@ const State = {
             if (parsed.taskManager) {
                 Object.assign(this.taskManager, parsed.taskManager);
                 if (parsed.taskManager.warnings) Object.assign(this.taskManager.warnings, parsed.taskManager.warnings);
+                if (Array.isArray(parsed.taskManager.processesEnded)) {
+                    this.taskManager.processesEnded = parsed.taskManager.processesEnded;
+                } else if (Array.isArray(parsed.taskManager.endedProcesses)) {
+                    this.taskManager.processesEnded = parsed.taskManager.endedProcesses;
+                }
+            }
+
+            // Keep task manager legacy keys in sync
+            if (!Array.isArray(this.taskManager.processesEnded)) {
+                this.taskManager.processesEnded = [];
+            }
+            if (!Array.isArray(this.taskManager.endedProcesses) || this.taskManager.endedProcesses.length !== this.taskManager.processesEnded.length) {
+                this.taskManager.endedProcesses = [...this.taskManager.processesEnded];
             }
 
             // Deep merge recycleBin
@@ -458,7 +506,8 @@ const State = {
 
             // Top level properties
             const skip = ['resources', 'resourceCaps', 'automatons', 'skills', 'dimensions', 'prophets', 'followers', 'adorationShop', 'settings',
-                          'casino', 'adversary', 'taskManager', 'recycleBin', 'documents', 'achievementProgress', 'runtime', 'totalStats', 'achievementBonuses'];
+                          'loopSystems', 'casino', 'adversary', 'taskManager', 'recycleBin', 'documents', 'achievementProgress', 'runtime',
+                          'totalStats', 'achievementBonuses'];
             for (const key in parsed) {
                 if (!skip.includes(key)) {
                     this[key] = parsed[key];

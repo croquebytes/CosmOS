@@ -1,55 +1,433 @@
 const game = {
+    randomInt(min, max) {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    },
+
+    ensureLoopState() {
+        if (!State.loopSystems) {
+            State.loopSystems = {};
+        }
+
+        const loops = State.loopSystems;
+        loops.miracleStreak = Number.isFinite(loops.miracleStreak) ? loops.miracleStreak : 0;
+        loops.bestMiracleStreak = Number.isFinite(loops.bestMiracleStreak) ? loops.bestMiracleStreak : 0;
+        loops.lastMiracleClickAt = Number.isFinite(loops.lastMiracleClickAt) ? loops.lastMiracleClickAt : 0;
+        loops.lastStreakDecayAt = Number.isFinite(loops.lastStreakDecayAt) ? loops.lastStreakDecayAt : 0;
+
+        loops.divineEventChain = Number.isFinite(loops.divineEventChain) ? loops.divineEventChain : 0;
+        loops.bestDivineEventChain = Number.isFinite(loops.bestDivineEventChain) ? loops.bestDivineEventChain : 0;
+        loops.lastDivineEventClaimAt = Number.isFinite(loops.lastDivineEventClaimAt) ? loops.lastDivineEventClaimAt : 0;
+        loops.totalDivineEventsClaimed = Number.isFinite(loops.totalDivineEventsClaimed) ? loops.totalDivineEventsClaimed : 0;
+
+        loops.overclock = loops.overclock || {};
+        loops.overclock.charge = Number.isFinite(loops.overclock.charge) ? loops.overclock.charge : 0;
+        loops.overclock.charge = Math.max(0, Math.min(100, loops.overclock.charge));
+        loops.overclock.active = !!loops.overclock.active;
+        loops.overclock.endsAt = Number.isFinite(loops.overclock.endsAt) ? loops.overclock.endsAt : 0;
+        loops.overclock.duration = Number.isFinite(loops.overclock.duration) ? loops.overclock.duration : 30000;
+
+        loops.directives = loops.directives || {};
+        loops.directives.active = (loops.directives.active && typeof loops.directives.active === 'object') ? loops.directives.active : null;
+        loops.directives.completed = Number.isFinite(loops.directives.completed) ? loops.directives.completed : 0;
+        loops.directives.rerolls = Number.isFinite(loops.directives.rerolls) ? loops.directives.rerolls : 0;
+        loops.directives.lastCompletedAt = Number.isFinite(loops.directives.lastCompletedAt) ? loops.directives.lastCompletedAt : 0;
+    },
+
+    getMiracleStreakMultiplier() {
+        this.ensureLoopState();
+        return 1 + Math.min(1.5, State.loopSystems.miracleStreak * 0.04);
+    },
+
+    getStreakProductionMultiplier() {
+        this.ensureLoopState();
+        return 1 + Math.min(0.35, State.loopSystems.miracleStreak * 0.007);
+    },
+
+    getOverclockProductionMultiplier(now = Date.now()) {
+        this.ensureLoopState();
+        const overclock = State.loopSystems.overclock;
+        return (overclock.active && now < overclock.endsAt) ? 1.5 : 1;
+    },
+
+    gainOverclockCharge(amount, announceReady = true) {
+        this.ensureLoopState();
+        const overclock = State.loopSystems.overclock;
+        const before = overclock.charge;
+        overclock.charge = Math.max(0, Math.min(100, overclock.charge + amount));
+
+        if (announceReady && before < 100 && overclock.charge >= 100) {
+            ui.log('Celestial Overclock ready. Trigger it from Active Loops.');
+        }
+    },
+
+    activateOverclock() {
+        this.ensureLoopState();
+        const loops = State.loopSystems;
+        const now = Date.now();
+
+        if (loops.overclock.active && now < loops.overclock.endsAt) {
+            const remaining = Math.ceil((loops.overclock.endsAt - now) / 1000);
+            ui.log(`Celestial Overclock already active. ${remaining}s remaining.`);
+            return;
+        }
+
+        if (loops.overclock.charge < 100) {
+            ui.log(`Overclock requires 100 charge. Current: ${Math.floor(loops.overclock.charge)}.`);
+            return;
+        }
+
+        loops.overclock.charge = 0;
+        loops.overclock.active = true;
+        loops.overclock.endsAt = now + loops.overclock.duration;
+
+        ui.log('Celestial Overclock engaged! +50% production, stronger miracles for 30s.');
+        ui.screenPulse('rgba(255, 153, 0, 0.35)');
+    },
+
+    ensureDirective() {
+        this.ensureLoopState();
+        if (!State.loopSystems.directives.active) {
+            this.generateDirective(true);
+        }
+    },
+
+    generateDirective(force = false) {
+        this.ensureLoopState();
+        const loops = State.loopSystems;
+
+        if (!force && loops.directives.active) {
+            return loops.directives.active;
+        }
+
+        const pps = Math.max(1, State.pps * (State.automatons.seraphProduction || 1) * State.praiseMultiplier);
+        const directives = [
+            {
+                type: 'manual_clicks',
+                label: 'Perform Miracles',
+                mode: 'delta',
+                current: () => State.totalClicks,
+                target: () => this.randomInt(20, 60),
+                rewardScale: 1
+            },
+            {
+                type: 'praise_earned',
+                label: 'Generate Praise',
+                mode: 'delta',
+                current: () => Math.floor(State.totalPraiseEarned),
+                target: () => this.randomInt(400, 1200) + Math.floor(pps * 15),
+                rewardScale: 1.3
+            },
+            {
+                type: 'seraph_owned',
+                label: 'Commission Seraphs',
+                mode: 'absolute',
+                current: () => State.automatons.seraphCount,
+                target: () => State.automatons.seraphCount + this.randomInt(1, Math.max(1, Math.min(5, Math.floor(State.automatons.seraphCount / 8) + 1))),
+                rewardScale: 1.2
+            },
+            {
+                type: 'divine_events',
+                label: 'Claim Divine Events',
+                mode: 'delta',
+                current: () => State.loopSystems.totalDivineEventsClaimed,
+                target: () => this.randomInt(1, 3),
+                rewardScale: 1.1
+            }
+        ];
+
+        if (State.unlockedOfferings) {
+            directives.push({
+                type: 'cherub_owned',
+                label: 'Compile Cherubs',
+                mode: 'absolute',
+                current: () => State.automatons.cherubCount,
+                target: () => State.automatons.cherubCount + this.randomInt(1, Math.max(1, Math.min(4, Math.floor(State.automatons.cherubCount / 8) + 1))),
+                rewardScale: 1.15
+            });
+        }
+
+        const selected = directives[this.randomInt(0, directives.length - 1)];
+        const startValue = selected.current();
+        const target = Math.max(1, selected.target());
+
+        const progression = Math.max(1, Math.log10(State.totalPraiseEarned + 100));
+        const baseReward = Math.max(40, Math.floor((30 + pps * 6) * progression * selected.rewardScale));
+        const reward = {
+            praise: Math.floor(baseReward),
+            offerings: State.unlockedOfferings ? Math.floor(baseReward / 8) : 0,
+            souls: Math.max(0, Math.floor(baseReward / 20)),
+            adoration: State.unlockedApps.includes('divinecalls') ? this.randomInt(0, 3) : 0,
+            charge: this.randomInt(16, 30)
+        };
+
+        let title = `${selected.label} (${target})`;
+        if (selected.mode === 'absolute') {
+            title = `${selected.label} to ${target}`;
+        }
+
+        loops.directives.active = {
+            id: `directive_${Date.now()}_${this.randomInt(100, 999)}`,
+            type: selected.type,
+            mode: selected.mode,
+            title,
+            startValue,
+            target,
+            reward,
+            completed: false,
+            announced: false
+        };
+
+        ui.log(`[Directive] ${title}`);
+        return loops.directives.active;
+    },
+
+    getDirectiveCurrentValue(directive) {
+        if (!directive) return 0;
+
+        switch (directive.type) {
+            case 'manual_clicks':
+                return State.totalClicks;
+            case 'praise_earned':
+                return Math.floor(State.totalPraiseEarned);
+            case 'seraph_owned':
+                return State.automatons.seraphCount;
+            case 'cherub_owned':
+                return State.automatons.cherubCount;
+            case 'divine_events':
+                return State.loopSystems.totalDivineEventsClaimed;
+            default:
+                return 0;
+        }
+    },
+
+    getDirectiveProgress(directive = null) {
+        this.ensureLoopState();
+        const activeDirective = directive || State.loopSystems.directives.active;
+        if (!activeDirective) {
+            return { current: 0, target: 1, ratio: 0, completed: false };
+        }
+
+        const absoluteCurrent = this.getDirectiveCurrentValue(activeDirective);
+        let current = absoluteCurrent;
+
+        if (activeDirective.mode === 'delta') {
+            current = Math.max(0, absoluteCurrent - (activeDirective.startValue || 0));
+        }
+
+        const target = Math.max(1, activeDirective.target || 1);
+        const completed = current >= target;
+        const ratio = Math.max(0, Math.min(1, current / target));
+
+        return { current, target, ratio, completed };
+    },
+
+    getDirectiveRewardText(directive = null) {
+        this.ensureLoopState();
+        const activeDirective = directive || State.loopSystems.directives.active;
+        if (!activeDirective || !activeDirective.reward) return 'Reward: --';
+
+        const reward = activeDirective.reward;
+        const parts = [];
+
+        if (reward.praise > 0) parts.push(`+${Math.floor(reward.praise)} Praise`);
+        if (reward.offerings > 0) parts.push(`+${Math.floor(reward.offerings)} Offerings`);
+        if (reward.souls > 0) parts.push(`+${Math.floor(reward.souls)} Souls`);
+        if (reward.adoration > 0) parts.push(`+${Math.floor(reward.adoration)} Adoration`);
+        if (reward.charge > 0) parts.push(`+${Math.floor(reward.charge)} Charge`);
+
+        return parts.length ? `Reward: ${parts.join(' • ')}` : 'Reward: --';
+    },
+
+    updateDirectiveProgress() {
+        this.ensureLoopState();
+        const directive = State.loopSystems.directives.active;
+        if (!directive) {
+            return;
+        }
+
+        const progress = this.getDirectiveProgress(directive);
+        if (!directive.completed && progress.completed) {
+            directive.completed = true;
+            if (!directive.announced) {
+                directive.announced = true;
+                ui.log(`[Directive Complete] ${directive.title}`);
+                ui.screenPulse('rgba(76, 175, 80, 0.22)');
+            }
+        }
+    },
+
+    claimDirectiveReward() {
+        this.ensureLoopState();
+        const loops = State.loopSystems;
+        const directive = loops.directives.active;
+
+        if (!directive) {
+            ui.log('No active directive.');
+            return;
+        }
+
+        const progress = this.getDirectiveProgress(directive);
+        if (!progress.completed) {
+            ui.log(`Directive incomplete (${progress.current}/${progress.target}).`);
+            return;
+        }
+
+        const reward = directive.reward || {};
+
+        if (reward.praise > 0) {
+            State.resources.praise = Math.min(State.resourceCaps.praise, State.resources.praise + reward.praise);
+            State.totalPraiseEarned += reward.praise;
+            State.totalStats.praiseGained = (State.totalStats.praiseGained || 0) + reward.praise;
+        }
+        if (reward.offerings > 0) {
+            State.resources.offerings = Math.min(State.resourceCaps.offerings, State.resources.offerings + reward.offerings);
+            State.totalOfferingsEarned += reward.offerings;
+            State.totalStats.offeringsGained = (State.totalStats.offeringsGained || 0) + reward.offerings;
+        }
+        if (reward.souls > 0) {
+            State.resources.souls = Math.min(State.resourceCaps.souls, State.resources.souls + reward.souls);
+            State.totalStats.soulsGained = (State.totalStats.soulsGained || 0) + reward.souls;
+        }
+        if (reward.adoration > 0) {
+            State.adoration = Math.min(State.adorationCaps.cosmetics, State.adoration + reward.adoration);
+        }
+        if (reward.charge > 0) {
+            this.gainOverclockCharge(reward.charge);
+        }
+
+        loops.directives.completed += 1;
+        loops.directives.lastCompletedAt = Date.now();
+
+        if (Math.random() < 0.18) {
+            const bonusCharge = this.randomInt(5, 15);
+            this.gainOverclockCharge(bonusCharge, false);
+            ui.log(`[Surprise Cache] +${bonusCharge} bonus Overclock charge.`);
+        }
+
+        ui.log(`[Directive Claimed] ${directive.title}`);
+        loops.directives.active = null;
+        this.generateDirective(true);
+        this.checkAchievements();
+    },
+
+    rerollDirective() {
+        this.ensureLoopState();
+        const loops = State.loopSystems;
+        const directive = loops.directives.active;
+
+        if (!directive) {
+            this.generateDirective(true);
+            return;
+        }
+
+        if (directive.completed) {
+            ui.log('Claim completed directive before rerolling.');
+            return;
+        }
+
+        if (loops.overclock.charge < 10) {
+            ui.log('Reroll requires 10 Overclock charge.');
+            return;
+        }
+
+        loops.overclock.charge -= 10;
+        loops.directives.rerolls += 1;
+        this.generateDirective(true);
+        ui.log('[Directive] Rerolled.');
+    },
+
+    processLoopDecay(now) {
+        this.ensureLoopState();
+        const loops = State.loopSystems;
+
+        if (loops.overclock.active && now >= loops.overclock.endsAt) {
+            loops.overclock.active = false;
+            ui.log('Celestial Overclock expired.');
+        }
+
+        if (loops.miracleStreak > 0) {
+            const idleMs = now - loops.lastMiracleClickAt;
+            if (idleMs > 4000) {
+                if (!loops.lastStreakDecayAt || loops.lastStreakDecayAt < (loops.lastMiracleClickAt + 4000)) {
+                    loops.lastStreakDecayAt = loops.lastMiracleClickAt + 4000;
+                }
+
+                while ((loops.lastStreakDecayAt + 1000) <= now && loops.miracleStreak > 0) {
+                    loops.miracleStreak -= 1;
+                    loops.lastStreakDecayAt += 1000;
+                }
+            } else {
+                loops.lastStreakDecayAt = now;
+            }
+        }
+
+        if (loops.divineEventChain > 0 && now - loops.lastDivineEventClaimAt > 25000) {
+            loops.divineEventChain = 0;
+        }
+    },
+
     loop() {
-        // Check Divine Intervention status
+        this.ensureLoopState();
+
         const now = Date.now();
         const divineInterventionBonus = (State.skills.divineIntervention.active && now < State.skills.divineIntervention.endsAt) ? 2 : 1;
 
-        // Deactivate Divine Intervention if expired
         if (State.skills.divineIntervention.active && now >= State.skills.divineIntervention.endsAt) {
             State.skills.divineIntervention.active = false;
             ui.log(`Divine Intervention expired.`);
         }
 
+        this.processLoopDecay(now);
+        this.ensureDirective();
+
+        const achievementBonuses = State.achievementBonuses || {};
+        const globalGainBonus = achievementBonuses.globalGain || 1;
+        const automationSpeedBonus = achievementBonuses.automationSpeed || 1;
+        const streakProductionBonus = this.getStreakProductionMultiplier();
+        const overclockProductionBonus = this.getOverclockProductionMultiplier(now);
+        const totalProductionBonus = divineInterventionBonus * automationSpeedBonus * streakProductionBonus * overclockProductionBonus;
+
         // === PRIMORDIAL DIMENSION PRODUCTION ===
-        // Calculate gains with multipliers
         const seraphBaseProduction = State.automatons.seraphProduction || 1;
         const cherubBaseProduction = State.automatons.cherubProduction || 1;
-        const praiseGain = (State.pps * seraphBaseProduction * State.praiseMultiplier * divineInterventionBonus) / 60;
-        const offeringGain = (State.mps * State.offeringMultiplier * divineInterventionBonus) / 60;
-        const soulGain = (State.sps * cherubBaseProduction * State.soulMultiplier * divineInterventionBonus) / 60;
+        const praiseGain = (State.pps * seraphBaseProduction * State.praiseMultiplier * totalProductionBonus *
+            (achievementBonuses.praiseGain || 1) * globalGainBonus) / 60;
+        const offeringGain = (State.mps * State.offeringMultiplier * totalProductionBonus *
+            (achievementBonuses.offeringValue || 1) * globalGainBonus) / 60;
+        const soulGain = (State.sps * cherubBaseProduction * State.soulMultiplier * totalProductionBonus *
+            (achievementBonuses.soulGain || 1) * globalGainBonus) / 60;
 
         State.resources.praise += praiseGain;
         State.resources.offerings += offeringGain;
         State.resources.souls += soulGain;
 
-        // Apply resource caps
         State.resources.praise = Math.min(State.resources.praise, State.resourceCaps.praise);
         State.resources.offerings = Math.min(State.resources.offerings, State.resourceCaps.offerings);
         State.resources.souls = Math.min(State.resources.souls, State.resourceCaps.souls);
 
-        // Track total earned
         State.totalPraiseEarned += praiseGain;
         State.totalOfferingsEarned += offeringGain;
+        State.totalStats.praiseGained = (State.totalStats.praiseGained || 0) + praiseGain;
+        State.totalStats.offeringsGained = (State.totalStats.offeringsGained || 0) + offeringGain;
+        State.totalStats.soulsGained = (State.totalStats.soulsGained || 0) + soulGain;
 
         // === VOID DIMENSION PRODUCTION ===
         if (State.dimensions.void.unlocked) {
             const vd = State.dimensions.void;
             const wraithBaseProduction = vd.automatons.wraithProduction || 1;
             const phantomBaseProduction = vd.automatons.phantomProduction || 1;
-            const darknessGain = (vd.dps * wraithBaseProduction * vd.darknessMultiplier * divineInterventionBonus) / 60;
-            const shadowGain = (vd.sdps * vd.shadowMultiplier * divineInterventionBonus) / 60;
-            const echoGain = (vd.eps * phantomBaseProduction * vd.echoMultiplier * divineInterventionBonus) / 60;
+            const voidBonus = totalProductionBonus * (achievementBonuses.voidGain || 1) * (achievementBonuses.voidStability || 1) * globalGainBonus;
+            const darknessGain = (vd.dps * wraithBaseProduction * vd.darknessMultiplier * voidBonus) / 60;
+            const shadowGain = (vd.sdps * vd.shadowMultiplier * voidBonus) / 60;
+            const echoGain = (vd.eps * phantomBaseProduction * vd.echoMultiplier * voidBonus) / 60;
 
             vd.resources.darkness += darknessGain;
             vd.resources.shadows += shadowGain;
             vd.resources.echoes += echoGain;
 
-            // Apply resource caps
             vd.resources.darkness = Math.min(vd.resources.darkness, vd.resourceCaps.darkness);
             vd.resources.shadows = Math.min(vd.resources.shadows, vd.resourceCaps.shadows);
             vd.resources.echoes = Math.min(vd.resources.echoes, vd.resourceCaps.echoes);
-
-            // Track total earned
             vd.totalDarknessEarned += darknessGain;
         }
 
@@ -60,7 +438,7 @@ const game = {
             const timelineBonus = State.timelines.effects[State.timelines.current].followerBonus || 1;
 
             const followerGain = (assignedProphets * followerData.baseGrowthRate *
-                                 State.prophets.feedingBonus * timelineBonus) / 60;
+                                 State.prophets.feedingBonus * timelineBonus * globalGainBonus) / 60;
             followerData.count += followerGain;
         }
 
@@ -73,29 +451,26 @@ const game = {
         }
 
         const timelineAdorationBonus = State.timelines.effects[State.timelines.current].adorationBonus || 1;
-        State.adoration += totalAdorationGain * timelineAdorationBonus;
+        State.adoration += totalAdorationGain * timelineAdorationBonus * globalGainBonus;
         State.adoration = Math.min(State.adoration, State.adorationCaps.cosmetics);
 
-        // Check Divine Event expiration
         if (State.divineEvent && now >= State.divineEvent.expiresAt) {
             ui.hideDivineEvent();
             State.divineEvent = null;
         }
 
-        // Check achievements and documents periodically (every 60 frames = 1 second)
         if (!this.frameCount) this.frameCount = 0;
         this.frameCount++;
         if (this.frameCount >= 60) {
-            // Update runtime tracking
             const runtimeMinutes = Math.floor((Date.now() - State.startTime) / 60000);
             State.runtime.totalMinutes = runtimeMinutes;
 
+            this.updateDirectiveProgress();
             this.checkAchievements();
             this.checkDocuments();
             this.frameCount = 0;
         }
 
-        // Check for event spawning every 5 seconds (300 frames)
         if (!this.eventSpawnCounter) this.eventSpawnCounter = 0;
         this.eventSpawnCounter++;
         if (this.eventSpawnCounter >= 300) {
@@ -108,35 +483,56 @@ const game = {
     },
 
     manualPraise(event) {
+        this.ensureLoopState();
+        const loops = State.loopSystems;
+        const now = Date.now();
+
+        if (now - loops.lastMiracleClickAt <= 2500) {
+            loops.miracleStreak += 1;
+        } else {
+            loops.miracleStreak = 1;
+        }
+        loops.lastMiracleClickAt = now;
+        loops.lastStreakDecayAt = now;
+        loops.bestMiracleStreak = Math.max(loops.bestMiracleStreak, loops.miracleStreak);
+
         let clickPower = State.manualClickPower || 1;
 
-        // If "Controlled Chaos" mandate is purchased, manual clicks = 10% of production/sec
         if (State.manualClickScaling) {
             const seraphBaseProduction = State.automatons.seraphProduction || 1;
             const productionPerSec = State.pps * seraphBaseProduction * State.praiseMultiplier;
             clickPower = Math.max(clickPower, Math.floor(productionPerSec * 0.1));
         }
 
+        const streakMultiplier = this.getMiracleStreakMultiplier();
+        const overclockMultiplier = (loops.overclock.active && now < loops.overclock.endsAt) ? 2 : 1;
+        const achievementMultiplier = (State.achievementBonuses?.praiseGain || 1) * (State.achievementBonuses?.globalGain || 1);
+        clickPower = Math.max(1, Math.floor(clickPower * streakMultiplier * overclockMultiplier * achievementMultiplier));
+
         State.resources.praise += clickPower;
         State.resources.praise = Math.min(State.resources.praise, State.resourceCaps.praise);
         State.totalPraiseEarned += clickPower;
         State.totalClicks++;
 
-        // Track for achievements
         State.achievementProgress.praise_clicks = (State.achievementProgress.praise_clicks || 0) + 1;
         State.totalStats.praiseGained = (State.totalStats.praiseGained || 0) + clickPower;
 
-        // Check if at cap
+        this.gainOverclockCharge(0.9 + (loops.miracleStreak * 0.05));
+        this.updateDirectiveProgress();
+
+        const bonusParts = [];
+        if (streakMultiplier > 1.01) bonusParts.push(`Streak ${streakMultiplier.toFixed(2)}×`);
+        if (overclockMultiplier > 1) bonusParts.push('Overclock');
+        const bonusText = bonusParts.length ? ` [${bonusParts.join(' | ')}]` : '';
+
         if (State.resources.praise >= State.resourceCaps.praise) {
-            ui.log(`Miracle performed: +${clickPower} Praise. (STORAGE FULL!)`);
+            ui.log(`Miracle performed: +${clickPower} Praise. (STORAGE FULL!)${bonusText}`);
         } else {
-            ui.log(`Miracle performed: +${clickPower} Praise.`);
+            ui.log(`Miracle performed: +${clickPower} Praise.${bonusText}`);
         }
 
-        // Check for instant achievements (click-based)
         this.checkAchievements();
 
-        // Visual feedback
         if (event) {
             const rect = event.target.getBoundingClientRect();
             const x = rect.left + rect.width / 2;
@@ -462,6 +858,7 @@ const game = {
     },
 
     activateTemporalRift() {
+        this.ensureLoopState();
         const skill = State.skills.temporalRift;
         const now = Date.now();
 
@@ -475,16 +872,25 @@ const game = {
         // Simulate 1 hour of production
         const seraphBaseProduction = State.automatons.seraphProduction || 1;
         const cherubBaseProduction = State.automatons.cherubProduction || 1;
-        const praiseGain = (State.pps * seraphBaseProduction * State.praiseMultiplier) * 3600;
-        const offeringGain = (State.mps * State.offeringMultiplier) * 3600;
-        const soulGain = (State.sps * cherubBaseProduction * State.soulMultiplier) * 3600;
+        const achievementBonuses = State.achievementBonuses || {};
+        const globalGainBonus = achievementBonuses.globalGain || 1;
+        const totalBonus = this.getStreakProductionMultiplier() * this.getOverclockProductionMultiplier(now) * (achievementBonuses.automationSpeed || 1);
+        const praiseGain = (State.pps * seraphBaseProduction * State.praiseMultiplier * totalBonus * (achievementBonuses.praiseGain || 1) * globalGainBonus) * 3600;
+        const offeringGain = (State.mps * State.offeringMultiplier * totalBonus * (achievementBonuses.offeringValue || 1) * globalGainBonus) * 3600;
+        const soulGain = (State.sps * cherubBaseProduction * State.soulMultiplier * totalBonus * (achievementBonuses.soulGain || 1) * globalGainBonus) * 3600;
 
         State.resources.praise = Math.min(State.resources.praise + praiseGain, State.resourceCaps.praise);
         State.resources.offerings = Math.min(State.resources.offerings + offeringGain, State.resourceCaps.offerings);
         State.resources.souls = Math.min(State.resources.souls + soulGain, State.resourceCaps.souls);
+        State.totalPraiseEarned += praiseGain;
+        State.totalOfferingsEarned += offeringGain;
+        State.totalStats.praiseGained = (State.totalStats.praiseGained || 0) + praiseGain;
+        State.totalStats.offeringsGained = (State.totalStats.offeringsGained || 0) + offeringGain;
+        State.totalStats.soulsGained = (State.totalStats.soulsGained || 0) + soulGain;
 
         // Track for achievements
         State.achievementProgress.use_temporal_rift = (State.achievementProgress.use_temporal_rift || 0) + 1;
+        this.gainOverclockCharge(12);
 
         skill.cooldownEndsAt = now + skill.cooldown;
         ui.log(`Temporal Rift opened! Simulated 1 hour of production.`);
@@ -492,11 +898,17 @@ const game = {
     },
 
     spawnDivineEvent() {
+        this.ensureLoopState();
+
         // Don't spawn if one already exists
         if (State.divineEvent) return;
 
         // Random chance (5% per check by default, checked every 5 seconds)
-        const spawnRate = State.divineEventSpawnRate || 0.05;
+        const loops = State.loopSystems;
+        const chainBoost = Math.min(0.06, loops.divineEventChain * 0.004);
+        const streakBoost = Math.min(0.05, loops.miracleStreak * 0.0015);
+        const overclockBoost = loops.overclock.active ? 0.02 : 0;
+        const spawnRate = Math.min(0.35, (State.divineEventSpawnRate || 0.05) + chainBoost + streakBoost + overclockBoost);
         if (Math.random() > spawnRate) return;
 
         // Random position on screen
@@ -505,13 +917,16 @@ const game = {
 
         // Random reward value (10-100% of current production rate)
         const seraphBaseProduction = State.automatons.seraphProduction || 1;
-        const baseReward = State.pps * seraphBaseProduction * State.praiseMultiplier * 60;
-        const value = Math.floor(baseReward * (0.1 + Math.random() * 0.9));
+        const baseReward = State.pps * seraphBaseProduction * State.praiseMultiplier * 60 * (State.achievementBonuses?.globalGain || 1);
+        const chainRewardBonus = 1 + Math.min(1.5, loops.divineEventChain * 0.12);
+        const overclockRewardBonus = loops.overclock.active ? 1.15 : 1;
+        const value = Math.floor(baseReward * (0.15 + Math.random() * 0.95) * chainRewardBonus * overclockRewardBonus);
 
         State.divineEvent = {
             x: x,
             y: y,
             value: Math.max(value, 10), // Minimum reward of 10
+            chainPreview: loops.divineEventChain,
             expiresAt: Date.now() + 10000 // 10 seconds to click
         };
 
@@ -519,15 +934,50 @@ const game = {
     },
 
     clickDivineEvent() {
+        this.ensureLoopState();
         if (!State.divineEvent) return;
 
         const event = State.divineEvent;
+        const loops = State.loopSystems;
+        const now = Date.now();
+
+        if (now - loops.lastDivineEventClaimAt <= 15000) {
+            loops.divineEventChain += 1;
+        } else {
+            loops.divineEventChain = 1;
+        }
+        loops.lastDivineEventClaimAt = now;
+        loops.bestDivineEventChain = Math.max(loops.bestDivineEventChain, loops.divineEventChain);
+        loops.totalDivineEventsClaimed += 1;
+
         State.resources.praise = Math.min(State.resources.praise + event.value, State.resourceCaps.praise);
         State.totalPraiseEarned += event.value;
+        State.totalStats.praiseGained = (State.totalStats.praiseGained || 0) + event.value;
 
-        ui.log(`Divine Event claimed! +${event.value} Praise.`);
-        ui.showFloatingNumber(`+${event.value}`, event.x, event.y, '#ffd700');
+        this.gainOverclockCharge(18 + (loops.divineEventChain * 2));
+        this.updateDirectiveProgress();
+
+        ui.log(`Divine Event claimed! +${event.value} Praise. Chain x${loops.divineEventChain}.`);
+        ui.showFloatingNumber(`+${event.value} • x${loops.divineEventChain}`, event.x, event.y, '#ffd700');
         ui.spawnParticles(event.x, event.y, 12, '#ffd700');
+
+        if (loops.divineEventChain > 0 && loops.divineEventChain % 3 === 0) {
+            const chainSoulBonus = Math.max(1, Math.floor(loops.divineEventChain / 2));
+            State.resources.souls = Math.min(State.resourceCaps.souls, State.resources.souls + chainSoulBonus);
+            State.totalStats.soulsGained = (State.totalStats.soulsGained || 0) + chainSoulBonus;
+
+            let chainOfferingBonus = 0;
+            if (State.unlockedOfferings) {
+                chainOfferingBonus = Math.max(1, Math.floor(loops.divineEventChain * 1.5));
+                State.resources.offerings = Math.min(State.resourceCaps.offerings, State.resources.offerings + chainOfferingBonus);
+                State.totalOfferingsEarned += chainOfferingBonus;
+                State.totalStats.offeringsGained = (State.totalStats.offeringsGained || 0) + chainOfferingBonus;
+            }
+
+            ui.log(`[Chain Bonus] +${chainSoulBonus} Souls${chainOfferingBonus > 0 ? ` and +${chainOfferingBonus} Offerings` : ''}.`);
+            ui.screenPulse('rgba(255, 215, 0, 0.25)');
+        }
+
         ui.hideDivineEvent();
 
         State.divineEvent = null;
@@ -551,14 +1001,17 @@ const game = {
             }
         }
 
+        const mandateEfficiency = State.achievementBonuses?.mandateEfficiency || 1;
+        const effectiveCost = Math.max(1, Math.ceil(mandate.cost / mandateEfficiency));
+
         // Check if can afford
-        if (State.resources.souls < mandate.cost) {
-            ui.log(`Insufficient Souls. Need ${mandate.cost}.`);
+        if (State.resources.souls < effectiveCost) {
+            ui.log(`Insufficient Souls. Need ${effectiveCost}.`);
             return;
         }
 
         // Deduct cost
-        State.resources.souls -= mandate.cost;
+        State.resources.souls -= effectiveCost;
 
         // Mark as purchased and apply effect
         State.purchasedMandates[mandateId] = true;
@@ -567,20 +1020,27 @@ const game = {
         // Track for achievements
         State.achievementProgress.buy_mandate_count = (State.achievementProgress.buy_mandate_count || 0) + 1;
 
-        ui.log(`Divine Mandate enacted: ${mandate.name}`);
+        ui.log(`Divine Mandate enacted: ${mandate.name}${effectiveCost < mandate.cost ? ` (Efficiency: ${mandate.cost}→${effectiveCost})` : ''}`);
         ui.screenPulse('rgba(138, 43, 226, 0.3)');
         ui.updateMandates();
     },
 
     // === VOID DIMENSION FUNCTIONS ===
     manualVoidClick(event) {
+        this.ensureLoopState();
         const vd = State.dimensions.void;
         let clickPower = vd.manualClickPower || 1;
+        const now = Date.now();
+        const overclockBonus = (State.loopSystems.overclock.active && now < State.loopSystems.overclock.endsAt) ? 1.5 : 1;
+        const voidBonus = (State.achievementBonuses?.voidGain || 1) * (State.achievementBonuses?.globalGain || 1);
+        clickPower = Math.max(1, Math.floor(clickPower * overclockBonus * voidBonus));
 
         vd.resources.darkness += clickPower;
         vd.resources.darkness = Math.min(vd.resources.darkness, vd.resourceCaps.darkness);
         vd.totalDarknessEarned += clickPower;
         vd.totalClicks++;
+
+        this.gainOverclockCharge(0.6, false);
 
         // Check if at cap
         if (vd.resources.darkness >= vd.resourceCaps.darkness) {
@@ -778,11 +1238,20 @@ const game = {
         // Track for achievements
         State.achievementProgress.prestige_count = (State.achievementProgress.prestige_count || 0) + 1;
 
+        const startingResourceBonus = State.achievementBonuses?.startingResources || 1;
+        const startingSouls = Math.max(100, Math.floor(100 * startingResourceBonus));
+        const startingPraise = Math.max(0, Math.floor(25 * (startingResourceBonus - 1)));
+        const startingOfferings = Math.max(0, Math.floor(5 * (startingResourceBonus - 1)));
+        const bestMiracleStreak = State.loopSystems?.bestMiracleStreak || 0;
+        const bestDivineEventChain = State.loopSystems?.bestDivineEventChain || 0;
+        const completedDirectives = State.loopSystems?.directives?.completed || 0;
+        const rerolledDirectives = State.loopSystems?.directives?.rerolls || 0;
+
         // Reset resources
         State.resources = {
-            praise: 0,
-            offerings: 0,
-            souls: 100
+            praise: startingPraise,
+            offerings: startingOfferings,
+            souls: startingSouls
         };
 
         // Reset caps
@@ -873,6 +1342,30 @@ const game = {
         State.totalPraiseEarned = 0;
         State.totalOfferingsEarned = 0;
         State.startTime = Date.now();
+
+        // Reset active loop systems, preserve personal bests and lifetime completions
+        State.loopSystems = {
+            miracleStreak: 0,
+            bestMiracleStreak: bestMiracleStreak,
+            lastMiracleClickAt: 0,
+            lastStreakDecayAt: 0,
+            divineEventChain: 0,
+            bestDivineEventChain: bestDivineEventChain,
+            lastDivineEventClaimAt: 0,
+            totalDivineEventsClaimed: 0,
+            overclock: {
+                charge: 0,
+                active: false,
+                endsAt: 0,
+                duration: 30000
+            },
+            directives: {
+                active: null,
+                completed: completedDirectives,
+                rerolls: rerolledDirectives,
+                lastCompletedAt: 0
+            }
+        };
 
         // Keep mandates, achievements, documents, unlocked apps
 

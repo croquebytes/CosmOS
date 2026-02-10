@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CosmOS v1.0 - Divine Maintenance Suite</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" crossorigin href="/assets/index-CjL_joeC.css">
+</head>
+
+<body class="booting">
+    <div class="crt-overlay"></div>
+    <div id="desktop">
+        <!-- Desktop Icons -->
+        <div class="desktop-icons">
+            <div class="icon" id="icon-console" onclick="system.openApp('console')">
+                <div class="icon-img console-icon"></div>
+                <span class="icon-label">Universal Engine</span>
+            </div>
+            <div class="icon" id="icon-mandates" onclick="system.openApp('mandates')">
+                <div class="icon-img mandates-icon"></div>
+                <span class="icon-label">Divine Mandates</span>
+            </div>
+            <div class="icon" id="icon-dimensions" onclick="system.openApp('dimensions')" style="display: none;">
+                <div class="icon-img dimensions-icon"></div>
+                <span class="icon-label">Dimension Explorer</span>
+            </div>
+            <div class="icon" id="icon-notepad" onclick="system.openApp('notepad')" style="display: none;">
+                <div class="icon-img notepad-icon"></div>
+                <span class="icon-label">Notepad</span>
+            </div>
+            <div class="icon" id="icon-taskmgr" onclick="system.openApp('taskmgr')">
+                <div class="icon-img taskmgr-icon"></div>
+                <span class="icon-label">Task Manager</span>
+            </div>
+            <div class="icon" id="icon-recyclebin" onclick="system.openApp('recyclebin')">
+                <div class="icon-img recyclebin-icon"></div>
+                <span class="icon-label">Recycle Bin</span>
+            </div>
+            <div class="icon" id="icon-divineglobe" onclick="system.openApp('divineglobe')" style="display: none;">
+                <div class="icon-img globe-icon"></div>
+                <span class="icon-label">Divine Globe</span>
+            </div>
+            <div class="icon" id="icon-divinecalls" onclick="system.openApp('divinecalls')" style="display: none;">
+                <div class="icon-img calls-icon"></div>
+                <span class="icon-label">Divine Calls</span>
+            </div>
+            <div class="icon" id="icon-adorationshop" onclick="system.openApp('adorationshop')" style="display: none;">
+                <div class="icon-img shop-icon"></div>
+                <span class="icon-label">Adoration Shop</span>
+            </div>
+            <div class="icon" id="icon-settings" onclick="system.openApp('settings')">
+                <div class="icon-img settings-icon"></div>
+                <span class="icon-label">Divine Settings</span>
+            </div>
+        </div>
+
+        <!-- Windows Container -->
+        <div id="window-layer"></div>
+
+        <!-- Taskbar -->
+        <div id="taskbar">
+            <button id="start-button">
+                <div class="genesis-logo"></div>
+                <span>Genesis</span>
+            </button>
+            <div id="active-tasks"></div>
+            <div id="system-tray">
+                <span id="epoch-time">Epoch 0.0.0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Boot Overlay -->
+    <div id="boot-overlay">
+        <div class="boot-text">
+            <p>CosmOS(TM) BIOS v4.2.0.69</p>
+            <p>Copyright (C) 1,000,000,000,000 BC, Celestial Micro-Systems</p>
+            <br>
+            <p>Scanning Universe Layers... OK</p>
+            <p>Allocating Soul-Storage... OK</p>
+            <p>Initializing Divine Providence... OK</p>
+            <p>Repairing Broken Realities... WARNING: SECTOR 7G CORRUPTED</p>
+            <br>
+            <p>Press DEL to enter Setup, F8 for Miracle Mode</p>
+            <p class="blink">Loading System...</p>
+        </div>
+    </div>
+
+    <script src="js/state.js"></script>
+    <script src="js/system.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/game.js"></script>
+</body>
+
+</html>

@@ -44,6 +44,7 @@ const ui = {
         this.updateSeraphButton();
         this.updateCherubButton();
         this.updateSkillButtons();
+        this.updateLoopPanels();
         this.updateDimensionDisplay();
     },
 
@@ -117,15 +118,134 @@ const ui = {
             u.innerText = this.formatNumber(Math.floor((Date.now() - State.startTime) / 1000)) + "s";
         }
         if (pRate) {
+            const now = Date.now();
             const baseProduction = State.automatons.seraphProduction || 1;
-            const praisePerSec = State.pps * baseProduction * State.praiseMultiplier;
+            const loops = State.loopSystems || {};
+            const streakBonus = 1 + Math.min(0.35, (loops.miracleStreak || 0) * 0.007);
+            const overclockBonus = (loops.overclock?.active && now < loops.overclock?.endsAt) ? 1.5 : 1;
+            const interventionBonus = (State.skills?.divineIntervention?.active && now < State.skills.divineIntervention.endsAt) ? 2 : 1;
+            const achievementBonuses = State.achievementBonuses || {};
+            const totalBonus = interventionBonus * streakBonus * overclockBonus * (achievementBonuses.automationSpeed || 1);
+            const praisePerSec = State.pps * baseProduction * State.praiseMultiplier * totalBonus *
+                (achievementBonuses.praiseGain || 1) * (achievementBonuses.globalGain || 1);
             pRate.innerText = this.formatNumber(praisePerSec, 1);
         }
         if (sRate) {
+            const now = Date.now();
             const baseProduction = State.automatons.cherubProduction || 1;
-            const soulPerSec = State.sps * baseProduction * State.soulMultiplier;
+            const loops = State.loopSystems || {};
+            const streakBonus = 1 + Math.min(0.35, (loops.miracleStreak || 0) * 0.007);
+            const overclockBonus = (loops.overclock?.active && now < loops.overclock?.endsAt) ? 1.5 : 1;
+            const interventionBonus = (State.skills?.divineIntervention?.active && now < State.skills.divineIntervention.endsAt) ? 2 : 1;
+            const achievementBonuses = State.achievementBonuses || {};
+            const totalBonus = interventionBonus * streakBonus * overclockBonus * (achievementBonuses.automationSpeed || 1);
+            const soulPerSec = State.sps * baseProduction * State.soulMultiplier * totalBonus *
+                (achievementBonuses.soulGain || 1) * (achievementBonuses.globalGain || 1);
             sRate.innerText = this.formatNumber(soulPerSec, 1);
         }
+    },
+
+    updateLoopPanels() {
+        const loops = State.loopSystems;
+        if (!loops) return;
+
+        const now = Date.now();
+        const streakCount = loops.miracleStreak || 0;
+        const streakMultiplier = 1 + Math.min(1.5, streakCount * 0.04);
+
+        const streakCountEl = document.getElementById('loop-streak-count');
+        const streakMultiEl = document.getElementById('loop-streak-multi');
+        const streakBestEl = document.getElementById('loop-best-streak');
+        const streakFillEl = document.getElementById('loop-streak-fill');
+
+        if (streakCountEl) streakCountEl.innerText = this.formatNumber(streakCount);
+        if (streakMultiEl) streakMultiEl.innerText = `${streakMultiplier.toFixed(2)}×`;
+        if (streakBestEl) streakBestEl.innerText = this.formatNumber(loops.bestMiracleStreak || 0);
+        if (streakFillEl) streakFillEl.style.width = `${Math.min(100, streakCount * 2.5)}%`;
+
+        const overclock = loops.overclock || {};
+        const overclockCharge = overclock.charge || 0;
+        const overclockActive = !!overclock.active && now < (overclock.endsAt || 0);
+        const overclockRemaining = overclockActive ? Math.max(0, Math.ceil((overclock.endsAt - now) / 1000)) : 0;
+
+        const overclockStatusEl = document.getElementById('loop-overclock-status');
+        const overclockFillEl = document.getElementById('loop-overclock-fill');
+        const overclockBtn = document.getElementById('btn-overclock');
+
+        if (overclockStatusEl) {
+            if (overclockActive) {
+                overclockStatusEl.innerText = `Active (${overclockRemaining}s)`;
+            } else if (overclockCharge >= 100) {
+                overclockStatusEl.innerText = 'Ready to Trigger';
+            } else {
+                overclockStatusEl.innerText = `Charging ${Math.floor(overclockCharge)}%`;
+            }
+        }
+
+        if (overclockFillEl) {
+            const fillValue = overclockActive ? 100 : overclockCharge;
+            overclockFillEl.style.width = `${Math.max(0, Math.min(100, fillValue))}%`;
+        }
+
+        if (overclockBtn) {
+            if (overclockActive) {
+                overclockBtn.innerText = `Overclock Active (${overclockRemaining}s)`;
+                overclockBtn.disabled = true;
+            } else if (overclockCharge >= 100) {
+                overclockBtn.innerText = 'Trigger Overclock';
+                overclockBtn.disabled = false;
+            } else {
+                overclockBtn.innerText = `Trigger Overclock (${Math.floor(overclockCharge)}%)`;
+                overclockBtn.disabled = true;
+            }
+        }
+
+        const directive = loops.directives?.active;
+        const directiveTitleEl = document.getElementById('directive-title');
+        const directiveProgressTextEl = document.getElementById('directive-progress-text');
+        const directiveFillEl = document.getElementById('directive-progress-fill');
+        const directiveRewardEl = document.getElementById('directive-reward');
+        const directiveCompletedEl = document.getElementById('directive-completed-count');
+        const claimBtn = document.getElementById('btn-claim-directive');
+        const rerollBtn = document.getElementById('btn-reroll-directive');
+
+        if (directiveCompletedEl) {
+            directiveCompletedEl.innerText = this.formatNumber(loops.directives?.completed || 0);
+        }
+
+        if (!directive) {
+            if (directiveTitleEl) directiveTitleEl.innerText = 'Calibrating directive feed...';
+            if (directiveProgressTextEl) directiveProgressTextEl.innerText = '0 / 0';
+            if (directiveFillEl) directiveFillEl.style.width = '0%';
+            if (directiveRewardEl) directiveRewardEl.innerText = 'Reward: --';
+            if (claimBtn) claimBtn.disabled = true;
+            if (rerollBtn) rerollBtn.disabled = true;
+        } else {
+            const progress = (typeof game !== 'undefined' && typeof game.getDirectiveProgress === 'function')
+                ? game.getDirectiveProgress(directive)
+                : { current: 0, target: directive.target || 1, ratio: 0, completed: !!directive.completed };
+
+            if (directiveTitleEl) directiveTitleEl.innerText = directive.title || 'Directive';
+            if (directiveProgressTextEl) {
+                directiveProgressTextEl.innerText = `${this.formatNumber(progress.current)} / ${this.formatNumber(progress.target)}`;
+            }
+            if (directiveFillEl) {
+                directiveFillEl.style.width = `${Math.max(0, Math.min(100, (progress.ratio || 0) * 100))}%`;
+            }
+            if (directiveRewardEl) {
+                directiveRewardEl.innerText = (typeof game !== 'undefined' && typeof game.getDirectiveRewardText === 'function')
+                    ? game.getDirectiveRewardText(directive)
+                    : 'Reward: --';
+            }
+
+            if (claimBtn) claimBtn.disabled = !progress.completed;
+            if (rerollBtn) rerollBtn.disabled = overclockCharge < 10 || progress.completed;
+        }
+
+        const chainEl = document.getElementById('loop-event-chain');
+        const bestChainEl = document.getElementById('loop-best-event-chain');
+        if (chainEl) chainEl.innerText = this.formatNumber(loops.divineEventChain || 0);
+        if (bestChainEl) bestChainEl.innerText = this.formatNumber(loops.bestDivineEventChain || 0);
     },
 
     animateNumberChange(element, from, to) {
@@ -688,8 +808,11 @@ const ui = {
                     }
                 }
 
+                const mandateEfficiency = State.achievementBonuses?.mandateEfficiency || 1;
+                const effectiveCost = Math.max(1, Math.ceil(mandate.cost / mandateEfficiency));
+
                 // Check if can afford
-                const canAfford = State.resources.souls >= mandate.cost;
+                const canAfford = State.resources.souls >= effectiveCost;
 
                 // Create mandate node element
                 const node = document.createElement('div');
@@ -701,7 +824,7 @@ const ui = {
                 node.innerHTML = `
                     <div class="mandate-name">${mandate.name}</div>
                     <div class="mandate-desc">${mandate.description}</div>
-                    <div class="mandate-cost">${isPurchased ? 'ENACTED' : (prereqsMet ? `${mandate.cost} Souls` : 'Prerequisites not met')}</div>
+                    <div class="mandate-cost">${isPurchased ? 'ENACTED' : (prereqsMet ? `${effectiveCost} Souls${effectiveCost < mandate.cost ? ` (Base ${mandate.cost})` : ''}` : 'Prerequisites not met')}</div>
                 `;
 
                 if (!isPurchased && prereqsMet) {
@@ -900,10 +1023,19 @@ const ui = {
             if (offeringsEl) offeringsEl.innerText = `${this.formatNumber(Math.floor(State.resources.offerings))} / ${this.formatNumber(State.resourceCaps.offerings)}`;
             if (soulsEl) soulsEl.innerText = `${this.formatNumber(Math.floor(State.resources.souls))} / ${this.formatNumber(State.resourceCaps.souls)}`;
 
+            const now = Date.now();
+            const loops = State.loopSystems || {};
+            const achievementBonuses = State.achievementBonuses || {};
             const seraphProd = State.automatons.seraphProduction || 1;
             const cherubProd = State.automatons.cherubProduction || 1;
-            const praisePerSec = State.pps * seraphProd * State.praiseMultiplier;
-            const soulPerSec = State.sps * cherubProd * State.soulMultiplier;
+            const streakBonus = 1 + Math.min(0.35, (loops.miracleStreak || 0) * 0.007);
+            const overclockBonus = (loops.overclock?.active && now < loops.overclock?.endsAt) ? 1.5 : 1;
+            const interventionBonus = (State.skills?.divineIntervention?.active && now < State.skills.divineIntervention.endsAt) ? 2 : 1;
+            const totalProductionBonus = interventionBonus * streakBonus * overclockBonus * (achievementBonuses.automationSpeed || 1);
+            const praisePerSec = State.pps * seraphProd * State.praiseMultiplier * totalProductionBonus *
+                (achievementBonuses.praiseGain || 1) * (achievementBonuses.globalGain || 1);
+            const soulPerSec = State.sps * cherubProd * State.soulMultiplier * totalProductionBonus *
+                (achievementBonuses.soulGain || 1) * (achievementBonuses.globalGain || 1);
 
             if (praiseRateEl) praiseRateEl.innerText = this.formatNumber(praisePerSec, 1);
             if (soulRateEl) soulRateEl.innerText = this.formatNumber(soulPerSec, 1);
@@ -935,10 +1067,18 @@ const ui = {
             if (shadowsEl) shadowsEl.innerText = `${this.formatNumber(Math.floor(vd.resources.shadows))} / ${this.formatNumber(vd.resourceCaps.shadows)}`;
             if (echoesEl) echoesEl.innerText = `${this.formatNumber(Math.floor(vd.resources.echoes))} / ${this.formatNumber(vd.resourceCaps.echoes)}`;
 
+            const now = Date.now();
+            const loops = State.loopSystems || {};
+            const achievementBonuses = State.achievementBonuses || {};
             const wraithProd = vd.automatons.wraithProduction || 1;
             const phantomProd = vd.automatons.phantomProduction || 1;
-            const darknessPerSec = vd.dps * wraithProd * vd.darknessMultiplier;
-            const echoPerSec = vd.eps * phantomProd * vd.echoMultiplier;
+            const streakBonus = 1 + Math.min(0.35, (loops.miracleStreak || 0) * 0.007);
+            const overclockBonus = (loops.overclock?.active && now < loops.overclock?.endsAt) ? 1.5 : 1;
+            const interventionBonus = (State.skills?.divineIntervention?.active && now < State.skills.divineIntervention.endsAt) ? 2 : 1;
+            const totalVoidBonus = interventionBonus * streakBonus * overclockBonus * (achievementBonuses.automationSpeed || 1) *
+                (achievementBonuses.voidGain || 1) * (achievementBonuses.voidStability || 1) * (achievementBonuses.globalGain || 1);
+            const darknessPerSec = vd.dps * wraithProd * vd.darknessMultiplier * totalVoidBonus;
+            const echoPerSec = vd.eps * phantomProd * vd.echoMultiplier * totalVoidBonus;
 
             if (darknessRateEl) darknessRateEl.innerText = this.formatNumber(darknessPerSec, 1);
             if (echoRateEl) echoRateEl.innerText = this.formatNumber(echoPerSec, 1);
@@ -1369,7 +1509,9 @@ const ui = {
         if (followersEl) followersEl.innerText = Math.floor(State.followers[dimId]?.count || 0);
 
         const followerData = State.followers[dimId];
-        const adorationRate = followerData ? followerData.count * followerData.adorationRate : 0;
+        const timelineAdorationBonus = State.timelines.effects[State.timelines.current].adorationBonus || 1;
+        const adorationGlobalBonus = State.achievementBonuses?.globalGain || 1;
+        const adorationRate = followerData ? followerData.count * followerData.adorationRate * timelineAdorationBonus * adorationGlobalBonus : 0;
         if (adorationRateEl) adorationRateEl.innerText = this.formatNumber(adorationRate, 2);
 
         const adorationEl = document.getElementById('val-adoration');
@@ -1380,6 +1522,7 @@ const ui = {
             for (const dim in State.followers) {
                 totalRate += State.followers[dim].count * State.followers[dim].adorationRate;
             }
+            totalRate *= timelineAdorationBonus * adorationGlobalBonus;
             adorationRateMainEl.innerText = this.formatNumber(totalRate, 2);
         }
     },
@@ -1466,6 +1609,20 @@ const ui = {
     },
 
     // === TASK MANAGER FUNCTIONS ===
+    getTaskManagerEndedProcesses() {
+        State.taskManager = State.taskManager || {};
+
+        // Normalize older/newer save keys into a single source of truth.
+        if (!Array.isArray(State.taskManager.processesEnded)) {
+            State.taskManager.processesEnded = Array.isArray(State.taskManager.endedProcesses)
+                ? State.taskManager.endedProcesses
+                : [];
+        }
+
+        State.taskManager.endedProcesses = State.taskManager.processesEnded;
+        return State.taskManager.processesEnded;
+    },
+
     updateTaskManagerList() {
         const tbody = document.getElementById('taskmgr-process-list');
         const countEl = document.getElementById('taskmgr-process-count');
@@ -1479,9 +1636,10 @@ const ui = {
         let totalCPU = 0;
         let totalMemory = 0;
         let runningCount = 0;
+        const endedProcesses = this.getTaskManagerEndedProcesses();
 
         TaskManagerProcesses.forEach(proc => {
-            const isRunning = !State.taskmgr.endedProcesses.includes(proc.name);
+            const isRunning = !endedProcesses.includes(proc.name);
             if (!isRunning) return; // Don't show ended processes
 
             runningCount++;
@@ -1528,9 +1686,11 @@ const ui = {
     endProcess(processName) {
         const process = TaskManagerProcesses.find(p => p.name === processName);
         if (!process) return;
+        const endedProcesses = this.getTaskManagerEndedProcesses();
+        State.achievementProgress.taskmgr_actions = (State.achievementProgress.taskmgr_actions || 0) + 1;
 
         // Check if already ended
-        if (State.taskmgr.endedProcesses.includes(processName)) {
+        if (endedProcesses.includes(processName)) {
             ui.log('Process already terminated.');
             return;
         }
@@ -1544,7 +1704,7 @@ const ui = {
 
         // If endable
         if (process.endable) {
-            State.taskmgr.endedProcesses.push(processName);
+            endedProcesses.push(processName);
 
             // Track for achievement ACH-011 (End 10 processes)
             State.achievementProgress.processes_ended = (State.achievementProgress.processes_ended || 0) + 1;
