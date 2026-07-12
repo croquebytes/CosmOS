@@ -374,6 +374,7 @@ const system = {
         this.applyInitialWindowLayout(id, win);
         this.updateWindowControlState(id);
         win.addEventListener('mousedown', () => this.focusWindow(id));
+        this.focusWindow(id);
 
         if (appConfig.onOpen) appConfig.onOpen();
     },
@@ -383,12 +384,22 @@ const system = {
             this.windows[id].remove();
             delete this.windows[id];
             delete this.windowStates[id];
+
+            const remaining = Object.keys(this.windows);
+            if (remaining.length) {
+                const topmost = remaining.reduce((a, b) =>
+                    (parseInt(this.windows[a].style.zIndex, 10) || 0) >=
+                    (parseInt(this.windows[b].style.zIndex, 10) || 0) ? a : b);
+                this.focusWindow(topmost);
+            }
         }
     },
 
     focusWindow(id) {
         if (this.windows[id]) {
             this.windows[id].style.zIndex = ++this.zIndex;
+            Object.values(this.windows).forEach(w => w.classList.remove('window-active'));
+            this.windows[id].classList.add('window-active');
         }
     },
 

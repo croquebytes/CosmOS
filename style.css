@@ -1,4 +1,6 @@
 :root {
+    /* ── Design tokens (see DESIGN_DIRECTION.md) ─────────────── */
+
     /* 90s OS Palette */
     --win-bg: #c0c0c0;
     --win-border-light: #ffffff;
@@ -9,15 +11,32 @@
 
     /* Divine Palette */
     --celestial-gold: #ffd700;
+    --celestial-gold-light: #ffe873;
+    --celestial-gold-dark: #b8860b;
+    --divine-violet: #8a2be2;
+    --divine-violet-deep: #4b0082;
     --divine-blue: #4a90e2;
-    --void-black: #0a0a0d;
+    --void-black: #0a0817;
     --praise-white: #f5f5f7;
 
-    /* Shadows & Effects */
-    --bevel-outset: 1px solid var(--win-border-light),
-        -1px solid var(--win-border-dark),
-        inset 1px solid var(--win-border-light),
-        inset -1px solid var(--win-border-dark);
+    /* Cosmic backdrop */
+    --space-deep: #0a0817;
+    --space-mid: #120e2b;
+    --space-core: #1b1440;
+
+    /* Window chrome */
+    --title-active-a: #0d0b3d;
+    --title-active-b: #4531b8;
+    --title-active-c: #6a5acd;
+    --title-inactive-a: #5a5a66;
+    --title-inactive-b: #8b8b98;
+
+    /* Win98 double bevel (raised) — keep as one token so
+       snapped/flat variants can reuse it without the drop shadow */
+    --bevel-raised: inset -1px -1px var(--void-black),
+        inset 1px 1px #e8e8f0,
+        inset -2px -2px #7a7a88,
+        inset 2px 2px #ffffff;
 }
 
 * {
@@ -32,8 +51,8 @@ html {
     height: 100%;
     overflow: hidden;
     font-family: 'Tahoma', 'Verdana', sans-serif;
-    background-color: #008080;
-    /* Classic Win95 Teal */
+    background-color: var(--space-deep);
+    /* Void, not teal — avoids the teal flash behind boot/shutdown fades */
 }
 
 /* Boot Sequence */
@@ -43,13 +62,17 @@ html {
     left: 0;
     width: 100%;
     height: 100%;
-    background: black;
-    color: #ffd700;
+    background: radial-gradient(120% 90% at 50% 8%, #101020 0%, #050508 75%);
+    color: var(--celestial-gold);
     /* Gold boot text */
     font-family: 'Courier New', monospace;
     padding: 40px;
     z-index: 10000;
     transition: opacity 1s ease-out;
+}
+
+#boot-overlay .boot-text {
+    text-shadow: 0 0 6px rgba(255, 215, 0, 0.35);
 }
 
 .crt-overlay {
@@ -82,15 +105,44 @@ html {
     }
 }
 
-/* Desktop */
+/* Desktop — self-contained cosmic wallpaper (no external assets: the old
+   hotlinked JPEG broke offline and had unclear licensing) */
 #desktop {
     width: 100vw;
     height: 100vh;
-    background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('https://w.wallhaven.cc/full/wq/wallhaven-wqo2wp.jpg');
-    background-size: cover;
-    background-position: center;
+    background:
+        radial-gradient(ellipse 85% 55% at 50% 112%, rgba(138, 43, 226, 0.30), transparent 62%),
+        radial-gradient(ellipse 60% 42% at 80% 12%, rgba(74, 144, 226, 0.16), transparent 65%),
+        radial-gradient(ellipse 50% 38% at 12% 28%, rgba(255, 215, 0, 0.06), transparent 70%),
+        radial-gradient(circle at 50% 42%, var(--space-core) 0%, var(--space-mid) 48%, var(--space-deep) 100%);
     position: relative;
+    z-index: 0;
     padding: 20px;
+}
+
+/* Starfield: three repeating dot layers at different scales */
+#desktop::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+        radial-gradient(1px 1px at 24px 34px, rgba(255, 255, 255, 0.95), transparent 100%),
+        radial-gradient(1px 1px at 130px 90px, rgba(255, 232, 115, 0.8), transparent 100%),
+        radial-gradient(1.5px 1.5px at 190px 150px, rgba(255, 255, 255, 0.7), transparent 100%),
+        radial-gradient(1px 1px at 80px 210px, rgba(156, 201, 255, 0.75), transparent 100%),
+        radial-gradient(1px 1px at 255px 55px, rgba(255, 255, 255, 0.5), transparent 100%),
+        radial-gradient(2px 2px at 320px 260px, rgba(255, 255, 255, 0.85), transparent 100%),
+        radial-gradient(1px 1px at 410px 120px, rgba(177, 140, 255, 0.7), transparent 100%),
+        radial-gradient(1px 1px at 520px 320px, rgba(255, 255, 255, 0.6), transparent 100%);
+    background-size: 340px 340px, 340px 340px, 480px 480px, 480px 480px, 560px 560px, 620px 620px, 620px 620px, 700px 700px;
+    animation: starTwinkle 8s ease-in-out infinite alternate;
+}
+
+@keyframes starTwinkle {
+    from { opacity: 0.65; }
+    to { opacity: 1; }
 }
 
 .desktop-icons {
@@ -117,69 +169,44 @@ html {
     border: 1px solid transparent;
 }
 
+/* Icon art lives in assets/icons/*.svg — 16×16 pixel-grid SVGs, one shared
+   palette, light from top-left. See DESIGN_DIRECTION.md before adding one. */
 .icon-img {
     width: 48px;
     height: 48px;
     margin: 0 auto 5px;
-    background: var(--win-bg);
-    border: 1px solid var(--win-border-dark);
-    /* Icons placeholders */
+    background: transparent center / contain no-repeat;
+    border: none;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.55));
 }
 
-.console-icon {
-    background: linear-gradient(135deg, #ffd700, #ffed4e);
-    border: 2px solid #cc9900;
-    border-radius: 4px;
-    position: relative;
-    overflow: hidden;
-}
+.console-icon { background-image: url('assets/icons/console.svg'); }
+.mandates-icon { background-image: url('assets/icons/mandates.svg'); }
+.dimensions-icon { background-image: url('assets/icons/dimensions.svg'); }
+.notepad-icon { background-image: url('assets/icons/notepad.svg'); }
+.taskmgr-icon { background-image: url('assets/icons/taskmgr.svg'); }
+.recyclebin-icon { background-image: url('assets/icons/recyclebin.svg'); }
+.globe-icon { background-image: url('assets/icons/globe.svg'); }
+.calls-icon { background-image: url('assets/icons/calls.svg'); }
+.shop-icon { background-image: url('assets/icons/shop.svg'); }
+.settings-icon { background-image: url('assets/icons/settings.svg'); }
 
-.console-icon::before {
-    content: '⚡';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 28px;
-    filter: drop-shadow(0 0 3px rgba(0,0,0,0.3));
-}
-
-.dimensions-icon {
-    background: linear-gradient(135deg, #1a0033, #4a148c, #6a1b9a);
-    border: 2px solid #ce93d8;
-    border-radius: 8px;
-    position: relative;
-    overflow: hidden;
-}
-
-.dimensions-icon::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 20px;
-    height: 20px;
-    background: radial-gradient(circle, #b19cd9, transparent);
-    border-radius: 50%;
-    animation: dimensionPulse 2s ease-in-out infinite;
-}
-
-.mandates-icon {
-    background: linear-gradient(135deg, #8a2be2, #4b0082);
-    border: 2px solid #9370db;
-    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-}
-
-.settings-icon {
-    background: linear-gradient(135deg, #888, #666);
-    border: 2px solid #999;
-    clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+.icon .icon-label {
+    font-size: 11px;
+    line-height: 1.25;
+    padding: 1px 2px;
 }
 
 .icon:hover {
-    background: rgba(255, 255, 255, 0.2);
-    border-color: rgba(255, 255, 255, 0.4);
+    background: rgba(69, 49, 184, 0.35);
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
+.icon:hover .icon-img {
+    filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.55))
+        drop-shadow(0 0 6px rgba(255, 215, 0, 0.35));
 }
 
 /* Taskbar */
@@ -190,7 +217,8 @@ html {
     width: 100%;
     height: 32px;
     background: var(--win-bg);
-    border-top: 2px solid var(--win-border-light);
+    border-top: 1px solid var(--win-border-light);
+    box-shadow: 0 -1px 0 #7a7a88, 0 -6px 18px rgba(0, 0, 0, 0.45);
     display: flex;
     align-items: center;
     padding: 2px;
@@ -199,15 +227,24 @@ html {
 
 #start-button {
     height: 26px;
-    padding: 0 5px;
+    padding: 0 7px 0 5px;
     background: var(--win-bg);
     border: 2px solid;
     border-color: var(--win-border-light) var(--win-border-dark) var(--win-border-dark) var(--win-border-light);
     display: flex;
     align-items: center;
+    gap: 5px;
     font-weight: bold;
     font-size: 12px;
     margin-right: 10px;
+    cursor: pointer;
+}
+
+.genesis-logo {
+    width: 16px;
+    height: 16px;
+    background: url('assets/icons/genesis.svg') center / contain no-repeat;
+    image-rendering: pixelated;
 }
 
 #start-button:active {
@@ -228,20 +265,21 @@ html {
 .window {
     position: absolute;
     background: var(--win-bg);
-    border: 2px solid;
-    border-color: var(--win-border-light) var(--win-border-dark) var(--win-border-dark) var(--win-border-light);
+    border: none;
+    padding: 3px;
     min-width: 300px;
     min-height: 200px;
     max-width: calc(100vw - 4px);
     max-height: calc(100vh - 34px);
-    box-shadow: 2px 2px 0 var(--win-border-black);
+    box-shadow: var(--bevel-raised), 4px 6px 16px rgba(0, 0, 0, 0.55);
     overflow: hidden;
 }
 
+/* Inactive by default; system.focusWindow() moves .window-active around */
 .window-title-bar {
     height: 24px;
-    background: linear-gradient(90deg, #000080, #1084d0);
-    color: white;
+    background: linear-gradient(90deg, var(--title-inactive-a), var(--title-inactive-b));
+    color: #d8d8e0;
     padding: 2px 6px;
     display: flex;
     align-items: center;
@@ -249,6 +287,11 @@ html {
     font-size: 12px;
     text-shadow: 1px 1px black;
     cursor: move;
+}
+
+.window.window-active .window-title-bar {
+    background: linear-gradient(90deg, var(--title-active-a), var(--title-active-b) 65%, var(--title-active-c));
+    color: white;
 }
 
 .window-title {
@@ -297,7 +340,7 @@ html {
 }
 
 .window-snapped {
-    box-shadow: none;
+    box-shadow: var(--bevel-raised);
 }
 
 body.dragging-window,
@@ -1802,101 +1845,8 @@ body.resizing-window {
 }
 
 /* Notepad Desktop Icon */
-.notepad-icon {
-    background: linear-gradient(135deg, #fff, #e0e0e0);
-    border: 2px solid #999;
-    border-radius: 2px;
-    position: relative;
-    overflow: hidden;
-}
-
-.notepad-icon::before {
-    content: '';
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    right: 8px;
-    height: 3px;
-    background: var(--win-blue);
-}
-
-.notepad-icon::after {
-    content: '';
-    position: absolute;
-    top: 18px;
-    left: 8px;
-    right: 8px;
-    bottom: 8px;
-    background: repeating-linear-gradient(
-        180deg,
-        transparent,
-        transparent 5px,
-        #ccc 5px,
-        #ccc 6px
-    );
-}
-
-/* Task Manager Desktop Icon */
-.taskmgr-icon {
-    background: linear-gradient(135deg, #2c3e50, #34495e);
-    border: 2px solid #1a252f;
-    position: relative;
-    overflow: hidden;
-}
-
-.taskmgr-icon::before {
-    content: '';
-    position: absolute;
-    bottom: 8px;
-    left: 8px;
-    right: 8px;
-    height: 20px;
-    background: repeating-linear-gradient(
-        90deg,
-        #27ae60 0px,
-        #27ae60 3px,
-        transparent 3px,
-        transparent 6px
-    );
-}
-
-.taskmgr-icon::after {
-    content: '';
-    position: absolute;
-    top: 6px;
-    left: 6px;
-    right: 6px;
-    height: 2px;
-    background: #3498db;
-    box-shadow: 0 4px 0 #3498db, 0 8px 0 #3498db;
-}
-
-/* Recycle Bin Desktop Icon */
-.recyclebin-icon {
-    background: linear-gradient(135deg, #546e7a, #37474f);
-    border: 2px solid #263238;
-    position: relative;
-    overflow: hidden;
-}
-
-.recyclebin-icon::before {
-    content: '🗑️';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 28px;
-}
-
-.recyclebin-icon::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 8px;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-}
+/* Notepad / Task Manager / Recycle Bin desktop icons: art moved to
+   assets/icons/*.svg (see the consolidated icon block near the top) */
 
 /* Prestige Section */
 .prestige-section {
@@ -1968,59 +1918,8 @@ body.resizing-window {
     text-align: center;
 }
 
-/* === DIVINE GLOBE ICON === */
-.globe-icon {
-    background: radial-gradient(circle, #4a90e2, #1a3a5c);
-    border: 2px solid #ffffff;
-    border-radius: 50%;
-    position: relative;
-    overflow: hidden;
-}
-
-.globe-icon::before {
-    content: '🌐';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 24px;
-}
-
-/* === DIVINE CALLS ICON === */
-.calls-icon {
-    background: linear-gradient(135deg, #ffd700, #ff8c00);
-    border: 2px solid #ffed4e;
-    border-radius: 8px;
-    position: relative;
-    overflow: hidden;
-}
-
-.calls-icon::before {
-    content: '📞';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 24px;
-}
-
-/* === ADORATION SHOP ICON === */
-.shop-icon {
-    background: linear-gradient(135deg, #9c27b0, #e91e63);
-    border: 2px solid #ba68c8;
-    border-radius: 4px;
-    position: relative;
-    overflow: hidden;
-}
-
-.shop-icon::before {
-    content: '🛍️';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 24px;
-}
+/* Divine Globe / Divine Calls / Adoration Shop desktop icons: art moved to
+   assets/icons/*.svg (see the consolidated icon block near the top) */
 
 /* === GLOBE PANEL === */
 .globe-panel {
@@ -2993,4 +2892,20 @@ body.performance-mode .crt-overlay {
     .host-bark-notification.show {
         right: 12px;
     }
+}
+
+/* ═══ Visual Identity Pass v1 additions ═══ */
+
+/* Divine Core gets an ambient glow befitting a universal engine */
+#core-canvas {
+    filter: drop-shadow(0 0 14px rgba(255, 215, 0, 0.30));
+}
+
+/* Respect low-spec machines: static sky, no glow */
+body.performance-mode #desktop::before {
+    animation: none;
+}
+
+body.performance-mode #core-canvas {
+    filter: none;
 }
