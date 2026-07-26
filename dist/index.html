@@ -5,10 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CosmOS v1.0 - Divine Maintenance Suite</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" crossorigin href="/assets/index-CjL_joeC.css">
+  <link rel="stylesheet" crossorigin href="/assets/index-DD0lOBSe.css">
 </head>
 
 <body class="booting">
@@ -61,9 +58,46 @@
         <!-- Windows Container -->
         <div id="window-layer"></div>
 
+        <!-- Persistent shift context: the desktop should always answer "what now?" -->
+        <aside id="operator-status" class="operator-status" aria-live="polite">
+            <div class="operator-status-header">
+                <span>CMS // ACTIVE SHIFT</span>
+                <span id="operator-sector-status">SECTOR 7G: UNSTABLE</span>
+            </div>
+            <div class="operator-status-body">
+                <div class="operator-kicker">CURRENT DIRECTIVE</div>
+                <div id="operator-objective" class="operator-objective">Awaiting divine telemetry…</div>
+                <div class="operator-progress-track" aria-hidden="true">
+                    <div id="operator-progress-fill" class="operator-progress-fill"></div>
+                </div>
+                <div id="operator-progress-text" class="operator-progress-text">0 / 0</div>
+                <div class="operator-divider"></div>
+                <div class="operator-kicker">NEXT SYSTEM MILESTONE</div>
+                <div id="operator-next-milestone" class="operator-next-milestone">Calibrating…</div>
+                <button class="operator-open-button" onclick="system.openApp('console')">Open Universal Engine <span>C</span></button>
+            </div>
+        </aside>
+
+        <div id="start-menu" class="start-menu" hidden aria-label="Genesis menu">
+            <div class="start-menu-rail"><span>COSMOS</span></div>
+            <div class="start-menu-content">
+                <div class="start-menu-identity">
+                    <strong>OPERATOR</strong>
+                    <span>Divine Maintenance, Sector 7G</span>
+                </div>
+                <div id="start-menu-apps" class="start-menu-apps"></div>
+                <button class="start-menu-action" onclick="ui.showOperatorBriefing(true)">
+                    <span class="start-menu-icon">?</span>
+                    <span><strong>Shift Briefing</strong><small>Review controls and assignment</small></span>
+                </button>
+            </div>
+        </div>
+
+        <div id="system-modal-layer" class="system-modal-layer" aria-live="polite"></div>
+
         <!-- Taskbar -->
         <div id="taskbar">
-            <button id="start-button">
+            <button id="start-button" type="button" onclick="system.toggleStartMenu()" aria-expanded="false">
                 <div class="genesis-logo"></div>
                 <span>Genesis</span>
             </button>

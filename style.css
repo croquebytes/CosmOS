@@ -1,17 +1,81 @@
+/* ============================================================
+   CosmOS Visual Identity — "Sacred machinery, cast in metal"
+
+   The OS keeps its structure (title bars, bevels, a taskbar) because the
+   premise needs it. What changes is the MATERIAL. Nothing here is moulded
+   grey plastic; every surface is either patinated iron, aged brass, or the
+   vellum that divine records are written on. Two typefaces only: Georgia
+   speaks for the institution, Courier New speaks for the machine.
+   ============================================================ */
 :root {
-    /* 90s OS Palette */
-    --win-bg: #c0c0c0;
-    --win-border-light: #ffffff;
-    --win-border-dark: #808080;
-    --win-border-black: #000000;
-    --win-blue: #000080;
-    --win-blue-light: #1084d0;
+    /* ── Iron: the housing the Sacred OS is cast from ── */
+    --cos-void: #04060a;
+    --cos-abyss: #090d15;
+    --cos-iron-900: #121823;
+    --cos-iron-800: #1a2230;
+    --cos-iron-700: #26303f;
+    --cos-iron-600: #364356;
+    --cos-iron-500: #4c5c73;
+
+    /* ── Vellum: the surface records are written on ── */
+    --cos-vellum-100: #f4efe4;
+    --cos-vellum-200: #e6dfcf;
+    --cos-vellum-300: #d5cbb6;
+    --cos-vellum-400: #bbb098;
+    --cos-vellum-500: #978c76;
+
+    /* ── Brass: every ornament, every edge-light ── */
+    --cos-brass-100: #f7e6ba;
+    --cos-brass-300: #dec483;
+    --cos-brass-500: #b4914a;
+    --cos-brass-700: #77592b;
+    --cos-brass-900: #3e2f16;
+
+    /* ── Verdigris: aged copper, the secondary accent ── */
+    --cos-verd-300: #8ac8b6;
+    --cos-verd-500: #42907d;
+    --cos-verd-700: #225049;
+
+    /* ── Ichor: the void, corruption, prestige ── */
+    --cos-ichor-300: #cfaaf4;
+    --cos-ichor-500: #9063db;
+    --cos-ichor-700: #4f2e80;
+
+    /* ── Light and ink ── */
+    --cos-halo: #fff7de;
+    --cos-ink: #1b1712;
+    --cos-ink-dim: #5b5245;
+    --cos-ink-inv: #dbe2ee;
+    --cos-ink-inv-dim: #8c99ad;
+    --cos-alarm: #d4553a;
+
+    /* ── Type: the institution and the machine ── */
+    --cos-font-display: Georgia, 'Times New Roman', serif;
+    --cos-font-machine: 'Courier New', 'Consolas', monospace;
+
+    /* ── Structural rhythm ── */
+    --cos-edge: 1px;
+    --cos-radius: 2px;
+
+    /* ------------------------------------------------------------
+       Legacy tokens, remapped onto the identity above. These are now
+       the INTERIOR set: panels, wells and bevels that sit on vellum
+       inside a window. The iron housing (taskbar, title bars, buttons,
+       start menu) addresses --cos-iron-* directly, so the two surfaces
+       can never drift into dark-on-dark.
+       ------------------------------------------------------------ */
+    --win-bg: var(--cos-vellum-300);
+    --win-border-light: var(--cos-vellum-100);
+    --win-border-dark: var(--cos-vellum-500);
+    --win-border-black: var(--cos-iron-900);
+    --win-blue: var(--cos-brass-700);
+    --win-blue-light: var(--cos-brass-500);
 
     /* Divine Palette */
-    --celestial-gold: #ffd700;
-    --divine-blue: #4a90e2;
-    --void-black: #0a0a0d;
-    --praise-white: #f5f5f7;
+    --celestial-gold: var(--cos-brass-300);
+    --divine-blue: var(--cos-verd-300);
+    --void-black: var(--cos-void);
+    --praise-white: var(--cos-halo);
 
     /* Shadows & Effects */
     --bevel-outset: 1px solid var(--win-border-light),
@@ -31,9 +95,8 @@ body,
 html {
     height: 100%;
     overflow: hidden;
-    font-family: 'Tahoma', 'Verdana', sans-serif;
-    background-color: #008080;
-    /* Classic Win95 Teal */
+    font-family: var(--cos-font-machine);
+    background-color: var(--cos-void);
 }
 
 /* Boot Sequence */
@@ -86,11 +149,27 @@ html {
 #desktop {
     width: 100vw;
     height: 100vh;
-    background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('https://w.wallhaven.cc/full/wq/wallhaven-wqo2wp.jpg');
+    background-color: var(--cos-void);
+    /* Authored plate; swapped per dimension by ui.applyDesktopPlate(). */
+    background-image: url('assets/backgrounds/desktop_primordial.webp');
     background-size: cover;
     background-position: center;
     position: relative;
     padding: 20px;
+    transition: background-image 600ms ease-out;
+}
+
+/* A soft lamp behind the icon rail, and just enough falloff at the edges
+   that window chrome never has to fight the plate's detail. */
+#desktop::after {
+    content: '';
+    position: absolute;
+    inset: 0 0 32px;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse 380px 620px at 4% 42%, rgba(180, 145, 74, 0.09), transparent 70%),
+        linear-gradient(100deg, rgba(4, 6, 10, 0.3) 0 30%, transparent 58%, rgba(4, 6, 10, 0.28) 100%),
+        radial-gradient(ellipse at 50% 118%, transparent 46%, rgba(4, 6, 10, 0.42) 100%);
 }
 
 .desktop-icons {
@@ -117,69 +196,158 @@ html {
     border: 1px solid transparent;
 }
 
+/* ── Authored icon plaques ──────────────────────────────────
+   Every icon is a 96px master rendered at 48px, so the 2:1 downscale stays
+   exact and the chamfered edges never land on a half pixel. */
 .icon-img {
     width: 48px;
     height: 48px;
+    flex: 0 0 48px;
     margin: 0 auto 5px;
-    background: var(--win-bg);
-    border: 1px solid var(--win-border-dark);
-    /* Icons placeholders */
+    background: center / contain no-repeat;
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.65));
+    transition: filter 140ms ease-out, transform 140ms ease-out;
 }
 
-.console-icon {
-    background: linear-gradient(135deg, #ffd700, #ffed4e);
-    border: 2px solid #cc9900;
-    border-radius: 4px;
-    position: relative;
-    overflow: hidden;
+.console-icon { background-image: url('assets/icons/engine_96.png'); }
+.mandates-icon { background-image: url('assets/icons/mandates_96.png'); }
+.dimensions-icon { background-image: url('assets/icons/dimensions_96.png'); }
+.notepad-icon { background-image: url('assets/icons/notepad_96.png'); }
+.taskmgr-icon { background-image: url('assets/icons/taskmgr_96.png'); }
+.recyclebin-icon { background-image: url('assets/icons/recyclebin_96.png'); }
+.globe-icon { background-image: url('assets/icons/globe_96.png'); }
+.calls-icon { background-image: url('assets/icons/calls_96.png'); }
+.shop-icon { background-image: url('assets/icons/shop_96.png'); }
+.settings-icon { background-image: url('assets/icons/settings_96.png'); }
+
+.icon {
+    border-radius: var(--cos-radius);
+    transition: background 140ms ease-out, border-color 140ms ease-out;
 }
 
-.console-icon::before {
-    content: '⚡';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 28px;
-    filter: drop-shadow(0 0 3px rgba(0,0,0,0.3));
+.icon:hover,
+.icon:focus-visible {
+    background: rgba(180, 145, 74, 0.14);
+    border-color: rgba(222, 196, 131, 0.45);
+    outline: none;
 }
 
-.dimensions-icon {
-    background: linear-gradient(135deg, #1a0033, #4a148c, #6a1b9a);
-    border: 2px solid #ce93d8;
-    border-radius: 8px;
-    position: relative;
-    overflow: hidden;
+.icon:hover .icon-img,
+.icon:focus-visible .icon-img {
+    filter: drop-shadow(0 0 7px rgba(222, 196, 131, 0.6)) drop-shadow(0 2px 3px rgba(0, 0, 0, 0.65));
+    transform: translateY(-1px);
 }
 
-.dimensions-icon::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 20px;
-    height: 20px;
-    background: radial-gradient(circle, #b19cd9, transparent);
+.icon:active .icon-img {
+    transform: translateY(1px);
+}
+
+.icon-label {
+    font: 11px var(--cos-font-machine);
+    letter-spacing: 0.02em;
+    color: var(--cos-vellum-200);
+}
+
+/* ── Authored glyph system ──────────────────────────────────
+   Replaces the emoji set entirely. App marks reuse the desktop plaques;
+   everything else is either a struck filing code or a rank medallion, both
+   drawn in the machine typeface so nothing depends on the host emoji font. */
+.app-glyph {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 17px;
+    object-fit: contain;
+    vertical-align: -3px;
+}
+
+.start-menu-icon .app-glyph,
+.start-menu-apps .app-glyph {
+    width: 26px;
+    height: 26px;
+    flex-basis: 26px;
+    vertical-align: -6px;
+}
+
+/* A CMS filing code — the bureaucracy stamps everything. */
+.code-stamp {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    padding: 2px 5px;
+    border: 1px solid var(--cos-brass-700);
+    border-radius: 1px;
+    background: rgba(180, 145, 74, 0.12);
+    color: var(--cos-brass-700);
+    font: bold 10px var(--cos-font-machine);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.code-stamp.is-alarm {
+    border-color: var(--cos-alarm);
+    background: rgba(212, 85, 58, 0.14);
+    color: var(--cos-alarm);
+}
+
+/* Struck rank medallion, standing in for the old medal emoji. */
+.tier-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.85em;
+    height: 1.85em;
     border-radius: 50%;
-    animation: dimensionPulse 2s ease-in-out infinite;
+    border: 1px solid rgba(0, 0, 0, 0.45);
+    font: bold 0.62em var(--cos-font-machine);
+    letter-spacing: 0.02em;
+    color: rgba(22, 18, 11, 0.74);
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.3);
+    box-shadow:
+        inset 0 1px 2px rgba(255, 255, 255, 0.42),
+        inset 0 -2px 3px rgba(0, 0, 0, 0.34);
 }
 
-.mandates-icon {
-    background: linear-gradient(135deg, #8a2be2, #4b0082);
-    border: 2px solid #9370db;
-    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+.tier-mark.tier-bronze { background: radial-gradient(circle at 34% 28%, #e2ab7a, #8b562d 70%, #5d3719); }
+.tier-mark.tier-silver { background: radial-gradient(circle at 34% 28%, #f3f5f8, #9ba4ae 70%, #666e78); }
+.tier-mark.tier-gold { background: radial-gradient(circle at 34% 28%, #ffecab, #caa240 70%, #8b6b1f); }
+.tier-mark.tier-platinum { background: radial-gradient(circle at 34% 28%, #ebf7ff, #b7cadc 70%, #7e91a4); }
+
+.tier-mark.tier-secret {
+    background: radial-gradient(circle at 34% 28%, #d0abf5, #6d40a9 70%, #41256b);
+    color: rgba(255, 247, 222, 0.9);
+    text-shadow: none;
 }
 
-.settings-icon {
-    background: linear-gradient(135deg, #888, #666);
-    border: 2px solid #999;
-    clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+.tier-mark.is-locked {
+    background: radial-gradient(circle at 34% 28%, #3b4457, #1d2532 72%, #111620);
+    color: var(--cos-ink-inv-dim);
+    text-shadow: none;
+    box-shadow: inset 0 -2px 3px rgba(0, 0, 0, 0.5);
 }
 
-.icon:hover {
-    background: rgba(255, 255, 255, 0.2);
-    border-color: rgba(255, 255, 255, 0.4);
+/* Empty states show the relevant plaque, dimmed, instead of an emoji. */
+.empty-icon img {
+    width: 64px;
+    height: 64px;
+    opacity: 0.5;
+    filter: grayscale(0.35);
+}
+
+/* The flare plate is painted on black, so it is screened rather than keyed. */
+.divine-event-icon img {
+    width: 42px;
+    height: 42px;
+    mix-blend-mode: screen;
+    filter: saturate(1.1);
+}
+
+.host-bark-icon,
+.doc-notif-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 /* Taskbar */
@@ -189,71 +357,149 @@ html {
     left: 0;
     width: 100%;
     height: 32px;
-    background: var(--win-bg);
-    border-top: 2px solid var(--win-border-light);
+    background: linear-gradient(180deg, var(--cos-iron-800), var(--cos-abyss));
+    border-top: 1px solid var(--cos-brass-700);
+    box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.55);
     display: flex;
     align-items: center;
-    padding: 2px;
+    gap: 3px;
+    padding: 3px 5px;
     z-index: 9000;
 }
 
 #start-button {
     height: 26px;
-    padding: 0 5px;
-    background: var(--win-bg);
-    border: 2px solid;
-    border-color: var(--win-border-light) var(--win-border-dark) var(--win-border-dark) var(--win-border-light);
+    padding: 0 10px;
+    background: linear-gradient(180deg, var(--cos-iron-700), var(--cos-iron-900));
+    border: 1px solid var(--cos-brass-700);
+    border-radius: var(--cos-radius);
+    color: var(--cos-brass-100);
     display: flex;
     align-items: center;
-    font-weight: bold;
-    font-size: 12px;
+    gap: 7px;
+    font: bold 11px var(--cos-font-machine);
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
     margin-right: 10px;
+    cursor: pointer;
 }
 
+#start-button:hover {
+    border-color: var(--cos-brass-500);
+    color: var(--cos-halo);
+}
+
+#start-button.pressed,
 #start-button:active {
-    border-color: var(--win-border-dark) var(--win-border-light) var(--win-border-light) var(--win-border-dark);
+    background: var(--cos-void);
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.8);
+    color: var(--cos-brass-300);
+}
+
+#active-tasks {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.taskbar-app {
+    width: min(180px, 18vw);
+    height: 25px;
+    padding: 2px 8px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    overflow: hidden;
+    white-space: nowrap;
+    background: var(--cos-iron-800);
+    border: 1px solid var(--cos-iron-600);
+    border-radius: var(--cos-radius);
+    color: var(--cos-ink-inv-dim);
+    font: 11px var(--cos-font-machine);
+    text-align: left;
+    cursor: pointer;
+}
+
+.taskbar-app:hover {
+    border-color: var(--cos-brass-700);
+    color: var(--cos-brass-100);
+}
+
+.taskbar-app span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.taskbar-app.active {
+    background: linear-gradient(180deg, var(--cos-iron-600), var(--cos-iron-800));
+    border-color: var(--cos-brass-500);
+    color: var(--cos-brass-100);
+    box-shadow: inset 0 0 9px rgba(180, 145, 74, 0.24);
 }
 
 #system-tray {
     margin-left: auto;
-    border: 2px inset var(--win-border-light);
     height: 24px;
-    padding: 0 10px;
+    padding: 0 12px;
     display: flex;
     align-items: center;
-    font-size: 11px;
+    background: var(--cos-void);
+    border: 1px solid var(--cos-iron-700);
+    border-radius: var(--cos-radius);
+    color: var(--cos-verd-300);
+    font: 11px var(--cos-font-machine);
+    letter-spacing: 0.07em;
 }
 
 /* Windows */
+/* ── Windows: an iron reliquary holding a vellum record ── */
 .window {
     position: absolute;
-    background: var(--win-bg);
-    border: 2px solid;
-    border-color: var(--win-border-light) var(--win-border-dark) var(--win-border-dark) var(--win-border-light);
+    background: var(--cos-iron-800);
+    border: 1px solid var(--cos-brass-700);
     min-width: 300px;
     min-height: 200px;
     max-width: calc(100vw - 4px);
     max-height: calc(100vh - 34px);
-    box-shadow: 2px 2px 0 var(--win-border-black);
+    box-shadow:
+        inset 0 0 0 1px var(--cos-iron-700),
+        0 10px 28px rgba(0, 0, 0, 0.62);
     overflow: hidden;
 }
 
 .window-title-bar {
-    height: 24px;
-    background: linear-gradient(90deg, #000080, #1084d0);
-    color: white;
-    padding: 2px 6px;
+    height: 26px;
+    background:
+        linear-gradient(180deg, var(--cos-iron-700), var(--cos-iron-900));
+    border-bottom: 1px solid var(--cos-brass-700);
+    color: var(--cos-brass-100);
+    padding: 2px 8px;
     display: flex;
     align-items: center;
-    font-weight: bold;
-    font-size: 12px;
-    text-shadow: 1px 1px black;
+    gap: 8px;
+    font: bold 11px var(--cos-font-machine);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.85);
     cursor: move;
+}
+
+/* A struck brass rivet, so the bar reads as a fixing rather than a header. */
+.window-title-bar::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    flex: 0 0 7px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 32% 30%, var(--cos-brass-100), var(--cos-brass-700) 62%, var(--cos-brass-900));
+    box-shadow: 0 0 5px rgba(222, 196, 131, 0.45);
 }
 
 .window-title {
     flex-grow: 1;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.09em;
 }
 
 .window-controls {
@@ -262,28 +508,43 @@ html {
 }
 
 .window-controls button {
-    width: 18px;
-    height: 15px;
-    background: var(--win-bg);
-    border: 1px solid;
-    border-color: var(--win-border-light) var(--win-border-dark) var(--win-border-dark) var(--win-border-light);
-    font-size: 9px;
-    margin-left: 2px;
+    width: 19px;
+    height: 16px;
+    background: var(--cos-iron-700);
+    border: 1px solid var(--cos-iron-600);
+    border-radius: var(--cos-radius);
+    color: var(--cos-brass-300);
+    font: bold 9px var(--cos-font-machine);
+    margin-left: 3px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     line-height: 1;
-    font-family: 'Tahoma', 'Verdana', sans-serif;
+}
+
+.window-controls button:hover {
+    background: var(--cos-iron-600);
+    border-color: var(--cos-brass-500);
+    color: var(--cos-brass-100);
+}
+
+.window-controls button:active {
+    background: var(--cos-iron-900);
 }
 
 .window-content {
     padding: 10px;
     overflow: auto;
-    height: calc(100% - 24px);
-    background: #ffffff;
-    /* Content area is often white in Win98 apps */
-    color: #000;
+    height: calc(100% - 26px);
+    /* Vellum, not office white — and faintly fibrous under the text. */
+    background-color: var(--cos-vellum-200);
+    background-image:
+        radial-gradient(circle at 18% 22%, rgba(120, 96, 52, 0.05) 0 1px, transparent 2px),
+        radial-gradient(circle at 74% 68%, rgba(120, 96, 52, 0.04) 0 1px, transparent 2px),
+        linear-gradient(150deg, var(--cos-vellum-100), var(--cos-vellum-300));
+    background-size: 61px 57px, 83px 79px, cover;
+    color: var(--cos-ink);
 }
 
 .window-resize-handle {
@@ -313,27 +574,49 @@ body.resizing-window {
     cursor: nwse-resize;
 }
 
+/* ── Controls: struck brass plate, not moulded plastic ── */
 .win-btn {
     display: block;
     width: 100%;
     margin-bottom: 10px;
-    padding: 5px;
-    background: var(--win-bg);
-    border: 2px solid;
-    border-color: var(--win-border-light) var(--win-border-dark) var(--win-border-dark) var(--win-border-light);
-    font-family: 'Tahoma', sans-serif;
-    font-size: 11px;
+    padding: 6px 8px;
+    background: linear-gradient(180deg, var(--cos-iron-700), var(--cos-iron-900));
+    border: 1px solid var(--cos-brass-700);
+    border-radius: var(--cos-radius);
+    box-shadow: inset 0 1px 0 rgba(222, 196, 131, 0.16);
+    color: var(--cos-brass-100);
+    font: 11px var(--cos-font-machine);
+    letter-spacing: 0.05em;
     cursor: pointer;
+    transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
 }
 
-.win-btn:active {
-    border-color: var(--win-border-dark) var(--win-border-light) var(--win-border-light) var(--win-border-dark);
+.win-btn:hover:not(:disabled) {
+    background: linear-gradient(180deg, var(--cos-iron-600), var(--cos-iron-800));
+    border-color: var(--cos-brass-500);
+    color: var(--cos-halo);
+}
+
+.win-btn:active:not(:disabled) {
+    background: var(--cos-void);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.75);
+}
+
+.win-btn:disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+    color: var(--cos-ink-inv-dim);
+}
+
+.win-btn:focus-visible {
+    outline: 1px solid var(--cos-brass-300);
+    outline-offset: 1px;
 }
 
 .engine-display {
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 10px;
     height: 100%;
 }
 
@@ -347,13 +630,85 @@ body.resizing-window {
     padding: 2px 5px;
 }
 
+/* The instrument well. The lit recess is CSS so it always spans the full
+   panel; the canvas on top stays a fixed transparent square, which keeps the
+   machine perfectly circular at any window width and needs no measurement. */
 .visual-core {
-    background: #050505;
-    border: 2px inset var(--win-border-dark);
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background:
+        radial-gradient(ellipse at 50% 50%, rgba(196, 156, 82, 0.13), transparent 46%),
+        radial-gradient(circle at 50% 50%, rgba(120, 190, 255, 0.05), transparent 30%),
+        linear-gradient(160deg, #06090f, #02040a 58%, #070b14);
+    border: 1px solid var(--cos-brass-700);
+    box-shadow: inset 0 0 0 1px var(--cos-iron-900), inset 0 0 40px rgba(0, 0, 0, 0.85);
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 200px;
+    min-height: 244px;
+}
+
+/* Faint engraved graticule, so the recess reads as an instrument housing. */
+.visual-core::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        repeating-linear-gradient(90deg, transparent 0 47px, rgba(196, 156, 82, 0.045) 47px 48px),
+        repeating-linear-gradient(0deg, transparent 0 47px, rgba(196, 156, 82, 0.045) 47px 48px);
+}
+
+.visual-core::before,
+.visual-core::after {
+    content: '';
+    position: absolute;
+    inset: 10px;
+    pointer-events: none;
+}
+
+.visual-core::before {
+    z-index: -1;
+    opacity: 0.4;
+    background:
+        linear-gradient(90deg, transparent 49.8%, rgba(106, 168, 214, 0.15) 50%, transparent 50.2%),
+        linear-gradient(transparent 49.8%, rgba(106, 168, 214, 0.15) 50%, transparent 50.2%);
+}
+
+.visual-core::after {
+    z-index: 2;
+    border: 1px solid rgba(130, 167, 194, 0.2);
+    box-shadow: inset 0 0 25px rgba(62, 127, 181, 0.12);
+}
+
+#core-canvas {
+    position: relative;
+    z-index: 1;
+    width: 280px;
+    height: 280px;
+    max-width: 100%;
+    filter: saturate(1.08);
+}
+
+.visual-core.is-reacting {
+    animation: coreFrameImpact 420ms ease-out;
+}
+
+.visual-core.is-reacting #core-canvas {
+    animation: coreCanvasImpact 420ms cubic-bezier(0.16, 0.8, 0.3, 1);
+}
+
+@keyframes coreFrameImpact {
+    0% { box-shadow: inset 0 0 0 rgba(255, 215, 0, 0); }
+    28% { box-shadow: inset 0 0 42px rgba(255, 215, 0, 0.24); }
+    100% { box-shadow: inset 0 0 0 rgba(255, 215, 0, 0); }
+}
+
+@keyframes coreCanvasImpact {
+    0% { transform: scale(0.96); filter: brightness(1.8) saturate(1.3); }
+    44% { transform: scale(1.035); }
+    100% { transform: scale(1); filter: brightness(1) saturate(1.08); }
 }
 
 .resource-panel {
@@ -392,7 +747,7 @@ body.resizing-window {
 }
 
 .stat-value {
-    font-family: 'Crimson Pro', serif;
+    font-family: Georgia, 'Times New Roman', serif;
     font-size: 18px;
     font-weight: bold;
     color: var(--win-blue);
@@ -424,26 +779,30 @@ body.resizing-window {
     font-weight: bold;
 }
 
+/* Verdigris for the measured buy, ichor for the reckless one — both drawn
+   from the identity palette rather than stock UI blue and purple. */
 .buy-10-btn {
-    background: linear-gradient(135deg, #4a90e2, #357abd);
-    color: #fff;
-    border-color: #7cb3f5 #2d5f8d #2d5f8d #7cb3f5;
+    background: linear-gradient(180deg, var(--cos-verd-500), var(--cos-verd-700));
+    border-color: var(--cos-verd-300);
+    color: var(--cos-halo);
 }
 
 .buy-10-btn:hover:not(:disabled) {
-    background: linear-gradient(135deg, #5ba3ff, #4a90e2);
-    box-shadow: 0 0 8px rgba(74, 144, 226, 0.4);
+    background: linear-gradient(180deg, var(--cos-verd-300), var(--cos-verd-500));
+    border-color: var(--cos-verd-300);
+    box-shadow: 0 0 9px rgba(138, 200, 182, 0.34);
 }
 
 .buy-max-btn {
-    background: linear-gradient(135deg, #9c27b0, #7b1fa2);
-    color: #fff;
-    border-color: #ba68c8 #6a1b9a #6a1b9a #ba68c8;
+    background: linear-gradient(180deg, var(--cos-ichor-500), var(--cos-ichor-700));
+    border-color: var(--cos-ichor-300);
+    color: var(--cos-halo);
 }
 
 .buy-max-btn:hover:not(:disabled) {
-    background: linear-gradient(135deg, #ab47bc, #8e24aa);
-    box-shadow: 0 0 8px rgba(156, 39, 176, 0.4);
+    background: linear-gradient(180deg, var(--cos-ichor-300), var(--cos-ichor-500));
+    border-color: var(--cos-ichor-300);
+    box-shadow: 0 0 9px rgba(207, 170, 244, 0.34);
 }
 
 .buy-10-btn:disabled, .buy-max-btn:disabled {
@@ -470,13 +829,17 @@ body.resizing-window {
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--win-bg);
-    border: 2px solid;
-    border-color: var(--win-border-light) var(--win-border-dark) var(--win-border-dark) var(--win-border-light);
+    background: linear-gradient(180deg, var(--cos-vellum-400), var(--cos-vellum-500));
+    border: 1px solid var(--cos-brass-700);
+    border-radius: var(--cos-radius);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, var(--cos-brass-300), var(--cos-brass-500));
 }
 
 ::-webkit-scrollbar-track {
-    background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAD0lEQVQImWNgYGBoYKAAABAAAgE6XvWfAAAAAElFTkSuQmCC');
+    background: rgba(27, 23, 18, 0.14);
 }
 
 /* Upgrades Section */
@@ -570,22 +933,31 @@ body.resizing-window {
 /* Floating Numbers */
 .floating-number {
     position: fixed;
-    font-family: 'Crimson Pro', serif;
+    font-family: Georgia, 'Times New Roman', serif;
     font-size: 24px;
     font-weight: bold;
     pointer-events: none;
     z-index: 10000;
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
-    animation: floatUp 1s ease-out forwards;
+    letter-spacing: 0.5px;
+    transform: translate(-50%, -15px);
+    animation: floatUp 1.15s cubic-bezier(0.16, 0.8, 0.3, 1) forwards;
 }
 
 @keyframes floatUp {
     0% {
-        transform: translateY(0) scale(1);
+        transform: translate(-50%, -4px) scale(0.7);
+        opacity: 0;
+    }
+    14% {
+        transform: translate(-50%, -22px) scale(1.14);
+        opacity: 1;
+    }
+    68% {
         opacity: 1;
     }
     100% {
-        transform: translateY(-80px) scale(1.2);
+        transform: translate(-50%, -105px) scale(0.96);
         opacity: 0;
     }
 }
@@ -623,7 +995,8 @@ body.resizing-window {
     pointer-events: none;
     z-index: 10000;
     animation: particleFloat 0.8s ease-out forwards;
-    box-shadow: 0 0 4px currentColor;
+    border: 1px solid rgba(255, 255, 255, 0.65);
+    box-shadow: 0 0 8px currentColor;
 }
 
 @keyframes particleFloat {
@@ -687,7 +1060,8 @@ body.resizing-window {
 /* Achievement Toast Notifications */
 .achievement-toast {
     position: fixed;
-    top: 80px;
+    top: auto;
+    bottom: 50px;
     right: -400px;
     width: 350px;
     background: linear-gradient(135deg, #1a1a2e, #0f3460);
@@ -717,7 +1091,7 @@ body.resizing-window {
 }
 
 .achievement-title {
-    font-family: 'Crimson Pro', serif;
+    font-family: Georgia, 'Times New Roman', serif;
     font-size: 11px;
     color: var(--celestial-gold);
     text-transform: uppercase;
@@ -727,7 +1101,7 @@ body.resizing-window {
 }
 
 .achievement-name {
-    font-family: 'Crimson Pro', serif;
+    font-family: Georgia, 'Times New Roman', serif;
     font-size: 18px;
     font-weight: bold;
     color: #fff;
@@ -811,7 +1185,7 @@ body.resizing-window {
 
 .achievement-tier-header.tier-silver {
     background: linear-gradient(90deg, rgba(192, 192, 192, 0.2), transparent);
-    border-left-color: #c0c0c0;
+    border-left-color: var(--cos-vellum-400);
 }
 
 .achievement-tier-header.tier-gold {
@@ -849,7 +1223,7 @@ body.resizing-window {
 }
 
 .achievement-toast.tier-silver {
-    border-left: 4px solid #c0c0c0;
+    border-left: 4px solid var(--cos-vellum-400);
 }
 
 .achievement-toast.tier-gold {
@@ -947,7 +1321,7 @@ body.resizing-window {
     bottom: -20px;
     left: 50%;
     transform: translateX(-50%);
-    font-family: 'Crimson Pro', serif;
+    font-family: Georgia, 'Times New Roman', serif;
     font-size: 14px;
     font-weight: bold;
     color: #ffd700;
@@ -1006,15 +1380,16 @@ body.resizing-window {
 
 .skill-btn {
     font-size: 10px;
-    background: linear-gradient(135deg, #8a2be2, #4b0082);
-    color: #fff;
-    font-weight: bold;
-    border-color: #fff #333 #333 #fff;
+    background: linear-gradient(180deg, var(--cos-ichor-500), var(--cos-ichor-700));
+    border-color: var(--cos-ichor-300);
+    color: var(--cos-halo);
+    letter-spacing: 0.06em;
 }
 
 .skill-btn:hover:not(:disabled) {
-    background: linear-gradient(135deg, #9d4edd, #5a189a);
-    box-shadow: 0 0 10px rgba(138, 43, 226, 0.4);
+    background: linear-gradient(180deg, var(--cos-ichor-300), var(--cos-ichor-500));
+    border-color: var(--cos-ichor-300);
+    box-shadow: 0 0 10px rgba(207, 170, 244, 0.34);
 }
 
 .skill-btn:disabled {
@@ -1024,8 +1399,9 @@ body.resizing-window {
 }
 
 .skill-btn.skill-active {
-    background: linear-gradient(135deg, #ffd700, #ff8c00);
-    color: #000;
+    background: linear-gradient(180deg, var(--cos-brass-300), var(--cos-brass-700));
+    border-color: var(--cos-brass-100);
+    color: var(--cos-void);
     animation: skillActivePulse 2s ease-in-out infinite;
 }
 
@@ -1309,7 +1685,7 @@ body.resizing-window {
     font-weight: bold;
     color: var(--win-blue);
     margin: 0 0 8px 0;
-    font-family: 'Crimson Pro', serif;
+    font-family: Georgia, 'Times New Roman', serif;
 }
 
 .dim-description {
@@ -1482,7 +1858,7 @@ body.resizing-window {
 
 .document-item {
     padding: 8px;
-    background: #fff;
+    background: var(--cos-vellum-100);
     border: 2px solid;
     border-color: #fff #888 #888 #fff;
     cursor: pointer;
@@ -1513,7 +1889,7 @@ body.resizing-window {
 .document-viewer {
     flex: 1;
     padding: 15px;
-    background: #fff;
+    background: var(--cos-vellum-100);
     overflow-y: auto;
 }
 
@@ -1732,7 +2108,7 @@ body.resizing-window {
 }
 
 .error pre {
-    background: #fff;
+    background: var(--cos-vellum-100);
     padding: 8px;
     border: 1px solid #ff8888;
     margin-top: 8px;
@@ -1743,7 +2119,7 @@ body.resizing-window {
 /* Document Notification Toast */
 .document-notification {
     position: fixed;
-    top: 50px;
+    top: 258px;
     right: -350px;
     width: 320px;
     background: linear-gradient(135deg, #fff, #f5f5f5);
@@ -1799,103 +2175,6 @@ body.resizing-window {
 
 .document-notification:hover {
     transform: translateX(-5px);
-}
-
-/* Notepad Desktop Icon */
-.notepad-icon {
-    background: linear-gradient(135deg, #fff, #e0e0e0);
-    border: 2px solid #999;
-    border-radius: 2px;
-    position: relative;
-    overflow: hidden;
-}
-
-.notepad-icon::before {
-    content: '';
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    right: 8px;
-    height: 3px;
-    background: var(--win-blue);
-}
-
-.notepad-icon::after {
-    content: '';
-    position: absolute;
-    top: 18px;
-    left: 8px;
-    right: 8px;
-    bottom: 8px;
-    background: repeating-linear-gradient(
-        180deg,
-        transparent,
-        transparent 5px,
-        #ccc 5px,
-        #ccc 6px
-    );
-}
-
-/* Task Manager Desktop Icon */
-.taskmgr-icon {
-    background: linear-gradient(135deg, #2c3e50, #34495e);
-    border: 2px solid #1a252f;
-    position: relative;
-    overflow: hidden;
-}
-
-.taskmgr-icon::before {
-    content: '';
-    position: absolute;
-    bottom: 8px;
-    left: 8px;
-    right: 8px;
-    height: 20px;
-    background: repeating-linear-gradient(
-        90deg,
-        #27ae60 0px,
-        #27ae60 3px,
-        transparent 3px,
-        transparent 6px
-    );
-}
-
-.taskmgr-icon::after {
-    content: '';
-    position: absolute;
-    top: 6px;
-    left: 6px;
-    right: 6px;
-    height: 2px;
-    background: #3498db;
-    box-shadow: 0 4px 0 #3498db, 0 8px 0 #3498db;
-}
-
-/* Recycle Bin Desktop Icon */
-.recyclebin-icon {
-    background: linear-gradient(135deg, #546e7a, #37474f);
-    border: 2px solid #263238;
-    position: relative;
-    overflow: hidden;
-}
-
-.recyclebin-icon::before {
-    content: '🗑️';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 28px;
-}
-
-.recyclebin-icon::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 8px;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
 }
 
 /* Prestige Section */
@@ -1966,60 +2245,6 @@ body.resizing-window {
     margin: 0;
     font-style: italic;
     text-align: center;
-}
-
-/* === DIVINE GLOBE ICON === */
-.globe-icon {
-    background: radial-gradient(circle, #4a90e2, #1a3a5c);
-    border: 2px solid #ffffff;
-    border-radius: 50%;
-    position: relative;
-    overflow: hidden;
-}
-
-.globe-icon::before {
-    content: '🌐';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 24px;
-}
-
-/* === DIVINE CALLS ICON === */
-.calls-icon {
-    background: linear-gradient(135deg, #ffd700, #ff8c00);
-    border: 2px solid #ffed4e;
-    border-radius: 8px;
-    position: relative;
-    overflow: hidden;
-}
-
-.calls-icon::before {
-    content: '📞';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 24px;
-}
-
-/* === ADORATION SHOP ICON === */
-.shop-icon {
-    background: linear-gradient(135deg, #9c27b0, #e91e63);
-    border: 2px solid #ba68c8;
-    border-radius: 4px;
-    position: relative;
-    overflow: hidden;
-}
-
-.shop-icon::before {
-    content: '🛍️';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 24px;
 }
 
 /* === GLOBE PANEL === */
@@ -2253,7 +2478,7 @@ body.resizing-window {
 
 .shop-item {
     padding: 10px;
-    background: white;
+    background: var(--cos-vellum-100);
     border: 2px solid;
     border-color: #fff #888 #888 #fff;
     cursor: pointer;
@@ -2333,7 +2558,7 @@ body.resizing-window {
     padding: 5px;
     font-family: 'Courier New', monospace;
     font-size: 9px;
-    background: #fff;
+    background: var(--cos-vellum-100);
     border: 2px inset var(--win-border-light);
     margin-bottom: 5px;
     resize: none;
@@ -2371,7 +2596,7 @@ body.resizing-window {
     padding: 4px;
     font-family: 'Courier New', monospace;
     font-size: 10px;
-    background: #fff;
+    background: var(--cos-vellum-100);
     border: 2px solid;
     border-color: var(--win-border-dark) var(--win-border-light) var(--win-border-light) var(--win-border-dark);
     cursor: pointer;
@@ -2445,7 +2670,7 @@ body.performance-mode .crt-overlay {
 .taskmgr-header {
     background: linear-gradient(180deg, #f0f0f0, #d0d0d0);
     border-bottom: 2px solid;
-    border-color: #fff #808080 #808080 #fff;
+    border-color: var(--cos-iron-600) var(--cos-abyss) var(--cos-abyss) var(--cos-iron-600);
     padding: 8px 10px;
     margin-bottom: 5px;
 }
@@ -2471,8 +2696,8 @@ body.performance-mode .crt-overlay {
     overflow-y: auto;
     overflow-x: auto;
     border: 2px solid;
-    border-color: #808080 #fff #fff #808080;
-    background: #fff;
+    border-color: var(--cos-abyss) var(--cos-iron-600) var(--cos-iron-600) var(--cos-abyss);
+    background: var(--cos-vellum-100);
 }
 
 .taskmgr-table {
@@ -2492,8 +2717,8 @@ body.performance-mode .crt-overlay {
     padding: 6px 8px;
     text-align: left;
     font-weight: bold;
-    border-bottom: 2px solid #808080;
-    border-right: 1px solid #c0c0c0;
+    border-bottom: 1px solid var(--cos-vellum-500);
+    border-right: 1px solid var(--cos-vellum-400);
     white-space: nowrap;
 }
 
@@ -2575,7 +2800,7 @@ body.performance-mode .crt-overlay {
     color: white;
     border: 1px solid #a00;
     cursor: pointer;
-    font-family: 'MS Sans Serif', Arial, sans-serif;
+    font-family: var(--cos-font-machine);
 }
 
 .btn-end-process:hover {
@@ -2615,14 +2840,14 @@ body.performance-mode .crt-overlay {
     display: flex;
     flex-direction: column;
     height: 100%;
-    font-family: 'MS Sans Serif', Arial, sans-serif;
+    font-family: var(--cos-font-machine);
     font-size: 11px;
 }
 
 .recyclebin-header {
     background: linear-gradient(180deg, #f0f0f0, #d0d0d0);
     border-bottom: 2px solid;
-    border-color: #fff #808080 #808080 #fff;
+    border-color: var(--cos-iron-600) var(--cos-abyss) var(--cos-abyss) var(--cos-iron-600);
     padding: 8px 10px;
     margin-bottom: 5px;
 }
@@ -2670,9 +2895,9 @@ body.performance-mode .crt-overlay {
     flex: 1;
     overflow-y: auto;
     padding: 10px;
-    background: #fff;
+    background: var(--cos-vellum-100);
     border: 2px solid;
-    border-color: #808080 #fff #fff #808080;
+    border-color: var(--cos-abyss) var(--cos-iron-600) var(--cos-iron-600) var(--cos-abyss);
 }
 
 .recyclebin-empty-state {
@@ -2708,7 +2933,7 @@ body.performance-mode .crt-overlay {
     margin-bottom: 8px;
     background: #f8f8f8;
     border: 2px solid;
-    border-color: #fff #808080 #808080 #fff;
+    border-color: var(--cos-iron-600) var(--cos-abyss) var(--cos-abyss) var(--cos-iron-600);
     align-items: center;
 }
 
@@ -2854,7 +3079,7 @@ body.performance-mode .crt-overlay {
     border-radius: 8px;
     padding: 15px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-    font-family: 'MS Sans Serif', Arial, sans-serif;
+    font-family: var(--cos-font-machine);
     z-index: 10000;
     cursor: pointer;
     transition: right 0.4s ease-out;
@@ -2916,6 +3141,473 @@ body.performance-mode .crt-overlay {
 .lore-whisper .host-bark-text {
     color: #f0e68c;
     font-weight: 500;
+}
+
+/* Operator shift context */
+.operator-status {
+    position: absolute;
+    top: 22px;
+    right: 26px;
+    width: 330px;
+    color: #e7edf4;
+    background: rgba(4, 12, 18, 0.9);
+    border: 1px solid #6485a8;
+    box-shadow: 0 0 0 1px #101923, 8px 10px 28px rgba(0, 0, 0, 0.36);
+    z-index: 60;
+    backdrop-filter: blur(5px);
+    font-family: 'Courier New', monospace;
+}
+
+.operator-status-header {
+    padding: 6px 8px;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    color: #071017;
+    background: linear-gradient(90deg, #d6af27, #f0d867 56%, #94b5ce);
+    font-size: 9px;
+    font-weight: bold;
+    letter-spacing: 0.4px;
+}
+
+.operator-status-body {
+    padding: 13px 14px 14px;
+}
+
+.operator-kicker,
+.briefing-eyebrow {
+    color: #7ea6ca;
+    font: bold 9px 'Courier New', monospace;
+    letter-spacing: 1.25px;
+}
+
+.operator-objective {
+    margin-top: 5px;
+    color: #fff4bb;
+    font-size: 13px;
+    font-weight: bold;
+    line-height: 1.35;
+}
+
+.operator-objective.complete {
+    color: #9ceaa4;
+}
+
+.operator-progress-track {
+    height: 8px;
+    margin-top: 9px;
+    overflow: hidden;
+    background: #101a25;
+    border: 1px solid #405369;
+}
+
+.operator-progress-fill {
+    width: 0;
+    height: 100%;
+    background: linear-gradient(90deg, #c49214, #ffe679);
+    transition: width 180ms ease-out;
+}
+
+.operator-progress-text {
+    margin-top: 5px;
+    color: #9eb0c0;
+    font-size: 10px;
+}
+
+.operator-divider {
+    height: 1px;
+    margin: 12px 0;
+    background: linear-gradient(90deg, #52697d, transparent);
+}
+
+.operator-next-milestone {
+    margin-top: 5px;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 10px;
+    line-height: 1.35;
+}
+
+.operator-next-milestone strong {
+    color: #dce9f4;
+    font-weight: normal;
+}
+
+.operator-next-milestone span {
+    flex: none;
+    color: #d8bd66;
+}
+
+.operator-open-button {
+    width: 100%;
+    margin-top: 12px;
+    padding: 7px 9px;
+    display: flex;
+    justify-content: space-between;
+    color: #e8eef4;
+    background: #142434;
+    border: 1px solid #617e98;
+    font: bold 10px 'Courier New', monospace;
+    cursor: pointer;
+}
+
+.operator-open-button:hover {
+    color: #fff5bb;
+    background: #1d3348;
+}
+
+.operator-open-button span {
+    min-width: 18px;
+    padding: 0 4px;
+    color: #101820;
+    background: #d8bd66;
+    text-align: center;
+}
+
+/* Genesis menu */
+.start-menu[hidden] {
+    display: none;
+}
+
+/* The Genesis menu is housing, not record — it stays iron. */
+.start-menu {
+    position: fixed;
+    left: 5px;
+    bottom: 34px;
+    width: 390px;
+    max-height: calc(100vh - 42px);
+    display: flex;
+    background: linear-gradient(180deg, var(--cos-iron-800), var(--cos-abyss));
+    border: 1px solid var(--cos-brass-700);
+    border-radius: var(--cos-radius);
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.72);
+    color: var(--cos-ink-inv);
+    z-index: 9100;
+}
+
+.start-menu-rail {
+    width: 34px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 9px;
+    color: #bcc5db;
+    background: linear-gradient(var(--cos-abyss), var(--cos-iron-800));
+    overflow: hidden;
+}
+
+.start-menu-rail span {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-size: 16px;
+    font-weight: bold;
+    letter-spacing: 2px;
+}
+
+.start-menu-content {
+    flex: 1;
+    min-width: 0;
+    padding: 4px;
+    overflow-y: auto;
+}
+
+.start-menu-identity {
+    padding: 9px 10px;
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid var(--cos-brass-700);
+    margin-bottom: 4px;
+}
+
+.start-menu-identity strong {
+    color: var(--cos-brass-300);
+    font: bold 12px var(--cos-font-machine);
+    letter-spacing: 0.12em;
+}
+
+.start-menu-identity span {
+    margin-top: 2px;
+    color: var(--cos-ink-inv-dim);
+    font-size: 10px;
+}
+
+.start-menu-apps {
+    display: flex;
+    flex-direction: column;
+}
+
+.start-menu-action {
+    width: 100%;
+    min-height: 48px;
+    padding: 5px 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--cos-ink-inv);
+    background: transparent;
+    border: 0;
+    border-radius: var(--cos-radius);
+    font: 11px var(--cos-font-machine);
+    text-align: left;
+    cursor: pointer;
+}
+
+.start-menu-action:hover,
+.start-menu-action:focus-visible {
+    background: rgba(180, 145, 74, 0.16);
+    color: var(--cos-brass-100);
+    outline: none;
+}
+
+.start-menu-action small {
+    display: block;
+    margin-top: 2px;
+    color: var(--cos-ink-inv-dim);
+}
+
+.start-menu-action strong {
+    color: var(--cos-brass-100);
+}
+
+.start-menu-action:hover,
+.start-menu-action:focus-visible {
+    color: #fff;
+    background: var(--cos-iron-900);
+    outline: none;
+}
+
+.start-menu-action > span:last-child {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.start-menu-action small {
+    opacity: 0.72;
+    font-size: 9px;
+}
+
+.start-menu-icon {
+    width: 30px;
+    height: 30px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    color: #f7d84b;
+    background: #10294b;
+    border: 1px solid #6e87a4;
+    font: bold 17px 'Courier New', monospace;
+}
+
+/* In-world system dialogs */
+.system-modal-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 9500;
+    display: none;
+    place-items: center;
+    padding: 20px;
+    background: rgba(1, 6, 10, 0.68);
+}
+
+.system-modal-layer.active {
+    display: grid;
+}
+
+.system-dialog {
+    width: min(680px, calc(100vw - 28px));
+    color: #111;
+    background: var(--win-bg);
+    border: 2px solid;
+    border-color: var(--win-border-light) var(--win-border-dark) var(--win-border-dark) var(--win-border-light);
+    box-shadow: 4px 4px 0 #000, 0 20px 70px rgba(0, 0, 0, 0.55);
+}
+
+.system-dialog-titlebar {
+    height: 25px;
+    padding: 3px 4px 3px 7px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: #fff;
+    background: linear-gradient(180deg, var(--cos-iron-700), var(--cos-iron-900));
+    font: bold 11px var(--cos-font-machine);
+}
+
+.system-dialog-titlebar button {
+    width: 19px;
+    height: 17px;
+    display: grid;
+    place-items: center;
+    background: var(--win-bg);
+    border: 1px solid;
+    border-color: #fff #555 #555 #fff;
+    font: bold 9px var(--cos-font-machine);
+}
+
+.briefing-hero {
+    padding: 27px 30px 23px;
+    display: grid;
+    grid-template-columns: 76px 1fr;
+    gap: 22px;
+    color: #eef6ff;
+    background:
+        radial-gradient(circle at 12% 42%, rgba(255, 215, 0, 0.15), transparent 25%),
+        linear-gradient(130deg, #06131d, #132a3f 62%, #221836);
+}
+
+.briefing-seal {
+    width: 76px;
+    height: 76px;
+    display: grid;
+    place-items: center;
+    color: #f7dd70;
+    border: 1px solid #c6a94b;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 7px rgba(198, 169, 75, 0.08);
+    font: bold 24px Georgia, 'Times New Roman', serif;
+}
+
+.briefing-hero h1 {
+    max-width: 500px;
+    margin-top: 5px;
+    color: #fff1b3;
+    font: 700 27px/1.05 Georgia, 'Times New Roman', serif;
+}
+
+.briefing-hero p,
+.offline-report-body p {
+    margin-top: 10px;
+    color: #b9c7d5;
+    font-size: 11px;
+    line-height: 1.55;
+}
+
+.briefing-order {
+    margin: 18px 22px 0;
+    padding: 14px 16px;
+    background: #f0eee3;
+    border: 1px solid #777;
+    box-shadow: inset 0 0 0 3px #fff;
+}
+
+.briefing-order > span {
+    color: #7a2020;
+    font: bold 9px 'Courier New', monospace;
+    letter-spacing: 1px;
+}
+
+.briefing-order > strong {
+    margin-top: 4px;
+    display: block;
+    color: #151d2a;
+    font: bold 16px Georgia, 'Times New Roman', serif;
+}
+
+.briefing-order ol {
+    margin: 10px 0 0 20px;
+    font-size: 11px;
+    line-height: 1.65;
+}
+
+.briefing-controls {
+    margin: 14px 22px 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    color: #444;
+    font: 10px 'Courier New', monospace;
+}
+
+kbd {
+    padding: 2px 5px;
+    color: #fff;
+    background: #202b37;
+    border: 1px solid #657383;
+    box-shadow: 1px 1px 0 #000;
+    font: bold 9px 'Courier New', monospace;
+}
+
+.system-dialog-actions {
+    padding: 17px 22px 20px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.system-dialog-actions button {
+    min-width: 112px;
+    padding: 7px 12px;
+    border: 2px solid;
+    font: bold 11px var(--cos-font-machine);
+    cursor: pointer;
+}
+
+.dialog-secondary {
+    background: var(--win-bg);
+    border-color: #fff #666 #666 #fff !important;
+}
+
+.dialog-primary {
+    color: #101820;
+    background: linear-gradient(#ffe47b, #d3aa23);
+    border-color: #fff #6f5915 #6f5915 #fff !important;
+}
+
+.offline-report {
+    width: min(560px, calc(100vw - 28px));
+}
+
+.offline-report-body {
+    padding: 24px 26px 18px;
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 18px;
+    color: #edf5fc;
+    background: linear-gradient(130deg, #06131d, #183248);
+}
+
+.offline-report-body h2 {
+    margin-top: 4px;
+    color: #fff1b3;
+    font: 700 24px Georgia, 'Times New Roman', serif;
+}
+
+.offline-report-icon {
+    width: 60px;
+    height: 60px;
+    display: grid;
+    place-items: center;
+    color: #f5d45b;
+    border: 1px solid #8da2b4;
+    border-radius: 50%;
+    font-size: 29px;
+}
+
+.offline-gains {
+    margin: 16px 22px 0;
+    padding: 0;
+    list-style: none;
+    border: 1px solid #888;
+}
+
+.offline-gains li {
+    padding: 7px 10px;
+    display: flex;
+    justify-content: space-between;
+    background: #f5f5f5;
+    border-bottom: 1px solid #ccc;
+    font: 11px 'Courier New', monospace;
+    text-transform: capitalize;
+}
+
+.offline-gains li:last-child {
+    border-bottom: 0;
+}
+
+.offline-gains strong {
+    color: #1d5c2a;
 }
 
 @media (max-width: 900px) {
@@ -2993,4 +3685,283 @@ body.performance-mode .crt-overlay {
     .host-bark-notification.show {
         right: 12px;
     }
+
+    .operator-status {
+        display: none;
+    }
+
+    .start-menu {
+        width: calc(100vw - 4px);
+    }
+
+    .briefing-hero {
+        padding: 20px;
+        grid-template-columns: 54px 1fr;
+        gap: 14px;
+    }
+
+    .briefing-seal {
+        width: 54px;
+        height: 54px;
+    }
+
+    .briefing-hero h1 {
+        font-size: 22px;
+    }
+}
+
+@media (max-width: 520px) {
+    .system-modal-layer {
+        padding: 8px;
+    }
+
+    .system-dialog {
+        max-height: calc(100vh - 16px);
+        overflow-y: auto;
+    }
+
+    .briefing-hero,
+    .offline-report-body {
+        grid-template-columns: 1fr;
+    }
+
+    .briefing-seal,
+    .offline-report-icon {
+        display: none;
+    }
+
+    .briefing-order {
+        margin-inline: 12px;
+    }
+
+    .briefing-controls {
+        margin-inline: 12px;
+    }
+
+    .system-dialog-actions {
+        padding-inline: 12px;
+    }
+
+    .notepad-panel {
+        min-height: 0;
+        flex-direction: column;
+    }
+
+    .document-sidebar {
+        width: 100%;
+        height: 255px;
+        flex: 0 0 255px;
+        padding: 8px;
+        border-right: 0;
+        border-bottom: 2px solid;
+        border-color: #888 #fff #fff #888;
+    }
+
+    .doc-category-tabs {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 2px;
+    }
+
+    .doc-category-tab {
+        min-width: 0;
+        padding: 3px 2px;
+    }
+
+    .document-list {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .document-viewer {
+        min-height: 0;
+        padding: 12px;
+    }
+
+    .document-meta {
+        flex-wrap: wrap;
+        gap: 5px 10px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ── Hierarchy ranks and standing requisitions ──────────────────────────
+   Both lists are generated from data, so they share one row grammar:
+   name on the left, holding in the middle, price on the right. */
+.automaton-list,
+.repeatable-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.automaton-buy-group [data-automaton],
+.repeatable-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 12px;
+    text-align: left;
+    margin-bottom: 0;
+}
+
+.automaton-owned,
+.repeatable-rank {
+    min-width: 54px;
+    padding: 1px 6px;
+    border: 1px solid var(--cos-brass-700);
+    border-radius: 1px;
+    background: rgba(4, 6, 10, 0.5);
+    color: var(--cos-brass-300);
+    font: bold 10px var(--cos-font-machine);
+    letter-spacing: 0.08em;
+    text-align: center;
+}
+
+.automaton-cost,
+.repeatable-cost {
+    min-width: 118px;
+    color: var(--cos-verd-300);
+    font: 10px var(--cos-font-machine);
+    letter-spacing: 0.05em;
+    text-align: right;
+}
+
+.repeatable-name small,
+.automaton-name small {
+    display: block;
+    margin-top: 2px;
+    color: var(--cos-ink-inv-dim);
+    font-size: 9px;
+    letter-spacing: 0.02em;
+}
+
+/* Still readable, still clickable — just clearly out of reach. */
+.win-btn.unaffordable {
+    opacity: 0.5;
+}
+
+.win-btn.unaffordable .automaton-cost,
+.win-btn.unaffordable .repeatable-cost {
+    color: var(--cos-alarm);
+}
+
+.repeatable-section {
+    margin-top: 16px;
+}
+
+.section-note {
+    margin: -4px 0 8px;
+    color: var(--cos-ink-dim);
+    font: italic 10px var(--cos-font-machine);
+}
+
+@media (max-width: 640px) {
+    .automaton-buy-group [data-automaton],
+    .repeatable-row {
+        grid-template-columns: 1fr auto;
+        row-gap: 4px;
+    }
+
+    .automaton-cost,
+    .repeatable-cost {
+        grid-column: 1 / -1;
+        text-align: left;
+    }
+}
+
+/* The one number in the offline report the player can act on. */
+.offline-overflow {
+    margin-top: 8px;
+    padding: 7px 9px;
+    border-left: 3px solid var(--cos-alarm);
+    background: rgba(212, 85, 58, 0.1);
+    color: var(--cos-ink);
+    font-size: 11px;
+}
+
+/* ── Standing Doctrine: the permanent Divinity sink ─────────────────── */
+.doctrine-panel {
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    background: linear-gradient(180deg, var(--cos-iron-700), var(--cos-iron-900));
+    border: 1px solid var(--cos-brass-500);
+    border-radius: var(--cos-radius);
+    color: var(--cos-ink-inv);
+}
+
+.doctrine-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.doctrine-title {
+    color: var(--cos-brass-100);
+    font: bold 12px var(--cos-font-machine);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.doctrine-rank {
+    padding: 1px 7px;
+    border: 1px solid var(--cos-brass-700);
+    background: rgba(4, 6, 10, 0.5);
+    color: var(--cos-brass-300);
+    font: bold 10px var(--cos-font-machine);
+    letter-spacing: 0.08em;
+}
+
+.doctrine-desc {
+    margin: 7px 0 10px;
+    color: var(--cos-ink-inv-dim);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.doctrine-buy {
+    margin-bottom: 6px;
+}
+
+.doctrine-bank {
+    color: var(--cos-verd-300);
+    font: 10px var(--cos-font-machine);
+    letter-spacing: 0.06em;
+    text-align: right;
+}
+
+/* The Void reactor well: same instrument housing, tuned to ichor. */
+.visual-core--void {
+    min-height: 216px;
+    border-color: var(--cos-ichor-700);
+    background:
+        radial-gradient(ellipse at 50% 50%, rgba(150, 88, 224, 0.14), transparent 46%),
+        radial-gradient(circle at 50% 50%, rgba(90, 40, 160, 0.06), transparent 30%),
+        linear-gradient(160deg, #0a0410, #05020a 58%, #0c0616);
+}
+
+.visual-core--void::before {
+    background:
+        repeating-linear-gradient(90deg, transparent 0 47px, rgba(150, 88, 224, 0.05) 47px 48px),
+        repeating-linear-gradient(0deg, transparent 0 47px, rgba(150, 88, 224, 0.05) 47px 48px);
+}
+
+#void-core-canvas {
+    position: relative;
+    z-index: 1;
+    width: 200px;
+    height: 200px;
+    max-width: 100%;
+    filter: saturate(1.08);
 }
