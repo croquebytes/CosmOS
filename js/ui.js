@@ -39,17 +39,43 @@ const ui = {
         return scaledValue.toFixed(decimals === 0 ? 1 : decimals) + suffixes[tier];
     },
 
-    update() {
-        this.syncResources();
+    /* Two cadences.
+
+       Only the canvases genuinely need 60Hz — and they specifically DO need
+       it, because renderCoreView advances `view.pulse` per CALL and decays
+       burst life per CALL. Throttling those would not stutter the animation,
+       it would run it proportionally slower.
+
+       Everything else is text that changes a few times a second at most.
+       Panels run at ~10Hz, which is still far faster than a player can read.
+
+       PANEL_INTERVAL is the single throttle. updateOperatorStatus used to
+       carry its own internal 100ms gate; two independent throttles at the
+       same period beat against each other and drop updates, so that one was
+       removed when this landed. */
+    PANEL_INTERVAL: 100,
+
+    update(now = Date.now(), force = false) {
         this.animateCore();
         this.animateVoidCore();
+
+        if (!force && now - (this.lastPanelRefresh || 0) < this.PANEL_INTERVAL) return;
+        this.lastPanelRefresh = now;
+
+        this.syncResources();
         this.applyDesktopPlate();
-        this.updateSeraphButton();
-        this.updateCherubButton();
+        this.renderAutomatons();
+        this.renderRepeatables();
         this.updateSkillButtons();
         this.updateLoopPanels();
         this.updateDimensionDisplay();
         this.updateOperatorStatus();
+    },
+
+    /* Synchronous full redraw, for callers that change how everything is
+       formatted and cannot wait for the next panel tick. */
+    refreshAll() {
+        this.update(Date.now(), true);
     },
 
     /* The desktop reflects the state of the universe you are maintaining:
@@ -120,10 +146,7 @@ const ui = {
     },
 
     updateOperatorStatus() {
-        const now = Date.now();
-        if (this.lastOperatorStatusUpdate && now - this.lastOperatorStatusUpdate < 100) return;
-        this.lastOperatorStatusUpdate = now;
-
+        // Throttled by ui.update()'s panel cadence; see PANEL_INTERVAL.
         const objectiveEl = document.getElementById('operator-objective');
         if (!objectiveEl) return;
 
@@ -284,8 +307,12 @@ const ui = {
             const cap = State.resourceCaps.praise;
             const previous = this.previousValues.praise;
 
-            // Animate number change if significant
-            if (current !== previous && Math.abs(current - previous) > 10) {
+            /* The count-up flourish is for discrete jumps — a purchase, a
+               claimed event — not for continuous accrual. The old test was a
+               raw per-frame delta, so above ~600 Praise/sec it fired EVERY
+               frame and each call started a 300ms interval that nothing
+               cancelled: ~18 overlapping timers all writing this element. */
+            if (this.shouldAnimateValue('praise', previous, current)) {
                 this.animateNumberChange(p, previous, current);
             } else {
                 p.innerText = `${this.formatNumber(current)} / ${this.formatNumber(cap)}`;
@@ -340,32 +367,17 @@ const ui = {
         if (u) {
             u.innerText = this.formatNumber(Math.floor((Date.now() - State.startTime) / 1000)) + "s";
         }
-        if (pRate) {
-            const now = Date.now();
-            const baseProduction = State.automatons.seraphProduction || 1;
-            const loops = State.loopSystems || {};
-            const streakBonus = 1 + Math.min(0.35, (loops.miracleStreak || 0) * 0.007);
-            const overclockBonus = (loops.overclock?.active && now < loops.overclock?.endsAt) ? 1.5 : 1;
-            const interventionBonus = (State.skills?.divineIntervention?.active && now < State.skills.divineIntervention.endsAt) ? 2 : 1;
-            const achievementBonuses = State.achievementBonuses || {};
-            const totalBonus = interventionBonus * streakBonus * overclockBonus * (achievementBonuses.automationSpeed || 1);
-            const praisePerSec = State.pps * baseProduction * State.praiseMultiplier * totalBonus *
-                (achievementBonuses.praiseGain || 1) * (achievementBonuses.globalGain || 1);
-            pRate.innerText = this.formatNumber(praisePerSec, 1);
-        }
-        if (sRate) {
-            const now = Date.now();
-            const baseProduction = State.automatons.cherubProduction || 1;
-            const loops = State.loopSystems || {};
-            const streakBonus = 1 + Math.min(0.35, (loops.miracleStreak || 0) * 0.007);
-            const overclockBonus = (loops.overclock?.active && now < loops.overclock?.endsAt) ? 1.5 : 1;
-            const interventionBonus = (State.skills?.divineIntervention?.active && now < State.skills.divineIntervention.endsAt) ? 2 : 1;
-            const achievementBonuses = State.achievementBonuses || {};
-            const totalBonus = interventionBonus * streakBonus * overclockBonus * (achievementBonuses.automationSpeed || 1);
-            const soulPerSec = State.sps * baseProduction * State.soulMultiplier * totalBonus *
-                (achievementBonuses.soulGain || 1) * (achievementBonuses.globalGain || 1);
-            sRate.innerText = this.formatNumber(soulPerSec, 1);
-        }
+        /* One source of truth for rates.
+
+           These two readouts used to re-derive production by hand, and the
+           copy had drifted: it omitted refinement, drill, dominion, doctrine,
+           nemesis and null doctrine, and hardcoded the 0.35 streak cap and
+           1.5x overclock, ignoring State.streakCapBonus and
+           State.overclockPotency. The number on screen was the one number in
+           the game the player could actually read, and it was wrong. */
+        const rates = game.getProductionRates();
+        if (pRate) pRate.innerText = this.formatNumber(rates.praise, 1);
+        if (sRate) sRate.innerText = this.formatNumber(rates.souls, 1);
     },
 
     updateLoopPanels() {
@@ -471,10 +483,32 @@ const ui = {
         if (bestChainEl) bestChainEl.innerText = this.formatNumber(loops.bestDivineEventChain || 0);
     },
 
+    /* True only for a jump that is large relative to the current rate AND not
+       already animating. A steady trickle never qualifies, however big the
+       numbers get. */
+    valueAnimations: {},
+    lastValueAnimationAt: {},
+
+    shouldAnimateValue(key, from, to) {
+        if (from === to) return false;
+        const now = Date.now();
+        if (now - (this.lastValueAnimationAt[key] || 0) < 400) return false;
+
+        // A jump worth celebrating is several seconds of income at once.
+        const perSecond = Math.abs(game.getProductionRates()[key] || 0);
+        const threshold = Math.max(10, perSecond * 3);
+        return Math.abs(to - from) > threshold;
+    },
+
     animateNumberChange(element, from, to) {
         // Quick count-up animation
         const duration = 300; // ms
         const steps = 10;
+        const key = element.id || 'anon';
+
+        // Never leave a previous animation running against this element.
+        if (this.valueAnimations[key]) clearInterval(this.valueAnimations[key]);
+        this.lastValueAnimationAt[element.id === 'val-praise' ? 'praise' : key] = Date.now();
         const stepValue = (to - from) / steps;
         let current = from;
         let step = 0;
@@ -497,11 +531,13 @@ const ui = {
                 const final = cap ? `${this.formatNumber(Math.floor(to))} / ${this.formatNumber(cap)}` : this.formatNumber(Math.floor(to));
                 element.innerText = final;
                 clearInterval(interval);
+                delete this.valueAnimations[key];
             } else {
                 const display = cap ? `${this.formatNumber(Math.floor(current))} / ${this.formatNumber(cap)}` : this.formatNumber(Math.floor(current));
                 element.innerText = display;
             }
         }, duration / steps);
+        this.valueAnimations[key] = interval;
 
         // Add pulse effect
         element.classList.add('value-pulse');
@@ -1067,6 +1103,13 @@ const ui = {
        repeatable needs no markup. Rebuilt only when the visible set changes;
        otherwise just the labels and affordability are refreshed, which keeps
        this off the hot path of a 60fps loop. */
+    /* Writing textContent unconditionally still dirties layout. Comparing
+       first makes the steady state genuinely free. */
+    setText(node, value) {
+        if (!node) return;
+        if (node.textContent !== value) node.textContent = value;
+    },
+
     renderAutomatons(containerId = 'automaton-list', pool = 'primordial') {
         const container = document.getElementById(containerId);
         if (!container) return;
@@ -1098,11 +1141,25 @@ const ui = {
             const owned = game.getAutomatonCount(type);
             const held = game.resourcePool(spec)[spec.currency] || 0;
 
-            button.innerHTML =
-                `<span class="automaton-name">${spec.label}</span>` +
-                `<span class="automaton-owned">${owned}</span>` +
-                `<span class="automaton-cost">${this.formatNumber(cost)} ${spec.currency}</span>`;
-            button.title = spec.blurb;
+            /* Update the text nodes, never the button's innerHTML.
+
+               Rewriting innerHTML destroys and recreates the element the user
+               is pressing. At 60fps that meant :hover and :active could never
+               paint, and a mousedown/mouseup pair that straddled a frame
+               landed on two different elements. This is a correctness fix
+               that happens to also remove ~19 re-parses per frame. */
+            if (!button.firstChild) {
+                button.append(
+                    Object.assign(document.createElement('span'), { className: 'automaton-name' }),
+                    Object.assign(document.createElement('span'), { className: 'automaton-owned' }),
+                    Object.assign(document.createElement('span'), { className: 'automaton-cost' })
+                );
+                button.title = spec.blurb;
+            }
+            const [nameEl, ownedEl, costEl] = button.children;
+            this.setText(nameEl, spec.label);
+            this.setText(ownedEl, String(owned));
+            this.setText(costEl, `${this.formatNumber(cost)} ${spec.currency}`);
             button.classList.toggle('unaffordable', held < cost);
         });
     },
@@ -1133,11 +1190,23 @@ const ui = {
             const cost = game.getRepeatableCost(spec.id);
             const held = game.resourcePool(spec)[spec.resource] || 0;
 
-            button.innerHTML =
-                `<span class="repeatable-name">${spec.name}<small>${spec.effectText(level)}</small></span>` +
-                `<span class="repeatable-rank">RANK ${level}</span>` +
-                `<span class="repeatable-cost">${this.formatNumber(cost)} ${spec.resource}</span>`;
-            button.title = spec.description;
+            if (!button.firstChild) {
+                const name = Object.assign(document.createElement('span'), { className: 'repeatable-name' });
+                name.append(
+                    document.createTextNode(spec.name),
+                    document.createElement('small')
+                );
+                button.append(
+                    name,
+                    Object.assign(document.createElement('span'), { className: 'repeatable-rank' }),
+                    Object.assign(document.createElement('span'), { className: 'repeatable-cost' })
+                );
+                button.title = spec.description;
+            }
+            const [nameEl, rankEl, costEl] = button.children;
+            this.setText(nameEl.lastChild, spec.effectText(level));
+            this.setText(rankEl, `RANK ${level}`);
+            this.setText(costEl, `${this.formatNumber(cost)} ${spec.resource}`);
             button.classList.toggle('unaffordable', held < cost);
         });
     },
@@ -1281,22 +1350,38 @@ const ui = {
         const host = document.getElementById('void-doctrine');
         if (!host) return;
 
-        const rank = State.nullDoctrine || 0;
-        const cost = game.getNullDoctrineCost();
-        const held = State.dimensions.void.resources.echoes || 0;
+        const isNull = true;
+        const rank = (isNull ? State.nullDoctrine : State.standingDoctrine) || 0;
+        const cost = isNull ? game.getNullDoctrineCost() : game.getDoctrineCost();
+        const held = isNull
+            ? (State.dimensions.void.resources.echoes || 0)
+            : game.getAvailableDivinityPoints();
+        const bonus = isNull ? game.getNullDoctrineBonus() : game.getDoctrineBonus();
 
-        host.innerHTML = `
-            <div class="doctrine-head">
-                <span class="doctrine-title">Null Doctrine</span>
-                <span class="doctrine-rank">RANK ${rank}</span>
-            </div>
-            <p class="doctrine-desc">Permanent, and survives every Divine Reboot.
-               Currently +${Math.round((game.getNullDoctrineBonus() - 1) * 100)}% to all production,
-               in every dimension.</p>
-            <button class="win-btn void-btn doctrine-buy ${held < cost ? 'unaffordable' : ''}"
-                    onclick="game.purchaseNullDoctrine()">Inscribe next rank — ${this.formatNumber(cost)} Echoes</button>
-            <div class="doctrine-bank">${this.formatNumber(Math.floor(held))} Echoes banked</div>
-        `;
+        // Built once. Rewriting innerHTML here destroyed and recreated a live
+        // <button onclick> on every frame the panel was open.
+        if (!host.firstChild) {
+            host.innerHTML =
+                '<div class="doctrine-head">' +
+                  '<span class="doctrine-title">Null Doctrine</span>' +
+                  '<span class="doctrine-rank"></span>' +
+                '</div>' +
+                '<p class="doctrine-desc"></p>' +
+                '<button class="win-btn void-btn doctrine-buy"></button>' +
+                '<div class="doctrine-bank"></div>';
+            host.querySelector('.doctrine-buy').addEventListener('click', () =>
+                isNull ? game.purchaseNullDoctrine() : game.purchaseDoctrine());
+        }
+
+        const buy = host.querySelector('.doctrine-buy');
+        this.setText(host.querySelector('.doctrine-rank'), `RANK ${rank}`);
+        this.setText(host.querySelector('.doctrine-desc'),
+            `Permanent, and survives every Divine Reboot. Currently +${Math.round((bonus - 1) * 100)}% to all production` +
+            (isNull ? ', in every dimension.' : '.'));
+        this.setText(buy, `Inscribe next rank — ${this.formatNumber(cost)}${isNull ? ' Echoes' : ' DP'}`);
+        buy.classList.toggle('unaffordable', held < cost);
+        this.setText(host.querySelector('.doctrine-bank'),
+            `${this.formatNumber(Math.floor(held))} Echoes banked`);
     },
 
     /* The tree is finite; Divinity is not. Standing Doctrine is the meta-layer
@@ -1306,21 +1391,38 @@ const ui = {
         const host = document.getElementById('mandate-doctrine');
         if (!host) return;
 
-        const rank = State.standingDoctrine || 0;
-        const cost = game.getDoctrineCost();
-        const available = game.getAvailableDivinityPoints();
+        const isNull = false;
+        const rank = (isNull ? State.nullDoctrine : State.standingDoctrine) || 0;
+        const cost = isNull ? game.getNullDoctrineCost() : game.getDoctrineCost();
+        const held = isNull
+            ? (State.dimensions.void.resources.echoes || 0)
+            : game.getAvailableDivinityPoints();
+        const bonus = isNull ? game.getNullDoctrineBonus() : game.getDoctrineBonus();
 
-        host.innerHTML = `
-            <div class="doctrine-head">
-                <span class="doctrine-title">Standing Doctrine</span>
-                <span class="doctrine-rank">RANK ${rank}</span>
-            </div>
-            <p class="doctrine-desc">Permanent, and survives every Divine Reboot.
-               Currently +${Math.round(((game.getDoctrineBonus() - 1) * 100))}% to all production.</p>
-            <button class="win-btn doctrine-buy ${available < cost ? 'unaffordable' : ''}"
-                    onclick="game.purchaseDoctrine()">Ratify next rank — ${this.formatNumber(cost)} DP</button>
-            <div class="doctrine-bank">${this.formatNumber(available)} Divinity available</div>
-        `;
+        // Built once. Rewriting innerHTML here destroyed and recreated a live
+        // <button onclick> on every frame the panel was open.
+        if (!host.firstChild) {
+            host.innerHTML =
+                '<div class="doctrine-head">' +
+                  '<span class="doctrine-title">Standing Doctrine</span>' +
+                  '<span class="doctrine-rank"></span>' +
+                '</div>' +
+                '<p class="doctrine-desc"></p>' +
+                '<button class="win-btn doctrine-buy"></button>' +
+                '<div class="doctrine-bank"></div>';
+            host.querySelector('.doctrine-buy').addEventListener('click', () =>
+                isNull ? game.purchaseNullDoctrine() : game.purchaseDoctrine());
+        }
+
+        const buy = host.querySelector('.doctrine-buy');
+        this.setText(host.querySelector('.doctrine-rank'), `RANK ${rank}`);
+        this.setText(host.querySelector('.doctrine-desc'),
+            `Permanent, and survives every Divine Reboot. Currently +${Math.round((bonus - 1) * 100)}% to all production` +
+            (isNull ? ', in every dimension.' : '.'));
+        this.setText(buy, `Ratify next rank — ${this.formatNumber(cost)}${isNull ? ' Echoes' : ' DP'}`);
+        buy.classList.toggle('unaffordable', held < cost);
+        this.setText(host.querySelector('.doctrine-bank'),
+            `${this.formatNumber(Math.floor(held))} Divinity available`);
     },
 
     updateMandates() {
@@ -1524,19 +1626,10 @@ const ui = {
             if (offeringsEl) offeringsEl.innerText = `${this.formatNumber(Math.floor(State.resources.offerings))} / ${this.formatNumber(State.resourceCaps.offerings)}`;
             if (soulsEl) soulsEl.innerText = `${this.formatNumber(Math.floor(State.resources.souls))} / ${this.formatNumber(State.resourceCaps.souls)}`;
 
-            const now = Date.now();
-            const loops = State.loopSystems || {};
-            const achievementBonuses = State.achievementBonuses || {};
-            const seraphProd = State.automatons.seraphProduction || 1;
-            const cherubProd = State.automatons.cherubProduction || 1;
-            const streakBonus = 1 + Math.min(0.35, (loops.miracleStreak || 0) * 0.007);
-            const overclockBonus = (loops.overclock?.active && now < loops.overclock?.endsAt) ? 1.5 : 1;
-            const interventionBonus = (State.skills?.divineIntervention?.active && now < State.skills.divineIntervention.endsAt) ? 2 : 1;
-            const totalProductionBonus = interventionBonus * streakBonus * overclockBonus * (achievementBonuses.automationSpeed || 1);
-            const praisePerSec = State.pps * seraphProd * State.praiseMultiplier * totalProductionBonus *
-                (achievementBonuses.praiseGain || 1) * (achievementBonuses.globalGain || 1);
-            const soulPerSec = State.sps * cherubProd * State.soulMultiplier * totalProductionBonus *
-                (achievementBonuses.soulGain || 1) * (achievementBonuses.globalGain || 1);
+            // Second of the three divergent copies of the production formula.
+            const primordialRates = game.getProductionRates();
+            const praisePerSec = primordialRates.praise;
+            const soulPerSec = primordialRates.souls;
 
             if (praiseRateEl) praiseRateEl.innerText = this.formatNumber(praisePerSec, 1);
             if (soulRateEl) soulRateEl.innerText = this.formatNumber(soulPerSec, 1);
@@ -1568,18 +1661,10 @@ const ui = {
             if (shadowsEl) shadowsEl.innerText = `${this.formatNumber(Math.floor(vd.resources.shadows))} / ${this.formatNumber(vd.resourceCaps.shadows)}`;
             if (echoesEl) echoesEl.innerText = `${this.formatNumber(Math.floor(vd.resources.echoes))} / ${this.formatNumber(vd.resourceCaps.echoes)}`;
 
-            const now = Date.now();
-            const loops = State.loopSystems || {};
-            const achievementBonuses = State.achievementBonuses || {};
-            const wraithProd = vd.automatons.wraithProduction || 1;
-            const phantomProd = vd.automatons.phantomProduction || 1;
-            const streakBonus = 1 + Math.min(0.35, (loops.miracleStreak || 0) * 0.007);
-            const overclockBonus = (loops.overclock?.active && now < loops.overclock?.endsAt) ? 1.5 : 1;
-            const interventionBonus = (State.skills?.divineIntervention?.active && now < State.skills.divineIntervention.endsAt) ? 2 : 1;
-            const totalVoidBonus = interventionBonus * streakBonus * overclockBonus * (achievementBonuses.automationSpeed || 1) *
-                (achievementBonuses.voidGain || 1) * (achievementBonuses.voidStability || 1) * (achievementBonuses.globalGain || 1);
-            const darknessPerSec = vd.dps * wraithProd * vd.darknessMultiplier * totalVoidBonus;
-            const echoPerSec = vd.eps * phantomProd * vd.echoMultiplier * totalVoidBonus;
+            // Third of the three divergent copies.
+            const voidRates = game.getProductionRates();
+            const darknessPerSec = voidRates.darkness;
+            const echoPerSec = voidRates.echoes;
 
             if (darknessRateEl) darknessRateEl.innerText = this.formatNumber(darknessPerSec, 1);
             if (echoRateEl) echoRateEl.innerText = this.formatNumber(echoPerSec, 1);
@@ -1898,8 +1983,11 @@ const ui = {
         this.globeRotation = 0;
         this.globeRegions = [];
 
-        this.animateGlobe();
-        canvas.addEventListener('click', (e) => this.handleGlobeClick(e));
+        this.startGlobeAnimation();
+        if (!canvas.dataset.globeClickBound) {
+            canvas.addEventListener('click', (e) => this.handleGlobeClick(e));
+            canvas.dataset.globeClickBound = 'true';
+        }
     },
 
     animateGlobe() {
@@ -1907,6 +1995,16 @@ const ui = {
 
         const ctx = this.globeCtx;
         const canvas = ctx.canvas;
+
+        /* Stop when the window closes. This loop re-armed unconditionally, so
+           opening the Divine Globe once burned a full canvas frame budget for
+           the rest of the session — window closed, tab in the background, any
+           state at all. */
+        if (!canvas.isConnected) {
+            this.globeCtx = null;
+            this.globeRafId = null;
+            return;
+        }
         const centerX = canvas.width / 2;
         const centerY = canvas.height / 2;
         const radius = 150;
@@ -1932,7 +2030,17 @@ const ui = {
         this.drawDimensionRegion(ctx, centerX, centerY + 60, 40, 'void', '#9c27b0');
 
         this.globeRotation += 0.005;
-        requestAnimationFrame(() => this.animateGlobe());
+        this.globeRafId = requestAnimationFrame(() => this.animateGlobe());
+    },
+
+    /* Single entry point, so reopening the window cannot start a second loop
+       racing the first. */
+    startGlobeAnimation() {
+        if (this.globeRafId !== null && this.globeRafId !== undefined) {
+            cancelAnimationFrame(this.globeRafId);
+        }
+        this.globeRafId = null;
+        this.animateGlobe();
     },
 
     drawDimensionRegion(ctx, x, y, radius, dimId, color) {
@@ -2479,8 +2587,8 @@ const ui = {
         State.settings.notationMode = mode;
         State.save();
         ui.log(`Notation mode changed to ${mode === 'suffix' ? 'Suffix' : 'Scientific'}`);
-        // Refresh all displays
-        ui.update();
+        // Every readout changes format at once — bypass the panel cadence.
+        ui.refreshAll();
     },
 
     updateAutosaveInterval(interval) {

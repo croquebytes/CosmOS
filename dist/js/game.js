@@ -746,7 +746,7 @@ const game = {
                 this.eventSpawnAccumulator %= 5;
             }
 
-            ui.update();
+            ui.update(now);
         } catch (err) {
             console.error('Game loop error:', err);
         }
@@ -1203,15 +1203,17 @@ const game = {
             return;
         }
 
-        // Simulate 1 hour of production
-        const seraphBaseProduction = State.automatons.seraphProduction || 1;
-        const cherubBaseProduction = State.automatons.cherubProduction || 1;
-        const achievementBonuses = State.achievementBonuses || {};
-        const globalGainBonus = achievementBonuses.globalGain || 1;
-        const totalBonus = this.getStreakProductionMultiplier() * this.getOverclockProductionMultiplier(now) * (achievementBonuses.automationSpeed || 1);
-        const praiseGain = (State.pps * seraphBaseProduction * State.praiseMultiplier * totalBonus * (achievementBonuses.praiseGain || 1) * globalGainBonus) * 3600;
-        const offeringGain = (State.mps * State.offeringMultiplier * totalBonus * (achievementBonuses.offeringValue || 1) * globalGainBonus) * 3600;
-        const soulGain = (State.sps * cherubBaseProduction * State.soulMultiplier * totalBonus * (achievementBonuses.soulGain || 1) * globalGainBonus) * 3600;
+        /* Simulate an hour through the same function the game ticks on.
+
+           The hand-derived copy this replaces omitted refinement, drill,
+           dominion, doctrine, nemesis and null doctrine — so the Rift got
+           weaker in relative terms with every multiplier the player bought.
+           Worse, its Offerings term multiplied State.mps, which nothing has
+           ever produced: Temporal Rift granted exactly zero Offerings. */
+        const rates = this.getProductionRates(now, true);
+        const praiseGain = rates.praise * 3600;
+        const offeringGain = rates.offerings * 3600;
+        const soulGain = rates.souls * 3600;
 
         State.resources.praise = Math.min(State.resources.praise + praiseGain, State.resourceCaps.praise);
         State.resources.offerings = Math.min(State.resources.offerings + offeringGain, State.resourceCaps.offerings);
