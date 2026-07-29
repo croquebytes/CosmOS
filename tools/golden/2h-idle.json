@@ -1,0 +1,207 @@
+{
+ "hours": 2,
+ "clicksPerMin": 2,
+ "resources": {
+  "praise": 13273896843063572,
+  "offerings": 260740436617.0719,
+  "souls": 1142475721968.8604
+ },
+ "caps": {
+  "praise": 58126244155490640000,
+  "offerings": 160794738504525,
+  "souls": 4082900000107677
+ },
+ "lifetimeSouls": 45592756369799.32,
+ "rates": {
+  "praise": 9961885994005274,
+  "praiseGross": 9961885994005278,
+  "offerings": 134744848078.72334,
+  "souls": 387038535052.7901,
+  "darkness": 2814497600.6308002,
+  "shadows": 34938594.24120993,
+  "echoes": 218366214.00756207
+ },
+ "automatons": {
+  "seraphCount": 260,
+  "seraphCostMultiplier": 0.2926125,
+  "seraphProduction": 15.600000000000001,
+  "throneCount": 189,
+  "throneCostMultiplier": 0.85,
+  "throneProduction": 6,
+  "cherubCount": 145,
+  "cherubCostMultiplier": 0.30600000000000005,
+  "cherubProduction": 3.12,
+  "dominionCount": 77,
+  "dominionCostMultiplier": 0.8,
+  "dominionProduction": 6
+ },
+ "repeatables": {
+  "praise_vault": 114,
+  "offering_vault": 83,
+  "soul_vault": 85,
+  "praise_refinement": 86,
+  "automaton_drill": 59,
+  "offline_capacitor": 41
+ },
+ "multipliers": {
+  "praise": 8829191.900685161,
+  "offering": 27869.923928930435,
+  "soul": 66887.81742943304,
+  "divinityPoint": 123.86632857302415,
+  "throneDraw": 0.006543684324216847,
+  "offlineEfficiency": 1
+ },
+ "bonuses": {
+  "drill": 9.85,
+  "dominion": 14.86,
+  "refinement": 22.5,
+  "doctrine": 3.2,
+  "nemesis": 4.76,
+  "nullDoctrine": 5.2,
+  "voidDrill": 6.7,
+  "voidRefinement": 12
+ },
+ "prestige": {
+  "level": 6,
+  "totalDivinityPoints": 7664,
+  "spent": 6631,
+  "standingDoctrine": 22,
+  "nullDoctrine": 35
+ },
+ "void": {
+  "unlocked": true,
+  "resources": {
+   "darkness": 55460425.23966408,
+   "shadows": 57220069.17801393,
+   "echoes": 1344758239.9338245
+  },
+  "caps": {
+   "darkness": 807389658230,
+   "shadows": 11689842424,
+   "echoes": 329746761732
+  },
+  "automatons": {
+   "wraithCount": 145,
+   "wraithCostMultiplier": 0.85,
+   "wraithProduction": 2,
+   "revenantCount": 96,
+   "revenantCostMultiplier": 1,
+   "revenantProduction": 2,
+   "phantomCount": 90,
+   "phantomCostMultiplier": 1,
+   "phantomProduction": 3,
+   "nemesisCount": 47,
+   "nemesisCostMultiplier": 1,
+   "nemesisProduction": 2
+  },
+  "repeatables": {
+   "darkness_vault": 61,
+   "shadow_vault": 55,
+   "echo_vault": 59,
+   "void_refinement": 44,
+   "entropy_drill": 38
+  }
+ },
+ "upgradesOwned": [
+  "cherub_boost_1",
+  "cherub_boost_2",
+  "cherub_cost_1",
+  "cherub_cost_2",
+  "dominion_boost_1",
+  "dominion_boost_2",
+  "dominion_cost_1",
+  "globe_unlock",
+  "manual_click_1",
+  "offering_unlock",
+  "offline_efficiency_1",
+  "offline_efficiency_2",
+  "overclock_duration_1",
+  "overclock_potency_1",
+  "praise_multi_1",
+  "praise_multi_2",
+  "praise_multi_3",
+  "praise_multi_4",
+  "praise_multi_5",
+  "reboot_yield_1",
+  "reboot_yield_2",
+  "seraph_boost_1",
+  "seraph_boost_2",
+  "seraph_cost_1",
+  "seraph_cost_2",
+  "soul_multi_1",
+  "storage_offerings_1",
+  "storage_praise_1",
+  "storage_praise_2",
+  "throne_cost_1",
+  "throne_draw_1",
+  "throne_draw_2",
+  "throne_yield_1",
+  "throne_yield_2",
+  "void_click_1",
+  "void_darkness_multi_1",
+  "void_echo_multi_1",
+  "void_nemesis_boost_1",
+  "void_phantom_boost_1",
+  "void_revenant_draw_1",
+  "void_revenant_yield_1",
+  "void_unlock",
+  "void_wraith_boost_1",
+  "void_wraith_cost_1"
+ ],
+ "mandatesOwned": [
+  "creation_apex",
+  "creation_root",
+  "creation_t2_left",
+  "creation_t2_right",
+  "creation_t3",
+  "creation_t4",
+  "creation_ultimate",
+  "entropy_apex",
+  "entropy_root",
+  "entropy_t2_left",
+  "entropy_t2_right",
+  "entropy_t3",
+  "entropy_t4",
+  "entropy_ultimate",
+  "maintenance_apex",
+  "maintenance_root",
+  "maintenance_t2_left",
+  "maintenance_t2_right",
+  "maintenance_t3",
+  "maintenance_t4",
+  "maintenance_ultimate"
+ ],
+ "lastPurchaseSecond": 7199,
+ "prestigeLog": [
+  {
+   "t": 2352,
+   "gain": 5,
+   "total": 5
+  },
+  {
+   "t": 3452,
+   "gain": 5,
+   "total": 10
+  },
+  {
+   "t": 4353,
+   "gain": 10,
+   "total": 20
+  },
+  {
+   "t": 5254,
+   "gain": 65,
+   "total": 85
+  },
+  {
+   "t": 6155,
+   "gain": 527,
+   "total": 612
+  },
+  {
+   "t": 7056,
+   "gain": 7052,
+   "total": 7664
+  }
+ ]
+}

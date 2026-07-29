@@ -1,0 +1,247 @@
+{
+ "hours": 8,
+ "clicksPerMin": 40,
+ "resources": {
+  "praise": 324369145544463500000,
+  "offerings": 5455869760598482,
+  "souls": 6655118667233770
+ },
+ "caps": {
+  "praise": 4.572358621289978e+24,
+  "offerings": 6641737162182982000,
+  "souls": 232732846230567320000
+ },
+ "lifetimeSouls": 1425892685058467600,
+ "rates": {
+  "praise": 4818335245225970000,
+  "praiseGross": 4818335245225970000,
+  "offerings": 51854373206819.81,
+  "souls": 151601528143909.75,
+  "darkness": 1147345742459.3445,
+  "shadows": 10250719298.93823,
+  "echoes": 61724761369.95064
+ },
+ "automatons": {
+  "seraphCount": 331,
+  "seraphCostMultiplier": 0.2926125,
+  "seraphProduction": 15.600000000000001,
+  "throneCount": 251,
+  "throneCostMultiplier": 0.85,
+  "throneProduction": 6,
+  "cherubCount": 196,
+  "cherubCostMultiplier": 0.30600000000000005,
+  "cherubProduction": 3.12,
+  "dominionCount": 112,
+  "dominionCostMultiplier": 0.8,
+  "dominionProduction": 6
+ },
+ "repeatables": {
+  "praise_vault": 149,
+  "offering_vault": 116,
+  "soul_vault": 119,
+  "praise_refinement": 114,
+  "automaton_drill": 84,
+  "offline_capacitor": 57
+ },
+ "multipliers": {
+  "praise": 333063662.60468614,
+  "offering": 1051337.3188279234,
+  "soul": 2523209.565187016,
+  "divinityPoint": 4672.6103059018815,
+  "throneDraw": 0.000020874654710813115,
+  "offlineEfficiency": 1
+ },
+ "bonuses": {
+  "drill": 13.6,
+  "dominion": 21.16,
+  "refinement": 29.5,
+  "doctrine": 5.1000000000000005,
+  "nemesis": 7.4,
+  "nullDoctrine": 8.2,
+  "voidDrill": 10.299999999999999,
+  "voidRefinement": 18.5
+ },
+ "prestige": {
+  "level": 14,
+  "totalDivinityPoints": 979867,
+  "spent": 939306,
+  "standingDoctrine": 41,
+  "nullDoctrine": 60
+ },
+ "void": {
+  "unlocked": true,
+  "resources": {
+   "darkness": 43681915251730.55,
+   "shadows": 472698258162.77734,
+   "echoes": 10329737860321.113
+  },
+  "caps": {
+   "darkness": 33349784700108024,
+   "shadows": 349896364208685,
+   "echoes": 9869867124422464
+  },
+  "automatons": {
+   "wraithCount": 211,
+   "wraithCostMultiplier": 0.85,
+   "wraithProduction": 2,
+   "revenantCount": 155,
+   "revenantCostMultiplier": 1,
+   "revenantProduction": 2,
+   "phantomCount": 140,
+   "phantomCostMultiplier": 1,
+   "phantomProduction": 3,
+   "nemesisCount": 80,
+   "nemesisCostMultiplier": 1,
+   "nemesisProduction": 2
+  },
+  "repeatables": {
+   "darkness_vault": 94,
+   "shadow_vault": 87,
+   "echo_vault": 91,
+   "void_refinement": 70,
+   "entropy_drill": 62
+  }
+ },
+ "upgradesOwned": [
+  "cherub_boost_1",
+  "cherub_boost_2",
+  "cherub_cost_1",
+  "cherub_cost_2",
+  "dominion_boost_1",
+  "dominion_boost_2",
+  "dominion_cost_1",
+  "globe_unlock",
+  "manual_click_1",
+  "offering_unlock",
+  "offline_efficiency_1",
+  "offline_efficiency_2",
+  "overclock_duration_1",
+  "overclock_potency_1",
+  "praise_multi_1",
+  "praise_multi_2",
+  "praise_multi_3",
+  "praise_multi_4",
+  "praise_multi_5",
+  "reboot_yield_1",
+  "reboot_yield_2",
+  "seraph_boost_1",
+  "seraph_boost_2",
+  "seraph_cost_1",
+  "seraph_cost_2",
+  "soul_multi_1",
+  "storage_offerings_1",
+  "storage_praise_1",
+  "storage_praise_2",
+  "throne_cost_1",
+  "throne_draw_1",
+  "throne_draw_2",
+  "throne_yield_1",
+  "throne_yield_2",
+  "void_click_1",
+  "void_darkness_multi_1",
+  "void_echo_multi_1",
+  "void_nemesis_boost_1",
+  "void_phantom_boost_1",
+  "void_revenant_draw_1",
+  "void_revenant_yield_1",
+  "void_unlock",
+  "void_wraith_boost_1",
+  "void_wraith_cost_1"
+ ],
+ "mandatesOwned": [
+  "creation_apex",
+  "creation_root",
+  "creation_t2_left",
+  "creation_t2_right",
+  "creation_t3",
+  "creation_t4",
+  "creation_ultimate",
+  "entropy_apex",
+  "entropy_root",
+  "entropy_t2_left",
+  "entropy_t2_right",
+  "entropy_t3",
+  "entropy_t4",
+  "entropy_ultimate",
+  "maintenance_apex",
+  "maintenance_root",
+  "maintenance_t2_left",
+  "maintenance_t2_right",
+  "maintenance_t3",
+  "maintenance_t4",
+  "maintenance_ultimate"
+ ],
+ "lastPurchaseSecond": 28793,
+ "prestigeLog": [
+  {
+   "t": 2099,
+   "gain": 5,
+   "total": 5
+  },
+  {
+   "t": 3000,
+   "gain": 6,
+   "total": 11
+  },
+  {
+   "t": 3901,
+   "gain": 21,
+   "total": 32
+  },
+  {
+   "t": 4802,
+   "gain": 122,
+   "total": 154
+  },
+  {
+   "t": 5703,
+   "gain": 2696,
+   "total": 2850
+  },
+  {
+   "t": 6604,
+   "gain": 15383,
+   "total": 18233
+  },
+  {
+   "t": 7505,
+   "gain": 30188,
+   "total": 48421
+  },
+  {
+   "t": 8406,
+   "gain": 37563,
+   "total": 85984
+  },
+  {
+   "t": 9386,
+   "gain": 43032,
+   "total": 129016
+  },
+  {
+   "t": 10791,
+   "gain": 64514,
+   "total": 193530
+  },
+  {
+   "t": 12872,
+   "gain": 96766,
+   "total": 290296
+  },
+  {
+   "t": 15925,
+   "gain": 145183,
+   "total": 435479
+  },
+  {
+   "t": 20413,
+   "gain": 217752,
+   "total": 653231
+  },
+  {
+   "t": 27267,
+   "gain": 326636,
+   "total": 979867
+  }
+ ]
+}

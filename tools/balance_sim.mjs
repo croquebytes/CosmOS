@@ -22,6 +22,10 @@ const args = process.argv.slice(2);
 const HOURS = Number(args.find((a) => !a.startsWith('--'))) || 8;
 const CLICKS_PER_MIN = Number((args.find((a) => a.startsWith('--clicks-per-min')) || '').split('=')[1]) || 40;
 const QUIET = args.includes('--quiet');
+// --json emits a machine-comparable snapshot. The simulation is deterministic,
+// so this doubles as a golden master: any refactor that is supposed to preserve
+// the economy must reproduce the same digest byte for byte.
+const JSON_OUT = args.includes('--json');
 
 function makeSandbox() {
     const noop = () => {};
@@ -262,6 +266,68 @@ const hhmmss = (s) => {
 };
 
 const { milestones, lastPurchaseSecond, totalSeconds, prestigeLog } = run();
+
+if (JSON_OUT) {
+    const vd = State.dimensions.void;
+    const snapshot = {
+        hours: HOURS,
+        clicksPerMin: CLICKS_PER_MIN,
+        resources: {
+            praise: State.resources.praise,
+            offerings: State.resources.offerings,
+            souls: State.resources.souls
+        },
+        caps: { ...State.resourceCaps },
+        lifetimeSouls: State.totalStats?.soulsGained || 0,
+        rates: (() => {
+            const r = game.getProductionRates(Date.now(), false);
+            return {
+                praise: r.praise, praiseGross: r.praiseGross, offerings: r.offerings, souls: r.souls,
+                darkness: r.darkness, shadows: r.shadows, echoes: r.echoes
+            };
+        })(),
+        automatons: { ...State.automatons },
+        repeatables: { ...State.repeatables },
+        multipliers: {
+            praise: State.praiseMultiplier,
+            offering: State.offeringMultiplier,
+            soul: State.soulMultiplier,
+            divinityPoint: State.divinityPointMultiplier,
+            throneDraw: State.throneDrawMultiplier,
+            offlineEfficiency: State.offlineEfficiency
+        },
+        bonuses: {
+            drill: game.getDrillBonus(),
+            dominion: game.getDominionBonus(),
+            refinement: game.getRefinementBonus(),
+            doctrine: game.getDoctrineBonus(),
+            nemesis: game.getNemesisBonus(),
+            nullDoctrine: game.getNullDoctrineBonus(),
+            voidDrill: game.getVoidDrillBonus(),
+            voidRefinement: game.getVoidRefinementBonus()
+        },
+        prestige: {
+            level: State.prestigeLevel,
+            totalDivinityPoints: State.totalDivinityPoints,
+            spent: State.divinityPointsSpent,
+            standingDoctrine: State.standingDoctrine,
+            nullDoctrine: State.nullDoctrine
+        },
+        void: {
+            unlocked: vd.unlocked,
+            resources: { ...vd.resources },
+            caps: { ...vd.resourceCaps },
+            automatons: { ...vd.automatons },
+            repeatables: { ...vd.repeatables }
+        },
+        upgradesOwned: Object.keys(State.upgrades).filter((k) => State.upgrades[k]).sort(),
+        mandatesOwned: Object.keys(State.purchasedMandates).filter((k) => State.purchasedMandates[k]).sort(),
+        lastPurchaseSecond,
+        prestigeLog
+    };
+    console.log(JSON.stringify(snapshot, null, 1));
+    process.exit(0);
+}
 
 console.log(`\nCosmOS balance simulation — ${HOURS}h at ${CLICKS_PER_MIN} clicks/min\n`);
 if (!QUIET) {
