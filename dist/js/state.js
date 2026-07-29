@@ -57,8 +57,6 @@ const State = {
 
     // Unlocks & Progress
     unlockedApps: ['console', 'settings', 'mandates'],
-    unlockedRegions: ['primordial_sector'],
-    activeRegion: 'primordial_sector',
     unlockedOfferings: false,
     manualClickPower: 1,
     manualClickScaling: false,
@@ -71,7 +69,6 @@ const State = {
     overclockPotency: 0,       // Added to the Overclock production bonus
     overclockDurationBonus: 0, // Extra Overclock seconds
     divineEventSpawnRate: 0.05,
-    unlockedDocuments: [], // Array of document IDs
 
     // Dimensions
     currentDimension: 'primordial', // 'primordial' or 'void'
@@ -189,6 +186,9 @@ const State = {
             lastCompletedAt: 0
         }
     },
+
+    // Persisted save-format version; see State.migrations.
+    saveVersion: 0,
 
     // System Settings
     epoch: 0,
@@ -373,7 +373,6 @@ const State = {
     },
 
     // === ACHIEVEMENTS (Tracked) ===
-    achievementsUnlocked: [],
     achievementProgress: {
         // Counters for achievement conditions
         praise_clicks: 0,
@@ -432,158 +431,166 @@ const State = {
         globalGain: 1
     },
 
+    /* ── Persistence ──────────────────────────────────────────────────────
+       Rules this layer exists to enforce:
+
+       1. A save is NEVER destroyed. The previous loader called
+          localStorage.removeItem() on any throw, so a single bad parse — or
+          the first migration to raise — silently wiped the player's run.
+       2. Migrations run on the RAW parsed object, before any merge. Every
+          merge hazard below is a property of merging; transforming the raw
+          shape first keeps migrations order-independent and legible.
+       3. Nothing from a save is trusted as a key. The old generic loop did
+          `this[key] = parsed[key]` unguarded, and importSave() base64-decodes
+          arbitrary pasted text into it — so a crafted save could set
+          __proto__ or replace State.save itself.
+
+       NOTE: load() runs at the bottom of this file, ABOVE the const data
+       tables (Economy, AutomatonSpecs, UpgradeList, …). Those are in their
+       temporal dead zone here, so a migration must never reference them.
+       Migrations are pure data transforms on `parsed`. */
+    SAVE_KEY: 'cosmos_save',
+    BACKUP_KEY: 'cosmos_save_backup',
+    SAVE_VERSION: 3,
+
     save() {
         this.runtime.lastUpdateTime = Date.now();
-        localStorage.setItem('cosmos_save', JSON.stringify(this));
+        this.saveVersion = State.SAVE_VERSION;
+        try {
+            const payload = JSON.stringify(this);
+            // Keep the last good write. If a future load throws, this is what
+            // the player gets back instead of a fresh universe.
+            const previous = localStorage.getItem(State.SAVE_KEY);
+            if (previous) localStorage.setItem(State.BACKUP_KEY, previous);
+            localStorage.setItem(State.SAVE_KEY, payload);
+        } catch (error) {
+            console.error('Save failed; previous save left intact.', error);
+        }
+    },
+
+    /* Ordered, cumulative. A save records the version it was written at; every
+       migration above that number runs, in order. Version 0 means "written
+       before versioning existed". */
+    migrations: {
+        1(parsed) {
+            // Reconcile the Task Manager's two representations of an ended
+            // process. This existed as an ad-hoc block inside load(); it is a
+            // migration, so it lives here now.
+            const tm = parsed.taskManager;
+            if (tm) {
+                if (!Array.isArray(tm.endedProcesses)) tm.endedProcesses = [];
+                if (typeof tm.processesEnded !== 'number') {
+                    tm.processesEnded = tm.endedProcesses.length;
+                }
+            }
+            // Fields that no code reads any more. The generic merge copies
+            // whatever a save contains straight back out again, so without an
+            // explicit prune these are immortal.
+            for (const dead of ['unlockedRegions', 'activeRegion', 'unlockedDocuments', 'achievementsUnlocked']) {
+                delete parsed[dead];
+            }
+        },
+
+        2(parsed) {
+            // `mps` and `void.sdps` are declared, never produced, and still
+            // SPENT: Temporal Rift pays out offline Offerings proportional to
+            // mps. A save carrying a stale nonzero value is an unbounded
+            // income source that survives every reload.
+            parsed.mps = 0;
+            if (parsed.dimensions?.void) parsed.dimensions.void.sdps = 0;
+        },
+
+        3(parsed) {
+            // A ghost Divine Event restores with a dead expiry and stale
+            // viewport coordinates, and blocks new spawns while it is held.
+            parsed.divineEvent = null;
+
+            // Document categories added to the schema after a save was written
+            // never exist on it, and the collector silently drops documents
+            // filed under a missing category.
+            const docs = parsed.documents;
+            if (docs && docs.categories && typeof docs.categories === 'object') {
+                for (const key of Object.keys(docs.categories)) {
+                    if (!Array.isArray(docs.categories[key])) docs.categories[key] = [];
+                }
+            }
+        }
+    },
+
+    runMigrations(parsed) {
+        const from = Number(parsed.saveVersion) || 0;
+        const applied = [];
+        for (let v = from + 1; v <= State.SAVE_VERSION; v++) {
+            const migrate = State.migrations[v];
+            if (!migrate) continue;
+            migrate(parsed);
+            applied.push(v);
+        }
+        parsed.saveVersion = State.SAVE_VERSION;
+        return applied;
+    },
+
+    /* Merges `source` into `target` in place, keeping defaults that the source
+       does not mention.
+
+       The previous loader did `Object.assign(this.X, parsed.X)` and then
+       `Object.assign(this.X.sub, parsed.X.sub)`. The outer assign had already
+       rebound this.X.sub to the SAVE's object, so the inner call merged that
+       object onto itself and every default sub-key missing from the save was
+       lost. Six containers were affected. Recursing instead of rebinding fixes
+       all of them, and fixes `repeatables` — whole-replaced today, so a newly
+       added repeatable id is undefined on every existing save. */
+    mergeInto(target, source) {
+        if (!source || typeof source !== 'object') return target;
+
+        for (const key of Object.keys(source)) {
+            if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+            // Never let a save name a key that reaches the prototype chain.
+            if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+
+            const incoming = source[key];
+            const existing = target[key];
+            const bothPlainObjects =
+                incoming && typeof incoming === 'object' && !Array.isArray(incoming) &&
+                existing && typeof existing === 'object' && !Array.isArray(existing);
+
+            // Arrays replace wholesale — merging unlockedApps or a document
+            // list index-by-index would be nonsense.
+            if (bothPlainObjects) {
+                State.mergeInto(existing, incoming);
+            } else if (typeof existing !== 'function') {
+                target[key] = incoming;
+            }
+        }
+        return target;
     },
 
     load() {
-        const saved = localStorage.getItem('cosmos_save');
-        if (!saved) return true;
+        const raw = localStorage.getItem(State.SAVE_KEY);
+        if (!raw) return true;
 
         try {
-            const parsed = JSON.parse(saved);
-            if (!parsed || typeof parsed !== 'object') {
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
                 throw new Error('Saved state is not an object.');
             }
 
-            // Deep merge essential objects to avoid losing newly added keys (like cherubCount)
-            if (parsed.resources) Object.assign(this.resources, parsed.resources);
-            if (parsed.resourceCaps) Object.assign(this.resourceCaps, parsed.resourceCaps);
-            if (parsed.automatons) Object.assign(this.automatons, parsed.automatons);
-            if (parsed.skills) Object.assign(this.skills, parsed.skills);
-
-            // Deep merge dimensions (nested structure)
-            if (parsed.dimensions) {
-                for (const dimKey in this.dimensions) {
-                    if (parsed.dimensions[dimKey]) {
-                        if (parsed.dimensions[dimKey].resources) {
-                            Object.assign(this.dimensions[dimKey].resources, parsed.dimensions[dimKey].resources);
-                        }
-                        if (parsed.dimensions[dimKey].resourceCaps) {
-                            Object.assign(this.dimensions[dimKey].resourceCaps, parsed.dimensions[dimKey].resourceCaps);
-                        }
-                        if (parsed.dimensions[dimKey].automatons) {
-                            Object.assign(this.dimensions[dimKey].automatons, parsed.dimensions[dimKey].automatons);
-                        }
-                        // Other dimension properties
-                        const dimSkip = ['resources', 'resourceCaps', 'automatons'];
-                        for (const key in parsed.dimensions[dimKey]) {
-                            if (!dimSkip.includes(key)) {
-                                this.dimensions[dimKey][key] = parsed.dimensions[dimKey][key];
-                            }
-                        }
-                    }
-                }
+            const applied = State.runMigrations(parsed);
+            if (applied.length) {
+                console.log(`Save migrated through version(s): ${applied.join(', ')}`);
+                // Stash the pre-migration save so a bad migration is recoverable.
+                localStorage.setItem(State.BACKUP_KEY, raw);
             }
 
-            // Deep merge prophets
-            if (parsed.prophets) Object.assign(this.prophets, parsed.prophets);
-
-            // Deep merge followers
-            if (parsed.followers) {
-                for (const dimKey in this.followers) {
-                    if (parsed.followers[dimKey]) {
-                        Object.assign(this.followers[dimKey], parsed.followers[dimKey]);
-                    }
-                }
-            }
-
-            // Deep merge adoration shop
-            if (parsed.adorationShop) {
-                if (parsed.adorationShop.cosmetics) Object.assign(this.adorationShop.cosmetics, parsed.adorationShop.cosmetics);
-                if (parsed.adorationShop.utilities) Object.assign(this.adorationShop.utilities, parsed.adorationShop.utilities);
-                if (parsed.adorationShop.prophetUpgrades) Object.assign(this.adorationShop.prophetUpgrades, parsed.adorationShop.prophetUpgrades);
-                if (parsed.adorationShop.miniGames) Object.assign(this.adorationShop.miniGames, parsed.adorationShop.miniGames);
-            }
-
-            // Deep merge settings
-            if (parsed.settings) Object.assign(this.settings, parsed.settings);
-
-            // Deep merge loop systems
-            if (parsed.loopSystems) {
-                Object.assign(this.loopSystems, parsed.loopSystems);
-                if (parsed.loopSystems.overclock) Object.assign(this.loopSystems.overclock, parsed.loopSystems.overclock);
-                if (parsed.loopSystems.directives) Object.assign(this.loopSystems.directives, parsed.loopSystems.directives);
-            }
-
-            // Deep merge casino
-            if (parsed.casino) {
-                Object.assign(this.casino, parsed.casino);
-                if (parsed.casino.solitaire) Object.assign(this.casino.solitaire, parsed.casino.solitaire);
-                if (parsed.casino.slots) Object.assign(this.casino.slots, parsed.casino.slots);
-                if (parsed.casino.plinko) Object.assign(this.casino.plinko, parsed.casino.plinko);
-                if (parsed.casino.hostDialogue) Object.assign(this.casino.hostDialogue, parsed.casino.hostDialogue);
-            }
-
-            // Deep merge adversary
-            if (parsed.adversary) {
-                Object.assign(this.adversary, parsed.adversary);
-                if (parsed.adversary.barks) Object.assign(this.adversary.barks, parsed.adversary.barks);
-            }
-
-            // Deep merge taskManager
-            if (parsed.taskManager) {
-                Object.assign(this.taskManager, parsed.taskManager);
-                if (parsed.taskManager.warnings) Object.assign(this.taskManager.warnings, parsed.taskManager.warnings);
-                if (Array.isArray(parsed.taskManager.processesEnded)) {
-                    this.taskManager.processesEnded = parsed.taskManager.processesEnded;
-                } else if (Array.isArray(parsed.taskManager.endedProcesses)) {
-                    this.taskManager.processesEnded = parsed.taskManager.endedProcesses;
-                }
-            }
-
-            // Keep task manager legacy keys in sync
-            if (!Array.isArray(this.taskManager.processesEnded)) {
-                this.taskManager.processesEnded = [];
-            }
-            if (!Array.isArray(this.taskManager.endedProcesses) || this.taskManager.endedProcesses.length !== this.taskManager.processesEnded.length) {
-                this.taskManager.endedProcesses = [...this.taskManager.processesEnded];
-            }
-
-            // Deep merge recycleBin
-            if (parsed.recycleBin) {
-                Object.assign(this.recycleBin, parsed.recycleBin);
-                if (parsed.recycleBin.sacrifices) Object.assign(this.recycleBin.sacrifices, parsed.recycleBin.sacrifices);
-            }
-
-            // Deep merge documents
-            if (parsed.documents) {
-                Object.assign(this.documents, parsed.documents);
-                if (parsed.documents.categories) {
-                    for (const cat in this.documents.categories) {
-                        if (parsed.documents.categories[cat]) {
-                            this.documents.categories[cat] = parsed.documents.categories[cat];
-                        }
-                    }
-                }
-            }
-
-            // Deep merge achievementProgress
-            if (parsed.achievementProgress) Object.assign(this.achievementProgress, parsed.achievementProgress);
-
-            // Deep merge runtime
-            if (parsed.runtime) Object.assign(this.runtime, parsed.runtime);
-
-            // Deep merge totalStats
-            if (parsed.totalStats) Object.assign(this.totalStats, parsed.totalStats);
-
-            // Deep merge achievementBonuses
-            if (parsed.achievementBonuses) Object.assign(this.achievementBonuses, parsed.achievementBonuses);
-
-            // Top level properties
-            const skip = ['resources', 'resourceCaps', 'automatons', 'skills', 'dimensions', 'prophets', 'followers', 'adorationShop', 'settings',
-                          'loopSystems', 'casino', 'adversary', 'taskManager', 'recycleBin', 'documents', 'achievementProgress', 'runtime',
-                          'totalStats', 'achievementBonuses'];
-            for (const key in parsed) {
-                if (!skip.includes(key)) {
-                    this[key] = parsed[key];
-                }
-            }
+            State.mergeInto(this, parsed);
             return true;
         } catch (error) {
-            console.error('Failed to load save data. Clearing corrupted save and continuing with defaults.', error);
-            localStorage.removeItem('cosmos_save');
+            /* Preserve, never destroy. The player's run is the one thing here
+               that cannot be regenerated. */
+            console.error('Failed to load save data. It has been preserved; starting from defaults.', error);
+            try {
+                localStorage.setItem(`${State.BACKUP_KEY}_unreadable`, raw);
+            } catch (_) { /* quota — nothing useful to do */ }
             return false;
         }
     }

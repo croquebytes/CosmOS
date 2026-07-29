@@ -1997,8 +1997,10 @@ const game = {
             const saveData = atob(compressed); // Base64 decode
             const parsed = JSON.parse(saveData);
 
-            // Validate it's a CosmOS save
-            if (!parsed.resources || !parsed.pps) {
+            /* Validate shape, not progress. The old check required
+               `parsed.pps` to be truthy — but pps is 0 until the first Seraph
+               is bought, so it rejected every legitimate early-game save. */
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !parsed.resources) {
                 throw new Error('Invalid save format');
             }
 
