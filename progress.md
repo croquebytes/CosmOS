@@ -323,7 +323,80 @@ Over 8h: 211/155/140/80 across the Void ranks, Void repeatables at 61–94,
   Darkness preserved, Revenant/Nemesis/Void repeatables/Null Doctrine all
   defaulted, production intact.
 
+## 2026-07-26 — Session 1 complete: foundations
+
+Ran the design plan's Session 1. A multi-agent survey (5 parallel readers, a
+design pass, 3 adversarial critiques) mapped the codebase first, and it
+changed the plan: the save layer had to land before the registry, because the
+registry needs its log persisted and rehydrating a pre-registry save requires
+purchase order the format never recorded.
+
+### Golden-master harness first
+`tools/golden.mjs` + `--json` on the simulator. The sim is deterministic, so
+its output is a regression test: three horizons, leaf-level diffing.
+Confirmed sensitive by perturbing one constant 0.33% and watching it attribute
+the change across 27 fields. This is what made the rest safe.
+
+**Regenerate baselines only for an intentional balance change, and say so in
+the commit.** A silently recaptured baseline is worse than none.
+
+### Save layer
+Versioned saves with ordered migrations that run on the raw parsed object
+before any merge. Fixed four player-facing bugs: the loader deleted saves on
+any throw; nested `Object.assign` rebinding silently dropped defaults in six
+containers (which is why the Void repeatables only appeared to work); no
+`hasOwnProperty` guard on a loop fed by base64 user input; and `importSave`
+rejected every early-game save because it validated on `pps`.
+
+### Five bugs from the survey
+Four copies of the production formula, all drifted — the on-screen rate was
+wrong by orders of magnitude late. Temporal Rift granted zero Offerings.
+Buy buttons were destroyed and recreated 60x/sec so `:hover`/`:active` could
+never paint. The count-up animation leaked up to ~18 concurrent intervals.
+The Divine Globe leaked an entire rAF loop for the session.
+
+### Modifier registry
+Declared, scoped, reversible records; production is a fold. Three decisions
+worth keeping:
+
+- **No cache.** All three critiques found the same hole in a memoised design:
+  nothing dirties a target when a dynamic base changes, so prestige silently
+  fails to rebase any multiplier with no run-scoped records.
+- **Insertion order is load-bearing.** IEEE-754 multiplication is not
+  associative. There is a test asserting that reordering changes the result,
+  so nobody "optimises" it later.
+- **Bindings write back to the legacy scalars.** `getProductionRates()` was
+  never touched, so bit-identity came for free and the flip could be verified
+  at every step.
+
+Bases are derived from a `PRISTINE` snapshot rather than transcribed — two
+reviews independently caught hand-written bases that were wrong (void shadow
+cap 200 vs 50). Scope is read off what `performPrestige` actually resets, not
+intuition, which caught `offline.efficiency` (prestige never resets it, so
+scoping it 'run' would have been an unannounced nerf invisible to the golden
+master).
+
+Equivalence is proven on two independent sandboxes per item, because a review
+caught that comparing the fold against the scalar the fold just wrote proves
+nothing. 62 of 66 content items converted; the remaining four are grants.
+
+### The leak the baselines were pinning
+`performPrestige` never reset `throneDrawMultiplier`, so the Throne draw
+upgrades re-applied every run and compounded. Old baselines recorded
+`0.4875^7` at prestige 6 and `0.4875^15` at prestige 14 — the exponent is
+runs played, exactly. By hour eight Thrones drew 1/48000th of their intended
+cost. Same leak hit `divineEventSpawnRate`, `streakCapBonus`,
+`overclockPotency` and `overclockDurationBonus`.
+
+Pre-prestige runs are byte-identical before and after the flip, which is what
+localises the change to prestige and proves the fold itself is faithful.
+
 ### Known gaps
+- The Reality Builds spine (Session 2) is now unblocked and untouched.
+- Achievement rewards (23 closures) and shop items (8) are not yet converted
+  to modifiers; they still mutate directly.
+- `Modifiers.explain()` exists and is tested but nothing renders it yet — the
+  production-breakdown panel is a small follow-up.
 - Void resource stat boxes have no per-second readout for Shadows.
 - The Void's payout is strong: playing both economies reaches ~1e18/s at 8h
   versus ~1e14/s for the primordial chain alone. Intentional — it is optional
