@@ -596,6 +596,22 @@ const State = {
     }
 };
 
+/* ── Pristine defaults ────────────────────────────────────────────────────
+   A frozen copy of the schema BEFORE any save is applied, captured here
+   because this is the only moment it exists.
+
+   The modifier registry derives every one of its base values from this by
+   path, rather than restating them. Two independent reviews of the registry
+   design caught hand-transcribed bases that were wrong — void.caps.shadows
+   as 200 against a real 50, echoes as 1000 against 500 — which would have
+   shipped a silent 4x storage buff that no test could see, because the wrong
+   number would have BEEN the baseline. Deriving them makes that class of
+   mistake unrepresentable.
+
+   JSON round-trip rather than structuredClone: it drops functions, which is
+   exactly what save() already relies on. */
+const PRISTINE = JSON.parse(JSON.stringify(State));
+
 // Initial load
 State.load();
 
@@ -907,6 +923,7 @@ const UpgradeList = [
         name: 'Divine Words',
         description: 'Your miracles carry more weight. +100% Praise production.',
         cost: { praise: 50 },
+        mods: [{ target: 'praise.multiplier', op: 'mul', value: 2 }],
         effect: () => { State.praiseMultiplier *= 2; },
         visible: () => true
     },
@@ -915,6 +932,7 @@ const UpgradeList = [
         name: 'Efficient Design',
         description: 'Seraphs cost 10% less to commission.',
         cost: { praise: 100 },
+        mods: [{ target: 'automaton.seraph.cost', op: 'mul', value: 0.9 }],
         effect: () => { State.automatons.seraphCostMultiplier *= 0.9; },
         visible: () => State.automatons.seraphCount >= 1
     },
@@ -923,6 +941,7 @@ const UpgradeList = [
         name: 'Sacred Syntax',
         description: 'Refined divine communication protocols. +100% Praise production.',
         cost: { praise: 500 },
+        mods: [{ target: 'praise.multiplier', op: 'mul', value: 2 }],
         effect: () => { State.praiseMultiplier *= 2; },
         visible: () => State.upgrades.praise_multi_1
     },
@@ -931,6 +950,7 @@ const UpgradeList = [
         name: 'Focused Divinity',
         description: 'Manual miracles are 5× more effective.',
         cost: { praise: 250 },
+        mods: [{ target: 'click.power', op: 'mul', value: 5 }],
         effect: () => { State.manualClickPower = (State.manualClickPower || 1) * 5; },
         visible: () => true
     },
@@ -939,6 +959,7 @@ const UpgradeList = [
         name: 'Angelic Motivation',
         description: 'Seraphs work twice as hard. +100% Seraph production.',
         cost: { praise: 1000 },
+        mods: [{ target: 'automaton.seraph.output', op: 'mul', value: 2 }],
         effect: () => { State.automatons.seraphProduction = (State.automatons.seraphProduction || 1) * 2; },
         visible: () => State.automatons.seraphCount >= 5
     },
@@ -955,6 +976,7 @@ const UpgradeList = [
         name: 'Omnipotent Voice',
         description: 'Your words reshape reality itself. +200% Praise production.',
         cost: { praise: 5000 },
+        mods: [{ target: 'praise.multiplier', op: 'mul', value: 3 }],
         effect: () => { State.praiseMultiplier *= 3; },
         visible: () => State.upgrades.praise_multi_2
     },
@@ -963,6 +985,7 @@ const UpgradeList = [
         name: 'Mass Production',
         description: 'Seraphs cost 15% less to commission.',
         cost: { praise: 3000 },
+        mods: [{ target: 'automaton.seraph.cost', op: 'mul', value: 0.85 }],
         effect: () => { State.automatons.seraphCostMultiplier *= 0.85; },
         visible: () => State.upgrades.seraph_cost_1 && State.automatons.seraphCount >= 10
     },
@@ -971,6 +994,7 @@ const UpgradeList = [
         name: 'Divine Vault I',
         description: 'Increase Praise storage capacity by 1,000.',
         cost: { praise: 500 },
+        mods: [{ target: 'caps.praise', op: 'add', value: 1000 }],
         effect: () => { State.resourceCaps.praise += 1000; },
         visible: () => State.resources.praise >= 800
     },
@@ -979,6 +1003,7 @@ const UpgradeList = [
         name: 'Divine Vault II',
         description: 'Increase Praise storage capacity by 2,500.',
         cost: { praise: 2000 },
+        mods: [{ target: 'caps.praise', op: 'add', value: 2500 }],
         effect: () => { State.resourceCaps.praise += 2500; },
         visible: () => State.upgrades.storage_praise_1
     },
@@ -987,6 +1012,7 @@ const UpgradeList = [
         name: 'Sacred Repository',
         description: 'Increase Offerings storage capacity by 100.',
         cost: { offerings: 50 },
+        mods: [{ target: 'caps.offerings', op: 'add', value: 100 }],
         effect: () => { State.resourceCaps.offerings += 100; },
         visible: () => State.unlockedOfferings
     },
@@ -995,6 +1021,7 @@ const UpgradeList = [
         name: 'Compact Architecture',
         description: 'Cherubs cost 10% less to commission.',
         cost: { offerings: 25 },
+        mods: [{ target: 'automaton.cherub.cost', op: 'mul', value: 0.9 }],
         effect: () => { State.automatons.cherubCostMultiplier *= 0.9; },
         visible: () => State.automatons.cherubCount >= 1
     },
@@ -1003,6 +1030,7 @@ const UpgradeList = [
         name: 'Optimized Compilation',
         description: 'Cherubs work twice as efficiently. +100% Cherub production.',
         cost: { offerings: 50 },
+        mods: [{ target: 'automaton.cherub.output', op: 'mul', value: 2 }],
         effect: () => { State.automatons.cherubProduction = (State.automatons.cherubProduction || 1) * 2; },
         visible: () => State.automatons.cherubCount >= 5
     },
@@ -1011,6 +1039,7 @@ const UpgradeList = [
         name: 'Resonant Souls',
         description: 'Souls accumulate with greater intensity. +100% Soul production.',
         cost: { offerings: 75 },
+        mods: [{ target: 'souls.multiplier', op: 'mul', value: 2 }],
         effect: () => { State.soulMultiplier *= 2; },
         visible: () => State.automatons.cherubCount >= 3
     },
@@ -1052,6 +1081,7 @@ const UpgradeList = [
         name: 'Consecrated Furnaces',
         description: 'Thrones return twice as many Offerings per burn.',
         cost: { praise: 6000 },
+        mods: [{ target: 'automaton.throne.output', op: 'mul', value: 2 }],
         effect: () => { State.automatons.throneProduction *= 2; },
         visible: () => State.automatons.throneCount >= 3
     },
@@ -1060,6 +1090,7 @@ const UpgradeList = [
         name: 'Lossless Liturgy',
         description: 'Thrones burn 25% less Praise for the same Offerings.',
         cost: { praise: 12000 },
+        mods: [{ target: 'throne.draw', op: 'mul', value: 0.75 }],
         effect: () => { State.throneDrawMultiplier = (State.throneDrawMultiplier || 1) * 0.75; },
         visible: () => State.automatons.throneCount >= 8
     },
@@ -1068,6 +1099,7 @@ const UpgradeList = [
         name: 'Standardised Thrones',
         description: 'Thrones cost 15% less to commission.',
         cost: { offerings: 400 },
+        mods: [{ target: 'automaton.throne.cost', op: 'mul', value: 0.85 }],
         effect: () => { State.automatons.throneCostMultiplier *= 0.85; },
         visible: () => State.automatons.throneCount >= 12
     },
@@ -1076,6 +1108,7 @@ const UpgradeList = [
         name: 'Sacrificial Overdraft',
         description: 'Thrones return three times as many Offerings.',
         cost: { offerings: 3000 },
+        mods: [{ target: 'automaton.throne.output', op: 'mul', value: 3 }],
         effect: () => { State.automatons.throneProduction *= 3; },
         visible: () => State.upgrades.throne_yield_1 && State.automatons.throneCount >= 20
     },
@@ -1084,6 +1117,7 @@ const UpgradeList = [
         name: 'Closed Circuit Rite',
         description: 'Thrones burn a further 35% less Praise.',
         cost: { souls: 8000 },
+        mods: [{ target: 'throne.draw', op: 'mul', value: 0.65 }],
         effect: () => { State.throneDrawMultiplier = (State.throneDrawMultiplier || 1) * 0.65; },
         visible: () => State.upgrades.throne_draw_1 && State.automatons.throneCount >= 25
     },
@@ -1094,6 +1128,7 @@ const UpgradeList = [
         name: 'Regulatory Authority',
         description: 'Each Dominion contributes twice as much to total production.',
         cost: { souls: 25000 },
+        mods: [{ target: 'automaton.dominion.bonusScale', op: 'mul', value: 2 }],
         effect: () => { State.automatons.dominionProduction *= 2; },
         visible: () => State.automatons.dominionCount >= 3
     },
@@ -1102,6 +1137,7 @@ const UpgradeList = [
         name: 'Delegated Jurisdiction',
         description: 'Dominions cost 20% fewer Souls.',
         cost: { souls: 60000 },
+        mods: [{ target: 'automaton.dominion.cost', op: 'mul', value: 0.8 }],
         effect: () => { State.automatons.dominionCostMultiplier *= 0.8; },
         visible: () => State.automatons.dominionCount >= 8
     },
@@ -1110,6 +1146,7 @@ const UpgradeList = [
         name: 'Absolute Mandate',
         description: 'Each Dominion contributes three times as much again.',
         cost: { souls: 400000 },
+        mods: [{ target: 'automaton.dominion.bonusScale', op: 'mul', value: 3 }],
         effect: () => { State.automatons.dominionProduction *= 3; },
         visible: () => State.upgrades.dominion_boost_1 && State.automatons.dominionCount >= 15
     },
@@ -1120,6 +1157,7 @@ const UpgradeList = [
         name: 'Parallel Compilation',
         description: 'Cherubs synthesise Souls three times as fast.',
         cost: { offerings: 1200 },
+        mods: [{ target: 'automaton.cherub.output', op: 'mul', value: 3 }],
         effect: () => { State.automatons.cherubProduction *= 3; },
         visible: () => State.automatons.cherubCount >= 15
     },
@@ -1128,6 +1166,7 @@ const UpgradeList = [
         name: 'Recycled Casings',
         description: 'Cherubs cost 20% fewer Offerings.',
         cost: { offerings: 2500 },
+        mods: [{ target: 'automaton.cherub.cost', op: 'mul', value: 0.8 }],
         effect: () => { State.automatons.cherubCostMultiplier *= 0.8; },
         visible: () => State.upgrades.cherub_cost_1 && State.automatons.cherubCount >= 20
     },
@@ -1138,6 +1177,7 @@ const UpgradeList = [
         name: 'Choral Saturation',
         description: 'The whole choir sings as one. +300% Praise production.',
         cost: { praise: 90000 },
+        mods: [{ target: 'praise.multiplier', op: 'mul', value: 4 }],
         effect: () => { State.praiseMultiplier *= 4; },
         visible: () => State.upgrades.praise_multi_3
     },
@@ -1146,6 +1186,7 @@ const UpgradeList = [
         name: 'Doctrine of Excess',
         description: 'Restraint was never scripture. +400% Praise production.',
         cost: { praise: 1500000 },
+        mods: [{ target: 'praise.multiplier', op: 'mul', value: 5 }],
         effect: () => { State.praiseMultiplier *= 5; },
         visible: () => State.upgrades.praise_multi_4
     },
@@ -1154,6 +1195,7 @@ const UpgradeList = [
         name: 'Perpetual Hosanna',
         description: 'Seraphs never rest. +200% Seraph production.',
         cost: { praise: 45000 },
+        mods: [{ target: 'automaton.seraph.output', op: 'mul', value: 3 }],
         effect: () => { State.automatons.seraphProduction *= 3; },
         visible: () => State.upgrades.seraph_boost_1 && State.automatons.seraphCount >= 30
     },
@@ -1164,6 +1206,7 @@ const UpgradeList = [
         name: 'Devotional Stamina',
         description: 'Raise the Miracle Streak ceiling substantially.',
         cost: { praise: 20000 },
+        mods: [{ target: 'streak.cap', op: 'add', value: 1.5 }],
         effect: () => { State.streakCapBonus = (State.streakCapBonus || 0) + 1.5; },
         visible: () => (State.loopSystems?.bestMiracleStreak || 0) >= 25
     },
@@ -1172,6 +1215,7 @@ const UpgradeList = [
         name: 'Unsafe Clock Multiplier',
         description: 'Celestial Overclock grants +100% production instead of +50%.',
         cost: { offerings: 800 },
+        mods: [{ target: 'overclock.potency', op: 'add', value: 0.5 }],
         effect: () => { State.overclockPotency = (State.overclockPotency || 0) + 0.5; },
         visible: () => State.automatons.throneCount >= 5
     },
@@ -1180,6 +1224,7 @@ const UpgradeList = [
         name: 'Extended Duty Cycle',
         description: 'Celestial Overclock runs for 30 seconds longer.',
         cost: { souls: 12000 },
+        mods: [{ target: 'overclock.duration', op: 'add', value: 30000 }],
         effect: () => { State.overclockDurationBonus = (State.overclockDurationBonus || 0) + 30000; },
         visible: () => State.upgrades.overclock_potency_1
     },
@@ -1188,6 +1233,7 @@ const UpgradeList = [
         name: 'Custodial Routines',
         description: 'The universe runs at 85% while unattended, up from 60%.',
         cost: { souls: 15000 },
+        mods: [{ target: 'offline.efficiency', op: 'max', value: 0.85 }],
         effect: () => { State.offlineEfficiency = Math.max(State.offlineEfficiency || 0.6, 0.85); },
         visible: () => State.automatons.cherubCount >= 10
     },
@@ -1196,6 +1242,7 @@ const UpgradeList = [
         name: 'Autonomous Providence',
         description: 'The universe runs at full rate while unattended.',
         cost: { souls: 250000 },
+        mods: [{ target: 'offline.efficiency', op: 'max', value: 1 }],
         effect: () => { State.offlineEfficiency = Math.max(State.offlineEfficiency || 0.6, 1); },
         visible: () => State.upgrades.offline_efficiency_1
     },
@@ -1206,6 +1253,11 @@ const UpgradeList = [
         name: 'Retained Schematics',
         description: 'Divine Reboots preserve more of your work. +25% Praise, Offerings and Souls.',
         cost: { praise: 250000 },
+        mods: [
+            { target: 'praise.multiplier', op: 'mul', value: 1.25 },
+            { target: 'offerings.multiplier', op: 'mul', value: 1.25 },
+            { target: 'souls.multiplier', op: 'mul', value: 1.25 }
+        ],
         effect: () => {
             State.praiseMultiplier *= 1.25;
             State.offeringMultiplier *= 1.25;
@@ -1218,6 +1270,11 @@ const UpgradeList = [
         name: 'Inherited Doctrine',
         description: 'Each reboot compounds. Double all production.',
         cost: { souls: 800000 },
+        mods: [
+            { target: 'praise.multiplier', op: 'mul', value: 2 },
+            { target: 'offerings.multiplier', op: 'mul', value: 2 },
+            { target: 'souls.multiplier', op: 'mul', value: 2 }
+        ],
         effect: () => {
             State.praiseMultiplier *= 2;
             State.offeringMultiplier *= 2;
@@ -1232,6 +1289,7 @@ const UpgradeList = [
         name: 'Embrace Darkness',
         description: 'Channel the tear. +100% Darkness production.',
         cost: { darkness: 900 },
+        mods: [{ target: 'void.darkness.multiplier', op: 'mul', value: 2 }],
         effect: () => { State.dimensions.void.darknessMultiplier *= 2; },
         visible: () => State.dimensions.void.unlocked
     },
@@ -1240,6 +1298,7 @@ const UpgradeList = [
         name: 'Shadowy Bargains',
         description: 'Wraiths cost 15% less to summon.',
         cost: { darkness: 2500 },
+        mods: [{ target: 'void.automaton.wraith.cost', op: 'mul', value: 0.85 }],
         effect: () => { State.dimensions.void.automatons.wraithCostMultiplier *= 0.85; },
         visible: () => State.dimensions.void.automatons.wraithCount >= 5
     },
@@ -1248,6 +1307,7 @@ const UpgradeList = [
         name: 'Spectral Efficiency',
         description: 'Wraiths work twice as hard. +100% Wraith production.',
         cost: { darkness: 9000 },
+        mods: [{ target: 'void.automaton.wraith.output', op: 'mul', value: 2 }],
         effect: () => { State.dimensions.void.automatons.wraithProduction *= 2; },
         visible: () => State.dimensions.void.automatons.wraithCount >= 15
     },
@@ -1256,6 +1316,7 @@ const UpgradeList = [
         name: 'Condensation Rites',
         description: 'Revenants condense twice as many Shadows per burn.',
         cost: { darkness: 40000 },
+        mods: [{ target: 'void.automaton.revenant.output', op: 'mul', value: 2 }],
         effect: () => { State.dimensions.void.automatons.revenantProduction *= 2; },
         visible: () => State.dimensions.void.automatons.revenantCount >= 3
     },
@@ -1264,6 +1325,7 @@ const UpgradeList = [
         name: 'Sealed Conduits',
         description: 'Revenants burn 30% less Darkness for the same Shadows.',
         cost: { shadows: 1200 },
+        mods: [{ target: 'void.revenant.draw', op: 'mul', value: 0.7 }],
         effect: () => {
             const vd = State.dimensions.void;
             vd.revenantDrawMultiplier = (vd.revenantDrawMultiplier ?? 1) * 0.7;
@@ -1275,6 +1337,7 @@ const UpgradeList = [
         name: 'Harmonic Folding',
         description: 'Phantoms fold Shadows three times as fast.',
         cost: { shadows: 6000 },
+        mods: [{ target: 'void.automaton.phantom.output', op: 'mul', value: 3 }],
         effect: () => { State.dimensions.void.automatons.phantomProduction *= 3; },
         visible: () => State.dimensions.void.automatons.phantomCount >= 10
     },
@@ -1283,6 +1346,7 @@ const UpgradeList = [
         name: 'Standing Resonance',
         description: 'Echoes accumulate twice as fast.',
         cost: { echoes: 15000 },
+        mods: [{ target: 'void.echo.multiplier', op: 'mul', value: 2 }],
         effect: () => { State.dimensions.void.echoMultiplier *= 2; },
         visible: () => State.dimensions.void.automatons.phantomCount >= 20
     },
@@ -1291,6 +1355,7 @@ const UpgradeList = [
         name: 'Adversarial Mandate',
         description: 'Each Nemesis contributes twice as much to total production.',
         cost: { echoes: 120000 },
+        mods: [{ target: 'void.automaton.nemesis.bonusScale', op: 'mul', value: 2 }],
         effect: () => { State.dimensions.void.automatons.nemesisProduction *= 2; },
         visible: () => State.dimensions.void.automatons.nemesisCount >= 5
     },
@@ -1299,6 +1364,7 @@ const UpgradeList = [
         name: 'Hand in the Tear',
         description: 'Embracing the Void is ten times as productive.',
         cost: { darkness: 15000 },
+        mods: [{ target: 'void.click.power', op: 'mul', value: 10 }],
         effect: () => { State.dimensions.void.manualClickPower *= 10; },
         visible: () => State.dimensions.void.automatons.wraithCount >= 8
     }
@@ -1323,6 +1389,9 @@ const MandateList = [
         description: 'Begin the path of Creation. +10% Praise production.',
         cost: 1,
         prerequisites: [],
+        mods: [
+            { target: 'praise.multiplier', op: 'mul', value: 1.1, scope: 'permanent' }
+        ],
         effect: () => { State.praiseMultiplier *= 1.1; }
     },
     {
@@ -1332,6 +1401,9 @@ const MandateList = [
         description: 'Let abundance flow. +20% Praise production.',
         cost: 2,
         prerequisites: ['creation_root'],
+        mods: [
+            { target: 'praise.multiplier', op: 'mul', value: 1.2, scope: 'permanent' }
+        ],
         effect: () => { State.praiseMultiplier *= 1.2; }
     },
     {
@@ -1341,6 +1413,9 @@ const MandateList = [
         description: 'Craft souls with intention. +20% Soul production.',
         cost: 2,
         prerequisites: ['creation_root'],
+        mods: [
+            { target: 'souls.multiplier', op: 'mul', value: 1.2, scope: 'permanent' }
+        ],
         effect: () => { State.soulMultiplier *= 1.2; }
     },
     {
@@ -1350,6 +1425,11 @@ const MandateList = [
         description: 'Amplify all creation. +50% to all production.',
         cost: 4,
         prerequisites: ['creation_t2_left', 'creation_t2_right'],
+        mods: [
+            { target: 'praise.multiplier', op: 'mul', value: 1.5, scope: 'permanent' },
+            { target: 'offerings.multiplier', op: 'mul', value: 1.5, scope: 'permanent' },
+            { target: 'souls.multiplier', op: 'mul', value: 1.5, scope: 'permanent' }
+        ],
         effect: () => {
             State.praiseMultiplier *= 1.5;
             State.offeringMultiplier *= 1.5;
@@ -1363,6 +1443,11 @@ const MandateList = [
         description: 'Master the art of creation. Double all production.',
         cost: 8,
         prerequisites: ['creation_t3'],
+        mods: [
+            { target: 'praise.multiplier', op: 'mul', value: 2, scope: 'permanent' },
+            { target: 'offerings.multiplier', op: 'mul', value: 2, scope: 'permanent' },
+            { target: 'souls.multiplier', op: 'mul', value: 2, scope: 'permanent' }
+        ],
         effect: () => {
             State.praiseMultiplier *= 2;
             State.offeringMultiplier *= 2;
@@ -1378,6 +1463,9 @@ const MandateList = [
         description: 'Establish order. Seraph cost -10%.',
         cost: 1,
         prerequisites: [],
+        mods: [
+            { target: 'automaton.seraph.cost', op: 'mul', value: 0.9, scope: 'permanent' }
+        ],
         effect: () => { State.automatons.seraphCostMultiplier *= 0.9; }
     },
     {
@@ -1387,6 +1475,10 @@ const MandateList = [
         description: 'Optimize automaton design. All automaton costs -15%.',
         cost: 2,
         prerequisites: ['maintenance_root'],
+        mods: [
+            { target: 'automaton.seraph.cost', op: 'mul', value: 0.85, scope: 'permanent' },
+            { target: 'automaton.cherub.cost', op: 'mul', value: 0.85, scope: 'permanent' }
+        ],
         effect: () => {
             State.automatons.seraphCostMultiplier *= 0.85;
             State.automatons.cherubCostMultiplier *= 0.85;
@@ -1399,6 +1491,10 @@ const MandateList = [
         description: 'Automatons work harder. +30% automaton production.',
         cost: 2,
         prerequisites: ['maintenance_root'],
+        mods: [
+            { target: 'automaton.seraph.output', op: 'mul', value: 1.3, scope: 'permanent' },
+            { target: 'automaton.cherub.output', op: 'mul', value: 1.3, scope: 'permanent' }
+        ],
         effect: () => {
             State.automatons.seraphProduction *= 1.3;
             State.automatons.cherubProduction *= 1.3;
@@ -1411,6 +1507,11 @@ const MandateList = [
         description: 'Harmony in all things. +50% to all storage caps.',
         cost: 4,
         prerequisites: ['maintenance_t2_left', 'maintenance_t2_right'],
+        mods: [
+            { target: 'caps.praise', op: 'mulfloor', value: 1.5, scope: 'permanent' },
+            { target: 'caps.offerings', op: 'mulfloor', value: 1.5, scope: 'permanent' },
+            { target: 'caps.souls', op: 'mulfloor', value: 1.5, scope: 'permanent' }
+        ],
         effect: () => {
             State.resourceCaps.praise = Math.floor(State.resourceCaps.praise * 1.5);
             State.resourceCaps.offerings = Math.floor(State.resourceCaps.offerings * 1.5);
@@ -1424,6 +1525,12 @@ const MandateList = [
         description: 'Perfect automation. Double automaton production, halve costs.',
         cost: 8,
         prerequisites: ['maintenance_t3'],
+        mods: [
+            { target: 'automaton.seraph.output', op: 'mul', value: 2, scope: 'permanent' },
+            { target: 'automaton.cherub.output', op: 'mul', value: 2, scope: 'permanent' },
+            { target: 'automaton.seraph.cost', op: 'mul', value: 0.5, scope: 'permanent' },
+            { target: 'automaton.cherub.cost', op: 'mul', value: 0.5, scope: 'permanent' }
+        ],
         effect: () => {
             State.automatons.seraphProduction *= 2;
             State.automatons.cherubProduction *= 2;
@@ -1440,6 +1547,9 @@ const MandateList = [
         description: 'Accept entropy. Manual clicks +100% more effective.',
         cost: 1,
         prerequisites: [],
+        mods: [
+            { target: 'click.power', op: 'mul', value: 2, scope: 'permanent' }
+        ],
         effect: () => { State.manualClickPower = (State.manualClickPower || 1) * 2; }
     },
     {
@@ -1449,6 +1559,9 @@ const MandateList = [
         description: 'Bend the rules. Divine Intervention cooldown -20%.',
         cost: 2,
         prerequisites: ['entropy_root'],
+        mods: [
+            { target: 'skill.divineIntervention.cooldown', op: 'mul', value: 0.8, scope: 'permanent' }
+        ],
         effect: () => { State.skills.divineIntervention.cooldown *= 0.8; }
     },
     {
@@ -1458,6 +1571,9 @@ const MandateList = [
         description: 'Warp time itself. Temporal Rift cooldown -30%.',
         cost: 2,
         prerequisites: ['entropy_root'],
+        mods: [
+            { target: 'skill.temporalRift.cooldown', op: 'mul', value: 0.7, scope: 'permanent' }
+        ],
         effect: () => { State.skills.temporalRift.cooldown *= 0.7; }
     },
     {
@@ -1467,6 +1583,9 @@ const MandateList = [
         description: 'Fortune smiles upon you. Divine Events spawn 50% more often.',
         cost: 4,
         prerequisites: ['entropy_t2_left', 'entropy_t2_right'],
+        mods: [
+            { target: 'events.spawnRate', op: 'mul', value: 1.5, scope: 'permanent' }
+        ],
         effect: () => { State.divineEventSpawnRate = (State.divineEventSpawnRate || 0.05) * 1.5; }
     },
     {
@@ -1476,6 +1595,11 @@ const MandateList = [
         description: 'The hierarchy sings without instruction. Triple all production.',
         cost: 16,
         prerequisites: ['creation_ultimate'],
+        mods: [
+            { target: 'praise.multiplier', op: 'mul', value: 3, scope: 'permanent' },
+            { target: 'offerings.multiplier', op: 'mul', value: 3, scope: 'permanent' },
+            { target: 'souls.multiplier', op: 'mul', value: 3, scope: 'permanent' }
+        ],
         effect: () => {
             State.praiseMultiplier *= 3;
             State.offeringMultiplier *= 3;
@@ -1489,6 +1613,11 @@ const MandateList = [
         description: 'Author production from nothing. Ten times all production.',
         cost: 40,
         prerequisites: ['creation_t4'],
+        mods: [
+            { target: 'praise.multiplier', op: 'mul', value: 10, scope: 'permanent' },
+            { target: 'offerings.multiplier', op: 'mul', value: 10, scope: 'permanent' },
+            { target: 'souls.multiplier', op: 'mul', value: 10, scope: 'permanent' }
+        ],
         effect: () => {
             State.praiseMultiplier *= 10;
             State.offeringMultiplier *= 10;
@@ -1502,6 +1631,11 @@ const MandateList = [
         description: 'Triple every storage capacity.',
         cost: 16,
         prerequisites: ['maintenance_ultimate'],
+        mods: [
+            { target: 'caps.praise', op: 'mulfloor', value: 3, scope: 'permanent' },
+            { target: 'caps.offerings', op: 'mulfloor', value: 3, scope: 'permanent' },
+            { target: 'caps.souls', op: 'mulfloor', value: 3, scope: 'permanent' }
+        ],
         effect: () => {
             State.resourceCaps.praise = Math.floor(State.resourceCaps.praise * 3);
             State.resourceCaps.offerings = Math.floor(State.resourceCaps.offerings * 3);
@@ -1515,6 +1649,12 @@ const MandateList = [
         description: 'The universe runs at full rate while you are away, forever.',
         cost: 40,
         prerequisites: ['maintenance_t4'],
+        // Partial: the +8 offline_capacitor ranks are a GRANT into the
+        // repeatables ledger, not a scalar, so they stay in effect().
+        modsPartial: true,
+        mods: [
+            { target: 'offline.efficiency', op: 'set', value: 1, scope: 'permanent' }
+        ],
         effect: () => {
             State.offlineEfficiency = 1;
             State.repeatables.offline_capacitor = (State.repeatables.offline_capacitor || 0) + 8;
@@ -1527,6 +1667,10 @@ const MandateList = [
         description: 'Celestial Overclock is half again as strong and runs a minute longer.',
         cost: 16,
         prerequisites: ['entropy_ultimate'],
+        mods: [
+            { target: 'overclock.potency', op: 'add', value: 0.5, scope: 'permanent' },
+            { target: 'overclock.duration', op: 'add', value: 60000, scope: 'permanent' }
+        ],
         effect: () => {
             State.overclockPotency = (State.overclockPotency || 0) + 0.5;
             State.overclockDurationBonus = (State.overclockDurationBonus || 0) + 60000;
@@ -1539,6 +1683,10 @@ const MandateList = [
         description: 'Entropy pays out. Divine Events spawn twice as often and the Streak ceiling doubles.',
         cost: 40,
         prerequisites: ['entropy_t4'],
+        mods: [
+            { target: 'events.spawnRate', op: 'mul', value: 2, scope: 'permanent' },
+            { target: 'streak.cap', op: 'add', value: 3, scope: 'permanent' }
+        ],
         effect: () => {
             State.divineEventSpawnRate = (State.divineEventSpawnRate || 0.05) * 2;
             State.streakCapBonus = (State.streakCapBonus || 0) + 3;
