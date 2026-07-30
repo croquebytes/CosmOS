@@ -126,10 +126,14 @@ const ModifierTargets = {
     },
 
     // ── Storage ──
+    /* floor: the cheapest cap-raising purchase costs 400 Praise, so any build
+       that pushed this below that could never be escaped. A review found
+       exactly that — dep_storage_growth folded it to 350. */
     'caps.praise': {
         base: 'resourceCaps.praise',
         write: (v) => { State.resourceCaps.praise = v; },
         scope: 'run',
+        floor: 600,
     },
     'caps.offerings': {
         base: 'resourceCaps.offerings',
@@ -344,6 +348,13 @@ const Modifiers = {
             enabled: true,
             seq: this._seq++,
         };
+        if (this.records.some((existing) => existing.id === record.id)) {
+            // Ids are deterministic, so a repeat is a double-apply rather than
+            // a legitimate second stack. Purchases that DO stack (repeatable
+            // ranks, shop tiers) carry their rank in the id.
+            return null;
+        }
+
         this.records.push(record);
         return record;
     },
@@ -364,6 +375,20 @@ const Modifiers = {
         let acc = this.baseOf(target);
         for (const record of this.records) {
             if (record.target !== target) continue;
+            if (!this.isActive(record, now)) continue;
+            acc = ModifierOps[record.op](acc, record.value);
+        }
+        return acc;
+    },
+
+    /* Folds while ignoring one scope. Used to price a patch against the cap the
+       run would have WITHOUT the current build, so a build cannot move the
+       price of its own patches. */
+    foldExcluding(target, excludedScope, now) {
+        let acc = this.baseOf(target);
+        for (const record of this.records) {
+            if (record.target !== target) continue;
+            if (record.scope === excludedScope) continue;
             if (!this.isActive(record, now)) continue;
             acc = ModifierOps[record.op](acc, record.value);
         }
@@ -396,7 +421,12 @@ const Modifiers = {
        Call after any change to the log, and after prestige. */
     commit(now) {
         for (const target of Object.keys(ModifierTargets)) {
-            ModifierTargets[target].write(this.fold(target, now));
+            const spec = ModifierTargets[target];
+            let value = this.fold(target, now);
+            // A declared floor is a playability guarantee, applied last so no
+            // combination of modifiers can breach it.
+            if (spec.floor !== undefined) value = Math.max(spec.floor, value);
+            spec.write(value);
         }
     },
 

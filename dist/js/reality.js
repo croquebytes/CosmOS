@@ -108,7 +108,7 @@ const RealityPool = {
         { id: 'iss_cherub_warnings', severity: 3, note: 'Cherub compiler emitting warnings. Souls down 40%. Ticket filed.',
           mods: [{ target: 'automaton.cherub.output', op: 'mul', value: 0.6 }], patchCost: { resource: 'offerings', scale: 0.5 } },
         { id: 'iss_unattended_flaky', severity: 1, note: 'Unattended operation unreliable. Do not close the console.',
-          mods: [{ target: 'offline.efficiency', op: 'set', value: 0.3 }], patchCost: { resource: 'souls', scale: 0.3 } },
+          mods: [{ target: 'offline.efficiency', op: 'min', value: 0.3 }], patchCost: { resource: 'souls', scale: 0.3 } },
         { id: 'iss_countersignature', severity: 3, note: 'Seraph requisitions now require a counter-signature. +50% cost.',
           mods: [{ target: 'automaton.seraph.cost', op: 'mul', value: 1.5 }], patchCost: { resource: 'praise', scale: 0.25 } },
         { id: 'iss_dedup_overeager', severity: 2, note: 'Praise deduplication over-eager. 25% of all Praise discarded as duplicate.',
@@ -142,14 +142,14 @@ const RealityPool = {
     deprecations: [
         { id: 'dep_offerings', note: 'DEPRECATED: Offerings. Use Tithes instead. (Tithes not implemented. Offerings operate at 15% while your ticket is triaged.)',
           mods: [{ target: 'automaton.throne.output', op: 'mul', value: 0.15 }] },
-        { id: 'dep_unattended', note: 'DEPRECATED: unattended operation. Use presence instead.',
-          mods: [{ target: 'offline.efficiency', op: 'set', value: 0 }] },
-        { id: 'dep_events', note: 'DEPRECATED: Divine Events. Superseded by scheduled maintenance. (Scheduled maintenance not implemented.)',
-          mods: [{ target: 'events.spawnRate', op: 'set', value: 0 }] },
+        { id: 'dep_unattended', note: 'DEPRECATED: unattended operation. Use presence instead. A skeleton crew remains.',
+          mods: [{ target: 'offline.efficiency', op: 'min', value: 0.15 }] },
+        { id: 'dep_events', note: 'DEPRECATED: Divine Events. Superseded by scheduled maintenance. (Scheduled maintenance not implemented. Events continue at a trickle.)',
+          mods: [{ target: 'events.spawnRate', op: 'mul', value: 0.25 }] },
         { id: 'dep_manual', note: 'DEPRECATED: manual intervention. The Engine is self-service now.',
-          mods: [{ target: 'click.power', op: 'set', value: 1 }] },
+          mods: [{ target: 'click.power', op: 'min', value: 1 }] },
         { id: 'dep_storage_growth', note: 'DEPRECATED: vault expansion. Existing partitions are grandfathered; new ones are not.',
-          mods: [{ target: 'caps.praise', op: 'mul', value: 0.35 }] },
+          mods: [{ target: 'caps.praise', op: 'mul', value: 0.75 }] },
     ],
 };
 
@@ -192,7 +192,12 @@ const Reality = {
         const unlocked = ['stable'];
         if (prestigeLevel >= 3) unlocked.push('beta');
         if (prestigeLevel >= 8) unlocked.push('nightly');
-        if (prestigeLevel >= 12) unlocked.push('archived');
+        // 'archived' is deliberately NOT offered yet: it is byte-identical to
+        // stable (generate() keys the rng off the current prestige level, not a
+        // chosen past one) and pays no Divinity, so selecting it would block
+        // Divine Reboot outright. It stays in RealityChannels as the shape to
+        // implement, not as a choice.
+        void prestigeLevel;
         return unlocked;
     },
 
@@ -270,6 +275,36 @@ const Reality = {
         return added;
     },
 
+    /* Re-derives a build from its identity, carrying patched flags across.
+
+       A build is a pure function of (runSeed, prestigeLevel, channel), so the
+       identity is the only thing worth persisting — the entries are derivable.
+       Storing them instead meant a content change never reached an existing
+       save: a run that started before the opening issue was retargeted kept
+       the old `praise.multiplier` entry forever, and no amount of fixing the
+       pool would touch it.
+
+       The seed is authoritative, so this is stable within and across sessions;
+       what it is NOT is frozen against the pool it was rolled from. */
+    rematerialise(reality, prestigeLevel) {
+        const previous = reality.build;
+        const patched = new Set(
+            (previous?.entries || []).filter((e) => e.patched).map((e) => e.id),
+        );
+
+        // The channel a build was rolled on lives on the build. reality.channel
+        // is only the selector for the NEXT one.
+        const channel = previous?.channel || reality.channel || 'stable';
+        const fresh = prestigeLevel > 0
+            ? this.generate(reality.runSeed, prestigeLevel, channel)
+            : JSON.parse(JSON.stringify(this.OPENING_BUILD));
+
+        for (const entry of fresh.entries) {
+            if (patched.has(entry.id)) entry.patched = true;
+        }
+        return fresh;
+    },
+
     entry(build, entryId) {
         return build?.entries?.find((e) => e.id === entryId) || null;
     },
@@ -287,9 +322,20 @@ const Reality = {
         const cap = resource === 'darkness' || resource === 'shadows' || resource === 'echoes'
             ? State.dimensions.void.resourceCaps
             : State.resourceCaps;
-        // Priced off capacity, not holdings: holdings would let a player wait
-        // at zero to make every patch free.
-        return { resource, amount: Math.ceil((cap[resource] || 0) * scale), bag };
+        /* Priced off capacity EXCLUDING the current build.
+
+           Holdings would let a player sit at zero and patch for free. But the
+           live post-build cap is just as wrong in the other direction: an
+           entry that shrinks a cap discounted every patch denominated in that
+           resource (making the optimal play "clear the harmful entry last"),
+           while an improvement that raised a cap doubled the patch bill. */
+        const target = (resource === 'darkness' || resource === 'shadows' || resource === 'echoes')
+            ? `void.caps.${resource}`
+            : `caps.${resource}`;
+        const reference = ModifierTargets[target]
+            ? Modifiers.foldExcluding(target, 'build', 0)
+            : (cap[resource] || 0);
+        return { resource, amount: Math.ceil(reference * scale), bag };
     },
 
     unpatchedIssues(build) {

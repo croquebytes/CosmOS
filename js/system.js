@@ -40,7 +40,11 @@ const system = {
                 this.toggleStartMenu(false);
             }
         });
-        window.addEventListener('beforeunload', () => State.save());
+        window.addEventListener('beforeunload', () => {
+            // hardReset() and importSave() deliberately rewrite localStorage and
+            // then reload; without this check the unload save clobbers both.
+            if (!State.suppressUnloadSave) State.save();
+        });
     },
 
     appMeta: {

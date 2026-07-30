@@ -59,6 +59,10 @@ const check = (name, fn) => {
     }
 };
 
+// The declared playability floor for caps.praise, read from the target table
+// rather than restated here.
+const ModifierTargets_floor = () => boot().ModifierTargets['caps.praise'].floor ?? 0;
+
 console.log('\nReality Builds\n');
 
 /* ── Determinism ───────────────────────────────────────────────────────── */
@@ -134,7 +138,13 @@ check('channels unlock with reboot count', () => {
     assert.ok(Reality.channelsFor(3).includes('beta'));
     assert.ok(!Reality.channelsFor(3).includes('nightly'));
     assert.ok(Reality.channelsFor(8).includes('nightly'));
-    assert.ok(Reality.channelsFor(12).includes('archived'));
+    /* 'archived' is intentionally NOT offered. It is declared in
+       RealityChannels as the shape to implement, but generate() keys its rng
+       off the CURRENT prestige level rather than a chosen past one — so it was
+       byte-identical to stable in 3600/3600 sampled pairs — and it pays no
+       Divinity, which made selecting it block Divine Reboot outright. */
+    assert.ok(!Reality.channelsFor(50).includes('archived'),
+        'archived must not be selectable until it actually replays a past build');
 });
 
 check('an entry never appears twice in one build', () => {
@@ -185,6 +195,143 @@ check('no reachable build zeroes or inverts a production target', () => {
         }
     }
     assert.equal(bad.length, 0, bad.slice(0, 5).join('; '));
+});
+
+check('no build can price the player out of raising a cap', () => {
+    /* THE assertion this suite was missing. The first version asserted caps
+       were merely > 0 — and dep_storage_growth folding caps.praise to 350 is
+       positive, so it passed. But the cheapest cap-raising purchase costs 400
+       Praise, so that run could never raise its cap again: a hard soft-lock
+       that a positivity check cannot see. The property is affordability of
+       escape, not positivity. */
+    const CHEAPEST_PRAISE_CAP_UPGRADE = 400;   // praise_vault repeatable
+    const { Reality, Modifiers, RealityChannels } = boot();
+    const bad = [];
+    for (const channel of Object.keys(RealityChannels)) {
+        for (let seed = 1; seed <= 400; seed++) {
+            for (const level of [0, 1, 5, 12, 20]) {
+                Modifiers.reset();
+                Reality.apply(Reality.generate(seed, level, channel), 0);
+                const cap = Modifiers.fold('caps.praise', 0);
+                const floored = Math.max(ModifierTargets_floor(), cap);
+                if (floored < CHEAPEST_PRAISE_CAP_UPGRADE) {
+                    bad.push(`${channel}/${seed}/L${level} caps.praise=${floored}`);
+                }
+            }
+        }
+    }
+    assert.equal(bad.length, 0, bad.slice(0, 4).join('; '));
+});
+
+check('a declared floor is enforced by commit, whatever the fold says', () => {
+    const { State, Modifiers } = boot();
+    Modifiers.reset();
+    // Stack far more reduction than the pool can actually produce.
+    for (let i = 0; i < 6; i++) {
+        Modifiers.add({ target: 'caps.praise', op: 'mul', value: 0.5, source: { kind: 'test', id: `x${i}` } });
+    }
+    assert.ok(Modifiers.fold('caps.praise', 0) < 100, 'the raw fold should be tiny');
+    Modifiers.commit(0);
+    assert.ok(State.resourceCaps.praise >= 600, `floor not applied: ${State.resourceCaps.praise}`);
+});
+
+check('offline efficiency is never driven to zero', () => {
+    // A hard 0 means eight hours away banks literally nothing, and a
+    // deprecation is unpatchable for the whole run.
+    const { Reality, Modifiers, RealityChannels } = boot();
+    const bad = [];
+    for (const channel of Object.keys(RealityChannels)) {
+        for (let seed = 1; seed <= 400; seed++) {
+            Modifiers.reset();
+            Reality.apply(Reality.generate(seed, 15, channel), 0);
+            const value = Modifiers.fold('offline.efficiency', 0);
+            if (!(value > 0)) bad.push(`${channel}/${seed}=${value}`);
+        }
+    }
+    assert.equal(bad.length, 0, bad.slice(0, 4).join('; '));
+});
+
+check('an improvement never raises a patch price in the same build', () => {
+    /* Patch costs were priced off the live post-build cap, so a cap-shrinking
+       entry discounted every patch in that resource (making "clear the harmful
+       entry last" optimal) while a cap-doubling improvement doubled the bill. */
+    const { State, Reality, Modifiers, game } = boot();
+    State.reality = { runSeed: 1, channel: 'stable', build: null, shipped: 0 };
+    State.prestigeLevel = 4;
+    const build = game.ensureReality();
+    Modifiers.reset();
+    Reality.apply(build, 0);
+
+    const issue = Reality.unpatchedIssues(build).find((e) => e.patchCost?.resource === 'praise');
+    if (!issue) return;                     // this seed has no praise-priced issue
+    const withBuild = Reality.patchCostOf(build, issue.id).amount;
+
+    Modifiers.reset();                      // price with no build applied at all
+    const withoutBuild = Reality.patchCostOf(build, issue.id).amount;
+    assert.equal(withBuild, withoutBuild, 'the build moved the price of its own patch');
+});
+
+check('no channel offered to the player pays zero Divinity', () => {
+    // divinity: 0 makes the award floor to 0, which made Divine Reboot
+    // impossible while the button stayed live and the choice autosaved.
+    const { Reality, RealityChannels } = boot();
+    for (const level of [0, 3, 8, 12, 20, 50]) {
+        for (const key of Reality.channelsFor(level)) {
+            assert.ok(RealityChannels[key].divinity > 0,
+                `channel "${key}" is offered at level ${level} but pays ${RealityChannels[key].divinity}x`);
+        }
+    }
+});
+
+check('the payout follows the build played, not the channel selected next', () => {
+    const { State, game, RealityChannels } = boot();
+    State.reality = { runSeed: 4242, channel: 'stable', build: null, shipped: 0 };
+    State.prestigeLevel = 8;
+    game.bootstrapModifiers(0);
+    assert.equal(State.reality.build.channel, 'stable');
+
+    game.setBuildChannel('nightly');        // selects for NEXT time
+    State.totalStats.soulsGained = 1e9;
+    const raw = game.calculateDivinityPoints();
+    game.performPrestige();
+
+    const expected = Math.floor(raw * RealityChannels.stable.divinity);
+    assert.equal(State.totalDivinityPoints, expected,
+        `paid at the selected rate, not the played one (${State.totalDivinityPoints} vs ${expected})`);
+});
+
+check('a v3-shaped save still gets its build applied', () => {
+    /* The bug this pins: bootstrapModifiers decided whether to apply the build
+       by asking "is the log empty?". A save with a log but no build records —
+       every save written before Reality Builds shipped — got a build that was
+       displayed and billable but never applied. */
+    const { State, Modifiers, game } = boot();
+    State.reality = { runSeed: 55, channel: 'stable', build: null, shipped: 0 };
+    State.prestigeLevel = 0;
+    // A log that exists but carries no build records, as a v3 save would.
+    Modifiers.reset();
+    Modifiers.add({ target: 'praise.multiplier', op: 'mul', value: 2, scope: 'run', source: { kind: 'upgrade', id: 'praise_multi_1' } });
+    State.modifierLog = JSON.parse(JSON.stringify(Modifiers.serialize()));
+    Modifiers.reset();
+
+    game.bootstrapModifiers(0);
+    const applied = Modifiers.records.filter((r) => r.scope === 'build');
+    assert.ok(applied.length > 0, 'the opening build was never applied');
+    // The opening issue halves the Praise cap, so it must be observable.
+    assert.ok(State.resourceCaps.praise < 1000 || State.resourceCaps.praise === 600,
+        `cap shows no sign of the build: ${State.resourceCaps.praise}`);
+});
+
+check('a duplicate modifier id is refused', () => {
+    // Upgrades are re-bought every run (the ledger clears at prestige) but
+    // permanent-scope records were never dropped, so the log grew forever.
+    const { Modifiers } = boot();
+    Modifiers.reset();
+    const first = Modifiers.add({ target: 'offline.efficiency', op: 'max', value: 1, source: { kind: 'upgrade', id: 'offline_efficiency_2' } });
+    const second = Modifiers.add({ target: 'offline.efficiency', op: 'max', value: 1, source: { kind: 'upgrade', id: 'offline_efficiency_2' } });
+    assert.ok(first);
+    assert.equal(second, null, 'the duplicate should have been refused');
+    assert.equal(Modifiers.records.length, 1);
 });
 
 check('throne.draw never folds to zero or negative', () => {
@@ -282,13 +429,36 @@ check('the opening build is the premise, not a roll', () => {
     assert.equal(build.entries[0].id, 'iss_sector_7g');
 });
 
-check('ensureReality never re-rolls an existing build', () => {
+check('ensureReality is idempotent for a given seed', () => {
+    /* It re-DERIVES every call (so a content fix reaches a mid-run save) but
+       must always produce the same build for the same identity. */
     const { State, game } = boot();
     State.reality = { runSeed: 21, channel: 'beta', build: null, shipped: 0 };
     State.prestigeLevel = 4;
-    const first = game.ensureReality();
-    const again = game.ensureReality();
-    assert.equal(first, again, 'the same object should be returned, not a fresh roll');
+    const first = JSON.stringify(game.ensureReality().entries);
+    const again = JSON.stringify(game.ensureReality().entries);
+    assert.equal(first, again);
+});
+
+check('a stale stored build is re-derived, keeping patched flags', () => {
+    const { State, Reality, game } = boot();
+    State.reality = { runSeed: 21, channel: 'beta', build: null, shipped: 0 };
+    State.prestigeLevel = 4;
+    const build = game.ensureReality();
+    const issue = Reality.unpatchedIssues(build)[0];
+    issue.patched = true;
+
+    // Simulate a save written against an older pool: same identity, wrong mods.
+    State.reality.build.entries = State.reality.build.entries.map((e) => ({
+        ...e, mods: [{ target: 'praise.multiplier', op: 'mul', value: 0.5 }],
+    }));
+
+    const derived = game.ensureReality();
+    assert.equal(derived.entries.find((e) => e.id === issue.id).patched, true,
+        'the patched flag must survive re-derivation');
+    assert.notEqual(JSON.stringify(derived.entries.find((e) => e.id === issue.id).mods),
+        JSON.stringify([{ target: 'praise.multiplier', op: 'mul', value: 0.5 }]),
+        'the stale mods should have been replaced by the current definition');
 });
 
 check('prestige drops the old build and rolls exactly one new set', () => {

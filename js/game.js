@@ -33,15 +33,20 @@ const game = {
         loops.directives.lastCompletedAt = Number.isFinite(loops.directives.lastCompletedAt) ? loops.directives.lastCompletedAt : 0;
     },
 
+    /* The ceilings are clamped at zero because streakCapBonus is an ADDITIVE
+       target a build can push negative. Today the pool holds exactly one
+       reducer, leaving 0.1 of headroom before the first ceiling inverts —
+       close enough that adding a second entry would silently make streaks
+       reduce production. */
     getMiracleStreakMultiplier() {
         this.ensureLoopState();
-        const ceiling = 1.5 + (State.streakCapBonus || 0);
+        const ceiling = Math.max(0, 1.5 + (State.streakCapBonus || 0));
         return 1 + Math.min(ceiling, State.loopSystems.miracleStreak * 0.04);
     },
 
     getStreakProductionMultiplier() {
         this.ensureLoopState();
-        const ceiling = 0.35 + (State.streakCapBonus || 0) * 0.15;
+        const ceiling = Math.max(0, 0.35 + (State.streakCapBonus || 0) * 0.15);
         return 1 + Math.min(ceiling, State.loopSystems.miracleStreak * 0.007);
     },
 
@@ -110,7 +115,8 @@ const game = {
     getOverclockProductionMultiplier(now = Date.now()) {
         this.ensureLoopState();
         const overclock = State.loopSystems.overclock;
-        const potency = 1.5 + (State.overclockPotency || 0);
+        // Clamped for the same reason as the streak ceilings above.
+        const potency = Math.max(1, 1.5 + (State.overclockPotency || 0));
         return (overclock.active && now < overclock.endsAt) ? potency : 1;
     },
 
@@ -914,17 +920,27 @@ const game = {
             State.reality = { runSeed: 0, channel: 'stable', build: null, shipped: 0 };
         }
         const reality = State.reality;
+        let rolled = false;
         if (!reality.runSeed) {
             // Rolled once per save. The simulator pins this before bootstrap so
             // its runs stay deterministic and the golden master keeps working.
             reality.runSeed = (Math.floor(Math.random() * 0xFFFFFFFF) >>> 0) || 1;
+            rolled = true;
         }
         if (!reality.channel || !RealityChannels[reality.channel]) reality.channel = 'stable';
-        if (!reality.build) {
-            reality.build = State.prestigeLevel > 0
-                ? Reality.generate(reality.runSeed, State.prestigeLevel, reality.channel)
-                : JSON.parse(JSON.stringify(Reality.OPENING_BUILD));
-        }
+        /* Always re-derive from the seed. Deriving rather than trusting the
+           stored entries is what lets a content fix reach a save that is
+           already mid-run — and it is free, because a build is a pure
+           function of its identity. Patched flags carry across. */
+        const before = reality.build ? JSON.stringify(reality.build.entries) : null;
+        reality.build = Reality.rematerialise(reality, State.prestigeLevel);
+        if (before !== JSON.stringify(reality.build.entries)) rolled = true;
+
+        /* Persist immediately. Nothing else saves synchronously here, so a
+           freshly rolled seed only reached disk if the player happened to
+           trigger a save — meaning a reload re-rolled the universe. That is
+           precisely the reload-shopping that seeding exists to prevent. */
+        if (rolled) State.save();
         return reality.build;
     },
 
@@ -990,10 +1006,35 @@ const game = {
             Modifiers.hydrate(persisted);
         } else {
             this.rebuildModifierLog();
-            // A rebuilt log has no build records, so re-apply them from the
-            // persisted build. Hydrated logs already carry theirs.
-            Reality.apply(build, now);
         }
+
+        /* Reconcile the build against the log rather than inferring from which
+           branch ran.
+
+           The previous version decided whether to apply the build by asking
+           "is the log empty?". A save with a non-empty log but no build
+           records — which is EVERY save written before Reality Builds shipped
+           — took the hydrate branch and got a build that was displayed,
+           priced and billable but never actually applied. Patching it charged
+           full price and changed nothing.
+
+           Asking "which of this build's entries are missing from the log?" is
+           idempotent on a correct save and repairs an incomplete one. */
+        const present = new Set(
+            Modifiers.records.filter((r) => r.scope === 'build').map((r) => r.source?.id),
+        );
+        for (const entry of build.entries || []) {
+            if (entry.patched || present.has(entry.id)) continue;
+            for (const mod of entry.mods || []) {
+                Modifiers.add({
+                    ...mod,
+                    scope: 'build',
+                    source: { kind: 'build', id: entry.id },
+                    label: entry.note,
+                });
+            }
+        }
+
         Modifiers.commit(now);
     },
 
@@ -1662,7 +1703,15 @@ const game = {
            Beta and Nightly ship more known issues and regressions; this is
            the compensation, and it is why the choice is a trade rather than
            a difficulty setting. */
-        const channelPayout = RealityChannels[State.reality?.channel]?.divinity ?? 1;
+        /* Priced off the channel of the build actually endured, not the one
+           selected for next time — reading the selector let a player finish a
+           Stable run and cash it out at the Nightly rate. */
+        const playedChannel = State.reality?.build?.channel || State.reality?.channel;
+        const channelPayout = RealityChannels[playedChannel]?.divinity ?? 1;
+        if (channelPayout <= 0) {
+            ui.log(`The ${RealityChannels[playedChannel]?.label || playedChannel} channel pays no Divinity. Switch channels before rebooting.`);
+            return;
+        }
         const divinityGain = Math.floor(this.calculateDivinityPoints() * channelPayout);
 
         if (divinityGain === 0) {
@@ -2204,6 +2253,9 @@ const game = {
             }
 
             // Clear localStorage and load the imported save
+            // Same hazard as hardReset: without this the unload autosave
+            // overwrites the imported payload with the current run.
+            State.suppressUnloadSave = true;
             localStorage.setItem('cosmos_save', saveData);
             location.reload(); // Reload to apply the imported save
         } catch (error) {
@@ -2220,6 +2272,11 @@ const game = {
             return;
         }
 
+        // The beforeunload handler would otherwise write the live in-memory
+        // State straight back over the key we just cleared, making Hard Reset
+        // — the player's only escape from a build they cannot live with — do
+        // nothing at all.
+        State.suppressUnloadSave = true;
         localStorage.removeItem('cosmos_save');
         ui.log('Hard reset complete. Reloading...');
         ui.screenPulse('rgba(255, 0, 0, 0.6)');

@@ -195,6 +195,9 @@ const State = {
        so it is persisted rather than derived. */
     modifierLog: null,
 
+    // Set by hardReset/importSave so the beforeunload autosave stands down.
+    suppressUnloadSave: false,
+
     /* The build of reality this run is running on. `runSeed` is rolled once
        per save so two players do not walk the same sequence of universes;
        `build` is persisted rather than re-rolled on load, both so it survives
@@ -468,7 +471,7 @@ const State = {
        Migrations are pure data transforms on `parsed`. */
     SAVE_KEY: 'cosmos_save',
     BACKUP_KEY: 'cosmos_save_backup',
-    SAVE_VERSION: 3,
+    SAVE_VERSION: 4,
 
     save() {
         this.runtime.lastUpdateTime = Date.now();
@@ -517,6 +520,15 @@ const State = {
             // income source that survives every reload.
             parsed.mps = 0;
             if (parsed.dimensions?.void) parsed.dimensions.void.sdps = 0;
+        },
+
+        4(parsed) {
+            /* Reality Builds shipped after SAVE_VERSION 3, so a v3 save has a
+               modifierLog but no build records in it. bootstrapModifiers now
+               reconciles that, but dropping the log is simpler and provably
+               correct: it forces the rebuild-from-ledgers path, which
+               regenerates every record including the build's. */
+            parsed.modifierLog = null;
         },
 
         3(parsed) {
