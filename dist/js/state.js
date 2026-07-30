@@ -190,6 +190,11 @@ const State = {
     // Persisted save-format version; see State.migrations.
     saveVersion: 0,
 
+    /* The modifier log, serialised. Order is load-bearing (see modifiers.js),
+       and purchase order cannot be reconstructed from the ownership ledgers,
+       so it is persisted rather than derived. */
+    modifierLog: null,
+
     // System Settings
     epoch: 0,
     startTime: Date.now(),
@@ -456,6 +461,8 @@ const State = {
     save() {
         this.runtime.lastUpdateTime = Date.now();
         this.saveVersion = State.SAVE_VERSION;
+        // Order is load-bearing and unrecoverable from the ledgers alone.
+        if (typeof Modifiers !== 'undefined') this.modifierLog = Modifiers.serialize();
         try {
             const payload = JSON.stringify(this);
             // Keep the last good write. If a future load throws, this is what
@@ -1649,14 +1656,19 @@ const MandateList = [
         description: 'The universe runs at full rate while you are away, forever.',
         cost: 40,
         prerequisites: ['maintenance_t4'],
-        // Partial: the +8 offline_capacitor ranks are a GRANT into the
-        // repeatables ledger, not a scalar, so they stay in effect().
-        modsPartial: true,
+        /* Split item: `mods` owns the offlineEfficiency change, effect() owns
+           the grant of +8 capacitor ranks into the repeatables ledger. The
+           two halves must stay disjoint — if effect() also touched a scalar
+           the mods claim, routing both would apply it twice. There is a test
+           asserting exactly that. */
+        modsSplit: true,
         mods: [
             { target: 'offline.efficiency', op: 'set', value: 1, scope: 'permanent' }
         ],
+        // The offlineEfficiency half is declared in `mods` above. What stays
+        // here is the grant: ranks pushed into the repeatables ledger, which
+        // is ownership state rather than a scalar the registry can fold.
         effect: () => {
-            State.offlineEfficiency = 1;
             State.repeatables.offline_capacitor = (State.repeatables.offline_capacitor || 0) + 8;
         }
     },

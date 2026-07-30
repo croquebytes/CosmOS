@@ -584,6 +584,10 @@ const game = {
 
     initializeSession() {
         this.ensureLoopState();
+        // Must run before any rate is read: it rebuilds the log from the save
+        // (or from the ownership ledgers, for a save written before the log
+        // existed) and commits every folded value into the legacy scalars.
+        this.bootstrapModifiers();
         this.ensureDirective();
 
         const now = Date.now();
@@ -841,6 +845,77 @@ const game = {
     /* Resolves a bare resource name to the bag that holds it. */
     voidCurrencies: ['darkness', 'shadows', 'echoes'],
 
+    /* ── Modifier routing ─────────────────────────────────────────────────
+       A content item declares `mods` (folded by the registry), `effect` (a
+       grant into ownership state that the registry cannot express), or both
+       when it is marked modsSplit. Applying an item means routing each half
+       to the right channel exactly once. */
+    applyContentItem(item, kind, now = Date.now()) {
+        if (Array.isArray(item.mods) && item.mods.length) {
+            Modifiers.addAll(item.mods, { kind, id: item.id }, item.name);
+        }
+        // Grants only run when they are not already covered by `mods`.
+        if (typeof item.effect === 'function' && (item.modsSplit || !item.mods)) {
+            item.effect();
+        }
+        Modifiers.commit(now);
+    },
+
+    /* Rebuilds the log from the ownership ledgers, in content-table order.
+
+       Needed for any save written before the log existed. The original
+       purchase order is not recoverable — it was never recorded — but the
+       ledgers say exactly WHAT is owned, and replaying in table order gives
+       correct scopes and a value within float epsilon of the original. That
+       is the right trade: scopes wrong means prestige destroys permanent
+       bonuses, whereas a last-digit difference is invisible.
+
+       Runs after all scripts have loaded, because State.load() sits above the
+       content tables in state.js and cannot see them. */
+    rebuildModifierLog() {
+        Modifiers.reset();
+        for (const upgrade of UpgradeList) {
+            if (!State.upgrades[upgrade.id] || !upgrade.mods) continue;
+            Modifiers.addAll(upgrade.mods, { kind: 'upgrade', id: upgrade.id }, upgrade.name);
+        }
+        for (const mandate of MandateList) {
+            if (!State.purchasedMandates[mandate.id] || !mandate.mods) continue;
+            Modifiers.addAll(mandate.mods, { kind: 'mandate', id: mandate.id }, mandate.name);
+        }
+        for (const spec of RepeatableList) {
+            const ranks = this.getRepeatableLevel(spec.id);
+            for (let rank = 1; rank <= ranks; rank++) {
+                const mod = this.repeatableMod(spec, rank);
+                if (mod) Modifiers.add({ ...mod, source: { kind: 'repeatable', id: spec.id, rank }, label: spec.name });
+            }
+        }
+        return Modifiers.records.length;
+    },
+
+    /* A storage repeatable's rank expressed as a modifier. The non-storage
+       repeatables (refinement, drill, capacitor) are read from their level at
+       use time and own no scalar, so they have no modifier. */
+    repeatableMod(spec, rank) {
+        if (!spec.capacityStep) return null;
+        const target = spec.pool === 'void' ? `void.caps.${spec.resource}` : `caps.${spec.resource}`;
+        if (!ModifierTargets[target]) return null;
+        return {
+            target,
+            op: 'add',
+            value: Math.floor(spec.capacityStep * Math.pow(spec.capacityGrowth, rank - 1)),
+        };
+    },
+
+    bootstrapModifiers(now = Date.now()) {
+        const persisted = State.modifierLog;
+        if (persisted && Array.isArray(persisted.records) && persisted.records.length) {
+            Modifiers.hydrate(persisted);
+        } else {
+            this.rebuildModifierLog();
+        }
+        Modifiers.commit(now);
+    },
+
     resourceBag(resource) {
         return this.voidCurrencies.includes(resource)
             ? State.dimensions.void.resources
@@ -1036,7 +1111,12 @@ const game = {
         pool[spec.resource] -= cost;
         const ranks = this.repeatablesPool(spec);
         ranks[id] = (ranks[id] || 0) + 1;
-        this.applyRepeatableEffect(id, ranks[id]);
+
+        const mod = this.repeatableMod(spec, ranks[id]);
+        if (mod) {
+            Modifiers.add({ ...mod, source: { kind: 'repeatable', id, rank: ranks[id] }, label: spec.name });
+            Modifiers.commit(Date.now());
+        }
 
         ui.log(`${spec.name} rank ${ranks[id]} installed.`);
         ui.screenPulse('rgba(66, 144, 125, 0.28)');
@@ -1070,9 +1150,10 @@ const game = {
             this.resourceBag(resource)[resource] -= amount;
         }
 
-        // Mark as purchased and apply effect
+        // Mark as purchased and apply. The ledger and the modifier log have
+        // separate lifetimes and are updated together deliberately.
         State.upgrades[upgradeId] = true;
-        upgrade.effect();
+        this.applyContentItem(upgrade, 'upgrade');
 
         ui.log(`Upgrade acquired: ${upgrade.name}`);
         ui.updateUpgrades(); // Refresh upgrades display
@@ -1361,7 +1442,7 @@ const game = {
 
         // Mark as purchased and apply effect
         State.purchasedMandates[mandateId] = true;
-        mandate.effect();
+        this.applyContentItem(mandate, 'mandate');
 
         // Track for achievements
         State.achievementProgress.buy_mandate_count = (State.achievementProgress.buy_mandate_count || 0) + 1;
@@ -1582,17 +1663,17 @@ const game = {
         State.mps = 0;
         State.sps = 0;
 
-        // Reset multipliers (will be recalculated with mandates + divinity bonus)
-        State.praiseMultiplier = State.divinityPointMultiplier;
-        State.offeringMultiplier = State.divinityPointMultiplier;
-        State.soulMultiplier = State.divinityPointMultiplier;
+        /* praise/offering/soulMultiplier are registry-owned. Their bases read
+           State.divinityPointMultiplier live, so the commit below rebases them
+           without any assignment here. */
 
         // Reset upgrades
         State.upgrades = {};
 
-        // Reset unlocks
+        /* Grants — ownership/mode state the registry deliberately does not
+           model, so they are still cleared by hand. manualClickPower is NOT
+           here: it is registry-owned via click.power. */
         State.unlockedOfferings = false;
-        State.manualClickPower = 1;
         State.manualClickScaling = false;
 
         // Reset dimensions
@@ -1689,10 +1770,26 @@ const game = {
 
         // Keep mandates, achievements, documents, unlocked apps
 
-        // Reapply mandate effects
+        /* THE prestige step. Everything the registry owns is rebuilt by
+           dropping run-scoped records and re-folding; mandate modifiers are
+           scope 'permanent' and survive untouched, which is what the reapply
+           loop below used to do by re-running their closures.
+
+           The loop is still here for one reason: mandates whose effect() is a
+           GRANT rather than a modifier (entropy_ultimate's manualClickScaling,
+           maintenance_apex's capacitor ranks) are cleared above and have to be
+           re-granted. A review caught that deleting the loop outright would
+           silently destroy a 40-DP apex mandate on the first reboot. */
+        Modifiers.dropScope('run');
+        Modifiers.commit(Date.now());
+
         for (const mandateId in State.purchasedMandates) {
-            const mandate = MandateList.find(m => m.id === mandateId);
-            if (mandate) {
+            const mandate = MandateList.find((m) => m.id === mandateId);
+            if (!mandate) continue;
+            // Grants only. Re-running a closure whose scalar half is already a
+            // permanent modifier would apply the same bonus a second time on
+            // every reboot — the exact same routing rule as applyContentItem.
+            if (typeof mandate.effect === 'function' && (mandate.modsSplit || !mandate.mods)) {
                 mandate.effect();
             }
         }

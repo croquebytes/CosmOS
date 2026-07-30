@@ -68,15 +68,19 @@ function makeSandbox() {
 }
 
 const ctx = makeSandbox();
-for (const file of ['js/state.js', 'js/game.js']) {
+for (const file of ['js/state.js', 'js/modifiers.js', 'js/game.js']) {
     vm.runInContext(readFileSync(resolve(ROOT, file), 'utf8'), ctx, { filename: file });
 }
 
 // Top-level `const` in a vm script lands in the context's lexical scope, not on
 // the sandbox object, so the bindings have to be read back by evaluation.
-const { State, game, UpgradeList, MandateList, RepeatableList, AutomatonSpecs, Economy } = vm.runInContext(
-    '({ State, game, UpgradeList, MandateList, RepeatableList, AutomatonSpecs, Economy })', ctx
+const { State, game, UpgradeList, MandateList, RepeatableList, AutomatonSpecs, Economy, Modifiers } = vm.runInContext(
+    '({ State, game, UpgradeList, MandateList, RepeatableList, AutomatonSpecs, Economy, Modifiers })', ctx
 );
+
+// The registry has to be seeded before any rate is read, exactly as
+// game.initializeSession() does it in the browser.
+game.bootstrapModifiers(Date.now());
 
 /* ── Policy ───────────────────────────────────────────────────────────
    A reasonable engaged player: always buy an affordable upgrade, keep

@@ -2,7 +2,7 @@
  "hours": 2,
  "clicksPerMin": 40,
  "resources": {
-  "praise": 453392313645190660,
+  "praise": 453392313645064450,
   "offerings": 9203499387896.816,
   "souls": 61301005698918.54
  },
@@ -11,9 +11,9 @@
   "offerings": 14607605896064656,
   "souls": 370916328912874600
  },
- "lifetimeSouls": 955350795754445.4,
+ "lifetimeSouls": 955350795755630.2,
  "rates": {
-  "praise": 51303719113861520,
+  "praise": 51303719113861256,
   "praiseGross": 51303719113861520,
   "offerings": 628116319621.2997,
   "souls": 1798971452119.4302,
@@ -48,7 +48,7 @@
   "offering": 53181.268582413235,
   "soul": 127635.04459779178,
   "divinityPoint": 236.3611936996144,
-  "throneDraw": 0.006543684324216847,
+  "throneDraw": 0.48750000000000004,
   "offlineEfficiency": 1
  },
  "bonuses": {

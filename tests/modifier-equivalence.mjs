@@ -291,21 +291,24 @@ function compareItem(id, listName) {
     b.Modifiers.commit(0);
     const folded = boundScalars(b.State);
 
-    /* An item marked modsPartial has effects that are deliberately NOT
-       modifiers — a grant into an ownership ledger, or a mode switch. For
-       those, only compare the scalars its mods actually claim to own. */
-    const claimed = itemB.modsPartial
-        ? new Set(itemB.mods.map((mod) => scalarKeyForTarget(mod.target)).filter(Boolean))
-        : null;
+    /* A split item's effect() and mods own disjoint halves: the mods own
+       scalars, effect() owns grants into ownership ledgers. There is no
+       per-half equivalence to check, but there IS an invariant worth pinning
+       — the closure must not touch any scalar the mods claim, or routing both
+       would apply the same change twice. */
+    if (itemB.modsSplit) {
+        const claimed = new Set(itemB.mods.map((mod) => scalarKeyForTarget(mod.target)).filter(Boolean));
+        const overlap = [...claimed].filter((key) => legacy[key] !== before[key]);
+        return { drift: overlap.map((k) => `effect() also writes ${k}, which mods claim`), split: true };
+    }
 
     const drift = [];
     for (const key of Object.keys(legacy)) {
-        if (claimed && !claimed.has(key)) continue;
         if (legacy[key] !== folded[key]) {
             drift.push(`${key}: closure=${legacy[key]} fold=${folded[key]} (was ${before[key]})`);
         }
     }
-    return { drift, partial: !!itemB.modsPartial };
+    return { drift };
 }
 
 for (const [listName, list] of [['upgrade', boot().UpgradeList], ['mandate', boot().MandateList]]) {
@@ -320,7 +323,7 @@ for (const [listName, list] of [['upgrade', boot().UpgradeList], ['mandate', boo
             console.log(`  SKIP  ${listName} ${item.id}: ${skipped}`);
             continue;
         }
-        check(`${listName} ${item.id} — fold matches closure${drift === undefined ? '' : ''}`, () => {
+        check(`${listName} ${item.id} — ${item.modsSplit ? 'halves are disjoint' : 'fold matches closure'}`, () => {
             assert.equal(drift.length, 0, drift.join('; '));
         });
     }
