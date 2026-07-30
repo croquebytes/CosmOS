@@ -391,8 +391,73 @@ cost. Same leak hit `divineEventSpawnRate`, `streakCapBonus`,
 Pre-prestige runs are byte-identical before and after the flip, which is what
 localises the change to prestige and proves the fold itself is faithful.
 
+## 2026-07-30 — Session 2: Reality Builds
+
+The replayability spine. A Divine Reboot now ships a new **build** of the
+universe with a changelog, and the changelog IS the run's modifier set —
+declared with `scope: 'build'`, the scope Session 1 added for exactly this.
+
+### Builds are seeded, not random
+A build is a pure function of `(runSeed, prestigeLevel, channel)`.
+`Math.random()` would have cost the golden master (the simulator is
+deterministic and its output is the economy's regression test), save integrity
+(reloading would let a player shop for a better universe), and the Archived
+channel. `runSeed` is rolled once per save; the simulator pins it.
+
+**Builds are derived, not stored.** Persisting the entry list meant a content
+fix could never reach a save already mid-run — confirmed on a real save that
+kept a retargeted entry forever. Only the identity is persisted; entries are
+re-derived on load, carrying `patched` flags across.
+
+### Content
+17 improvements, 10 patchable known issues, 4 unpatchable regressions, 5
+deprecations, four channels with rising volatility and payout. Deprecations
+cripple rather than delete — an early draft zeroed Throne output for the
+Offerings joke, which strands anyone who has not banked Souls.
+
+### What the adversarial sweep caught, and the lesson
+Four agents over 4 channels x 400 seeds x 21 levels returned two
+*has-softlocks* verdicts against a version I had already committed.
+
+**The suite asserted the wrong property.** It checked cap targets fold `> 0`.
+A deprecation folding `caps.praise` to 350 is positive and passed — but the
+cheapest cap upgrade costs 400 Praise, so the run could never escape. The
+property is *affordability of escape*, not positivity. `ModifierTargets` can
+now declare a `floor` enforced after the fold, so no combination can breach a
+playability threshold.
+
+Other findings worth remembering:
+- **Every `set` op erased the improvements above it**, because `generate()`
+  appends improvements first and the fold is a left fold. 3495 occurrences,
+  including a 40-DP capstone mandate silently zeroed by an unpatchable
+  deprecation. Punitive `set`s are now `min`/`mul`; the capstone is `max`.
+- **`bootstrapModifiers` inferred from an empty log** rather than reconciling,
+  so every save written before the feature got a build that was displayed,
+  priced and billable but never applied.
+- **`runSeed` was rolled without a synchronous save**, so a reload re-rolled
+  the universe — the exact thing seeding exists to prevent.
+- **`hardReset()` and `importSave()` were defeated by the `beforeunload`
+  autosave** writing live State back over the key they had just rewritten.
+  Pre-existing, but Hard Reset is the escape hatch from a bad build.
+
+Committing before the adversarial pass was the mistake; the sweep found more
+than the 250-seed check written alongside the feature.
+
 ### Known gaps
-- The Reality Builds spine (Session 2) is now unblocked and untouched.
+- The Archived channel is declared but not offered: `generate()` keys its rng
+  off the current prestige level, not a chosen past one, so it cannot yet
+  replay a specific build. It needs a target-level picker and a non-Divinity
+  reward.
+- 22 of 40 registry targets can never be moved by a build; 15 are Void
+  targets against 2 Void pool entries, so the Void is effectively outside the
+  system. `caps.offerings` is immovable too, so its patch never scales.
+- `iss_intervention_limited` is inert once the `entropy_ultimate` mandate is
+  owned (clicks scale off production), yet still charges full price.
+- Certification (one Mandate path per reboot) and the ship-the-build run exit
+  are still Session 2 scope and were not reached.
+- A build's full patch bill can exceed the resource cap in 0.2% of cases, so
+  the patches are payable serially but not simultaneously, with no running
+  total shown.
 - Achievement rewards (23 closures) and shop items (8) are not yet converted
   to modifiers; they still mutate directly.
 - `Modifiers.explain()` exists and is tested but nothing renders it yet — the
