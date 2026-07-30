@@ -3965,3 +3965,142 @@ kbd {
     max-width: 100%;
     filter: saturate(1.08);
 }
+
+/* ── Reality Builds ─────────────────────────────────────────────────────
+   The changelog is the run's modifier set, so it is typeset as a release
+   note rather than a buff list: the fiction and the mechanic are one object. */
+.release-notes { max-width: 640px; }
+
+.rn-head { padding: 16px 18px 10px; }
+.rn-head h2 { margin: 4px 0 6px; font: 700 22px/1.2 var(--cos-font-display); }
+.rn-meta { margin: 0; color: var(--cos-ink-dim); font: 11px var(--cos-font-machine); letter-spacing: 0.04em; }
+
+.rn-list { margin: 0; padding: 0 18px 4px; list-style: none; }
+
+.rn-line {
+    display: grid;
+    grid-template-columns: 18px 1fr;
+    gap: 8px;
+    padding: 4px 0;
+    font: 12.5px/1.5 var(--cos-font-machine);
+    color: var(--cos-ink);
+}
+
+.rn-mark { font-weight: bold; text-align: center; }
+.rn-improvement .rn-mark { color: var(--cos-verd-500); }
+.rn-issue .rn-mark { color: var(--cos-alarm); }
+.rn-regression .rn-mark { color: var(--cos-ichor-500); }
+.rn-deprecation .rn-mark { color: var(--cos-ink-faint, var(--cos-ink-dim)); }
+.rn-deprecation .rn-note { color: var(--cos-ink-dim); }
+.rn-patched .rn-note { color: var(--cos-ink-dim); }
+.rn-patched em { font-style: normal; color: var(--cos-verd-500); }
+
+.rn-sev {
+    margin-left: 5px;
+    padding: 0 4px;
+    border: 1px solid var(--cos-alarm);
+    color: var(--cos-alarm);
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+}
+
+.rn-foot {
+    margin: 8px 0 0;
+    padding: 10px 18px 0;
+    border-top: 1px solid var(--rule, rgba(27, 23, 18, 0.14));
+    color: var(--cos-ink-dim);
+    font: italic 11.5px var(--cos-font-machine);
+}
+
+/* ── The persistent panel ── */
+.reality-section { margin-top: 16px; }
+
+.reality-panel {
+    border: 1px solid var(--cos-brass-700);
+    border-radius: var(--cos-radius);
+    background: linear-gradient(180deg, var(--cos-iron-700), var(--cos-iron-900));
+    color: var(--cos-ink-inv);
+    padding: 12px 13px;
+}
+
+.reality-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.reality-version {
+    color: var(--cos-brass-100);
+    font: bold 12px var(--cos-font-machine);
+    letter-spacing: 0.11em;
+}
+
+.reality-channel {
+    padding: 1px 7px;
+    border: 1px solid var(--cos-brass-700);
+    background: rgba(4, 6, 10, 0.5);
+    color: var(--cos-brass-300);
+    font: bold 10px var(--cos-font-machine);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+
+.reality-issues { display: flex; flex-direction: column; gap: 6px; }
+
+.reality-issue {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 12px;
+    text-align: left;
+    margin-bottom: 0;
+}
+
+.reality-issue-note { display: flex; align-items: center; gap: 8px; font-size: 11px; line-height: 1.4; }
+.reality-issue-cost { color: var(--cos-verd-300); font: 10px var(--cos-font-machine); white-space: nowrap; }
+.reality-issue.unaffordable .reality-issue-cost { color: var(--cos-alarm); }
+
+.reality-clean { margin: 0; color: var(--cos-verd-300); font: 11px var(--cos-font-machine); }
+
+.reality-changelog { margin-top: 10px; }
+
+.reality-changelog summary {
+    color: var(--cos-ink-inv-dim);
+    font: 10px var(--cos-font-machine);
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.reality-changelog .rn-list { padding: 8px 0 0; }
+.reality-changelog .rn-line { color: var(--cos-ink-inv); font-size: 11px; }
+.reality-changelog .rn-deprecation .rn-note,
+.reality-changelog .rn-patched .rn-note { color: var(--cos-ink-inv-dim); }
+
+@media (max-width: 640px) {
+    .reality-issue { grid-template-columns: 1fr; row-gap: 4px; }
+    .reality-issue-cost { text-align: left; }
+}
+
+.reality-next {
+    display: block;
+    margin: 0 0 10px;
+    color: var(--cos-ink-inv-dim);
+    font: 10px var(--cos-font-machine);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.reality-next select {
+    margin-left: 6px;
+    padding: 2px 5px;
+    background: var(--cos-iron-900);
+    border: 1px solid var(--cos-brass-700);
+    border-radius: var(--cos-radius);
+    color: var(--cos-brass-100);
+    font: 10px var(--cos-font-machine);
+    text-transform: none;
+    letter-spacing: 0.03em;
+}

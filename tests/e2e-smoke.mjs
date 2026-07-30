@@ -33,7 +33,10 @@ try {
 
     state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
     assert.equal(state.automation.seraphs, 1, 'first Seraph should be commissioned');
-    assert.ok(state.productionPerSecond.praise >= 1, 'Seraph should produce Praise');
+    /* Asserts intent, not a magic number. The exact rate legitimately depends
+       on the run's Reality Build now, so pinning it to >= 1 encoded a baseline
+       that a build is allowed to change. */
+    assert.ok(state.productionPerSecond.praise > 0, 'Seraph should produce Praise');
 
     await page.evaluate(() => {
         State.runtime.lastUpdateTime = Date.now() - 120_000;

@@ -2,105 +2,116 @@
  "hours": 8,
  "clicksPerMin": 40,
  "resources": {
-  "praise": 324369145544463100000,
-  "offerings": 5455869760598482,
-  "souls": 6655118667233770
+  "praise": 962694962403147000000,
+  "offerings": 13869427478078706,
+  "souls": 49936193138500980
  },
  "caps": {
-  "praise": 4.572358621289978e+24,
-  "offerings": 6641737162182982000,
-  "souls": 232732846230567320000
+  "praise": 1.658275297986769e+25,
+  "offerings": 33241232427111924000,
+  "souls": 1.6074304802442015e+21
  },
- "lifetimeSouls": 1425892685058468600,
+ "lifetimeSouls": 1684074884326589400,
  "rates": {
-  "praise": 4818335245225970000,
-  "praiseGross": 4818335245225970000,
-  "offerings": 51854373206819.81,
-  "souls": 151601528143909.75,
-  "darkness": 1147345742459.3445,
-  "shadows": 10250719298.93823,
-  "echoes": 61724761369.95064
+  "praise": 4641303412950032000,
+  "praiseGross": 4641303412950032000,
+  "offerings": 48630394230791.21,
+  "souls": 214887533651260,
+  "darkness": 1899053944091.432,
+  "shadows": 10020578778.986107,
+  "echoes": 59157633755.46015
  },
  "automatons": {
-  "seraphCount": 331,
-  "seraphCostMultiplier": 0.2926125,
+  "seraphCount": 338,
+  "seraphCostMultiplier": 0.43891875,
   "seraphProduction": 15.600000000000001,
-  "throneCount": 251,
+  "throneCount": 258,
   "throneCostMultiplier": 0.85,
   "throneProduction": 6,
-  "cherubCount": 196,
+  "cherubCount": 203,
   "cherubCostMultiplier": 0.30600000000000005,
   "cherubProduction": 3.12,
-  "dominionCount": 112,
+  "dominionCount": 118,
   "dominionCostMultiplier": 0.8,
   "dominionProduction": 6
  },
  "repeatables": {
-  "praise_vault": 149,
-  "offering_vault": 116,
-  "soul_vault": 119,
-  "praise_refinement": 114,
-  "automaton_drill": 84,
-  "offline_capacitor": 57
+  "praise_vault": 153,
+  "offering_vault": 121,
+  "soul_vault": 125,
+  "praise_refinement": 118,
+  "automaton_drill": 87,
+  "offline_capacitor": 60
  },
  "multipliers": {
-  "praise": 333063662.60468614,
-  "offering": 1051337.3188279234,
-  "soul": 2523209.565187016,
-  "divinityPoint": 4672.6103059018815,
+  "praise": 273628749.6959157,
+  "offering": 863727.1139391277,
+  "soul": 3109417.61018086,
+  "divinityPoint": 3838.78717306279,
   "throneDraw": 0.48750000000000004,
   "offlineEfficiency": 1
  },
  "bonuses": {
-  "drill": 13.6,
-  "dominion": 21.16,
-  "refinement": 29.5,
-  "doctrine": 5.1000000000000005,
-  "nemesis": 7.4,
+  "drill": 14.049999999999999,
+  "dominion": 22.240000000000002,
+  "refinement": 30.5,
+  "doctrine": 5,
+  "nemesis": 7.72,
   "nullDoctrine": 8.2,
-  "voidDrill": 10.299999999999999,
-  "voidRefinement": 18.5
+  "voidDrill": 10.75,
+  "voidRefinement": 19.75
  },
  "prestige": {
-  "level": 14,
-  "totalDivinityPoints": 979867,
-  "spent": 939306,
-  "standingDoctrine": 41,
+  "level": 13,
+  "totalDivinityPoints": 753910,
+  "spent": 722592,
+  "standingDoctrine": 40,
   "nullDoctrine": 60
  },
  "void": {
   "unlocked": true,
   "resources": {
-   "darkness": 43681915251730.55,
-   "shadows": 472698258162.77734,
-   "echoes": 10329737860321.113
+   "darkness": 360367755963121.56,
+   "shadows": 3542594824611.1963,
+   "echoes": 28435089281764.81
   },
   "caps": {
-   "darkness": 33349784700108024,
-   "shadows": 349896364208685,
-   "echoes": 9869867124422464
+   "darkness": 317867875551750140,
+   "shadows": 1751196424076117,
+   "echoes": 35795435578116600
   },
   "automatons": {
-   "wraithCount": 211,
+   "wraithCount": 224,
    "wraithCostMultiplier": 0.85,
-   "wraithProduction": 2,
-   "revenantCount": 155,
+   "wraithProduction": 3.2,
+   "revenantCount": 166,
    "revenantCostMultiplier": 1,
    "revenantProduction": 2,
-   "phantomCount": 140,
+   "phantomCount": 147,
    "phantomCostMultiplier": 1,
    "phantomProduction": 3,
-   "nemesisCount": 80,
+   "nemesisCount": 84,
    "nemesisCostMultiplier": 1,
    "nemesisProduction": 2
   },
   "repeatables": {
-   "darkness_vault": 94,
-   "shadow_vault": 87,
-   "echo_vault": 91,
-   "void_refinement": 70,
-   "entropy_drill": 62
+   "darkness_vault": 101,
+   "shadow_vault": 92,
+   "echo_vault": 95,
+   "void_refinement": 75,
+   "entropy_drill": 65
   }
+ },
+ "reality": {
+  "seed": 20260726,
+  "channel": "stable",
+  "shipped": 13,
+  "version": "5.4.0",
+  "entries": [
+   "improvement:imp_soul_resonance",
+   "improvement:imp_wraith_efficiency",
+   "issue:iss_countersignature"
+  ]
  },
  "upgradesOwned": [
   "cherub_boost_1",
@@ -171,7 +182,7 @@
   "maintenance_t4",
   "maintenance_ultimate"
  ],
- "lastPurchaseSecond": 28793,
+ "lastPurchaseSecond": 28696,
  "prestigeLog": [
   {
    "t": 2099,
@@ -179,69 +190,64 @@
    "total": 5
   },
   {
-   "t": 3000,
-   "gain": 6,
-   "total": 11
+   "t": 3053,
+   "gain": 5,
+   "total": 10
   },
   {
-   "t": 3901,
-   "gain": 21,
-   "total": 32
+   "t": 3954,
+   "gain": 20,
+   "total": 30
   },
   {
-   "t": 4802,
-   "gain": 122,
-   "total": 154
+   "t": 4855,
+   "gain": 155,
+   "total": 185
   },
   {
-   "t": 5703,
-   "gain": 2696,
-   "total": 2850
+   "t": 5756,
+   "gain": 2499,
+   "total": 2684
   },
   {
-   "t": 6604,
-   "gain": 15383,
-   "total": 18233
+   "t": 6657,
+   "gain": 15440,
+   "total": 18124
   },
   {
-   "t": 7505,
-   "gain": 30188,
-   "total": 48421
+   "t": 7558,
+   "gain": 30198,
+   "total": 48322
   },
   {
-   "t": 8406,
-   "gain": 37563,
-   "total": 85984
+   "t": 8459,
+   "gain": 50922,
+   "total": 99244
   },
   {
-   "t": 9386,
-   "gain": 43032,
-   "total": 129016
+   "t": 9568,
+   "gain": 49634,
+   "total": 148878
   },
   {
-   "t": 10791,
-   "gain": 64514,
-   "total": 193530
+   "t": 11189,
+   "gain": 74472,
+   "total": 223350
   },
   {
-   "t": 12872,
-   "gain": 96766,
-   "total": 290296
+   "t": 14841,
+   "gain": 111690,
+   "total": 335040
   },
   {
-   "t": 15925,
-   "gain": 145183,
-   "total": 435479
+   "t": 18286,
+   "gain": 167549,
+   "total": 502589
   },
   {
-   "t": 20413,
-   "gain": 217752,
-   "total": 653231
-  },
-  {
-   "t": 27267,
-   "gain": 326636,
-   "total": 979867
+   "t": 23322,
+   "gain": 251321,
+   "total": 753910
   }
  ]
 }

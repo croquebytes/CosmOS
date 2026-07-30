@@ -906,12 +906,93 @@ const game = {
         };
     },
 
+    /* ── Reality Builds ───────────────────────────────────────────────────
+       The run's build is state, not a roll: generated once, persisted, and
+       re-applied verbatim on every load. */
+    ensureReality() {
+        if (!State.reality || typeof State.reality !== 'object') {
+            State.reality = { runSeed: 0, channel: 'stable', build: null, shipped: 0 };
+        }
+        const reality = State.reality;
+        if (!reality.runSeed) {
+            // Rolled once per save. The simulator pins this before bootstrap so
+            // its runs stay deterministic and the golden master keeps working.
+            reality.runSeed = (Math.floor(Math.random() * 0xFFFFFFFF) >>> 0) || 1;
+        }
+        if (!reality.channel || !RealityChannels[reality.channel]) reality.channel = 'stable';
+        if (!reality.build) {
+            reality.build = State.prestigeLevel > 0
+                ? Reality.generate(reality.runSeed, State.prestigeLevel, reality.channel)
+                : JSON.parse(JSON.stringify(Reality.OPENING_BUILD));
+        }
+        return reality.build;
+    },
+
+    /* Sets the channel the NEXT build will be pulled from. Deliberately does
+       not re-roll the current build: switching channel mid-run to dodge a bad
+       one would make the whole mechanic optional. */
+    setBuildChannel(channel) {
+        if (!RealityChannels[channel]) return false;
+        if (!Reality.channelsFor(State.prestigeLevel || 0).includes(channel)) {
+            ui.log('That release channel is not available yet.');
+            return false;
+        }
+        State.reality.channel = channel;
+        ui.log(`Next reality will be pulled from the ${RealityChannels[channel].label} channel.`);
+        ui.renderRealityPanel?.();
+        return true;
+    },
+
+    /* Rolls the next build. Called by prestige, after prestigeLevel has been
+       incremented, so the version number and seed follow the reboot count. */
+    rollNextBuild(now = Date.now()) {
+        const reality = State.reality;
+        reality.build = Reality.generate(reality.runSeed, State.prestigeLevel, reality.channel);
+        Reality.apply(reality.build, now);
+        return reality.build;
+    },
+
+    /* Pay to remove a known issue. Priced off capacity rather than holdings —
+       pricing off holdings would let a player sit at zero to patch for free. */
+    patchKnownIssue(entryId, now = Date.now()) {
+        const build = State.reality?.build;
+        const entry = Reality.entry(build, entryId);
+        if (!entry || entry.patched) return false;
+
+        const cost = Reality.patchCostOf(build, entryId);
+        if (!cost) {
+            ui.log('That entry is marked will-not-fix.');
+            return false;
+        }
+        if ((cost.bag[cost.resource] || 0) < cost.amount) {
+            ui.log(`Insufficient ${cost.resource} to patch. Need ${ui.formatNumber(cost.amount)}.`);
+            return false;
+        }
+
+        cost.bag[cost.resource] -= cost.amount;
+        entry.patched = true;
+        // The record carries the entry id as its source, so removing the issue
+        // is one call and cannot leave a partial effect behind.
+        Modifiers.dropSource('build', entryId);
+        Modifiers.commit(now);
+
+        ui.log(`Patched: ${entry.note.split('.')[0]}.`);
+        ui.screenPulse('rgba(66, 144, 125, 0.3)');
+        ui.renderRealityPanel?.();
+        return true;
+    },
+
     bootstrapModifiers(now = Date.now()) {
+        const build = this.ensureReality();
+
         const persisted = State.modifierLog;
         if (persisted && Array.isArray(persisted.records) && persisted.records.length) {
             Modifiers.hydrate(persisted);
         } else {
             this.rebuildModifierLog();
+            // A rebuilt log has no build records, so re-apply them from the
+            // persisted build. Hydrated logs already carry theirs.
+            Reality.apply(build, now);
         }
         Modifiers.commit(now);
     },
@@ -1525,6 +1606,13 @@ const game = {
         );
     },
 
+    /* Cumulative against lifetime Souls: the formula gives the TOTAL a player
+       has ever been entitled to, minus what they have already banked. That is
+       what makes it impossible to farm the same souls twice.
+
+       Note the channel payout in performPrestige multiplies the award, so
+       totalDivinityPoints can exceed floor(scaled). The Math.max floor below
+       is what keeps that from producing a negative gain afterwards. */
     calculateDivinityPoints() {
         const lifetime = this.getLifetimeSouls();
         if (lifetime < Economy.prestigeSoulsPerPoint) return 0;
@@ -1570,7 +1658,12 @@ const game = {
     },
 
     performPrestige() {
-        const divinityGain = this.calculateDivinityPoints();
+        /* The channel's payout is what a riskier build is actually buying.
+           Beta and Nightly ship more known issues and regressions; this is
+           the compensation, and it is why the choice is a trade rather than
+           a difficulty setting. */
+        const channelPayout = RealityChannels[State.reality?.channel]?.divinity ?? 1;
+        const divinityGain = Math.floor(this.calculateDivinityPoints() * channelPayout);
 
         if (divinityGain === 0) {
             ui.log("Cannot prestige yet. Need more Souls.");
@@ -1781,7 +1874,14 @@ const game = {
            re-granted. A review caught that deleting the loop outright would
            silently destroy a 40-DP apex mandate on the first reboot. */
         Modifiers.dropScope('run');
+        // The outgoing build goes with the outgoing run.
+        Modifiers.dropScope('build');
         Modifiers.commit(Date.now());
+
+        State.reality.shipped = (State.reality.shipped || 0) + 1;
+        State.reality.build = null;
+        const nextBuild = this.rollNextBuild(Date.now());
+        ui.showReleaseNotes(nextBuild);
 
         for (const mandateId in State.purchasedMandates) {
             const mandate = MandateList.find((m) => m.id === mandateId);

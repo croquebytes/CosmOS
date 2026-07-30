@@ -619,6 +619,10 @@ const system = {
                             <button class="win-btn skill-btn" id="skill-divine-intervention" onclick="game.activateDivineIntervention()">Divine Intervention (2× prod, 10m)</button>
                             <button class="win-btn skill-btn" id="skill-temporal-rift" onclick="game.activateTemporalRift()">Temporal Rift (Simulate 1hr)</button>
                         </div>
+                        <div class="reality-section">
+                            <h3 class="section-title">Active Reality</h3>
+                            <div id="reality-panel" class="reality-panel"></div>
+                        </div>
                         <div class="repeatable-section">
                             <h3 class="section-title">Standing Requisitions</h3>
                             <p class="section-note">Filed as often as you can fund them. Storage is what an unattended universe fills.</p>

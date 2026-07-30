@@ -68,15 +68,25 @@ function makeSandbox() {
 }
 
 const ctx = makeSandbox();
-for (const file of ['js/state.js', 'js/modifiers.js', 'js/game.js']) {
+for (const file of ['js/state.js', 'js/modifiers.js', 'js/reality.js', 'js/game.js']) {
     vm.runInContext(readFileSync(resolve(ROOT, file), 'utf8'), ctx, { filename: file });
 }
 
 // Top-level `const` in a vm script lands in the context's lexical scope, not on
 // the sandbox object, so the bindings have to be read back by evaluation.
-const { State, game, UpgradeList, MandateList, RepeatableList, AutomatonSpecs, Economy, Modifiers } = vm.runInContext(
-    '({ State, game, UpgradeList, MandateList, RepeatableList, AutomatonSpecs, Economy, Modifiers })', ctx
-);
+const { State, game, UpgradeList, MandateList, RepeatableList, AutomatonSpecs, Economy, Modifiers, Reality } =
+    vm.runInContext(
+        '({ State, game, UpgradeList, MandateList, RepeatableList, AutomatonSpecs, Economy, Modifiers, Reality })',
+        ctx,
+    );
+
+/* Pin the Reality Build seed. Builds are a pure function of (runSeed,
+   prestigeLevel, channel), so fixing the seed keeps the simulation
+   deterministic and the golden master meaningful. Override with --seed to
+   sample a different sequence of universes. */
+const SEED = Number((args.find((a) => a.startsWith('--seed')) || '').split('=')[1]) || 20260726;
+const CHANNEL = (args.find((a) => a.startsWith('--channel')) || '').split('=')[1] || 'stable';
+State.reality = { runSeed: SEED, channel: CHANNEL, build: null, shipped: 0 };
 
 // The registry has to be seeded before any rate is read, exactly as
 // game.initializeSession() does it in the browser.
@@ -324,6 +334,13 @@ if (JSON_OUT) {
             automatons: { ...vd.automatons },
             repeatables: { ...vd.repeatables }
         },
+        reality: {
+            seed: State.reality.runSeed,
+            channel: State.reality.channel,
+            shipped: State.reality.shipped,
+            version: State.reality.build?.version,
+            entries: (State.reality.build?.entries || []).map((e) => `${e.kind}:${e.id}${e.patched ? ':patched' : ''}`),
+        },
         upgradesOwned: Object.keys(State.upgrades).filter((k) => State.upgrades[k]).sort(),
         mandatesOwned: Object.keys(State.purchasedMandates).filter((k) => State.purchasedMandates[k]).sort(),
         lastPurchaseSecond,
@@ -363,6 +380,12 @@ console.log(`  nemesis bonus     +${Math.round((game.getNemesisBonus() - 1) * 10
 console.log(`  praise per sec    ${game.getProductionRates(Date.now(), false).praise.toFixed(2)}`);
 console.log(`  divinity          ${State.totalDivinityPoints} earned, ${game.getAvailableDivinityPoints()} unspent (prestige now: +${game.calculateDivinityPoints()})`);
 console.log(`  prestige level    ${State.prestigeLevel}`);
+console.log(`  ── reality ──`);
+console.log(`  build             v${State.reality.build?.version} on ${State.reality.channel} (seed ${State.reality.runSeed}, ${State.reality.shipped} shipped)`);
+for (const entry of State.reality.build?.entries || []) {
+    const mark = entry.kind === 'improvement' ? '+' : entry.kind === 'deprecation' ? 'x' : entry.kind === 'regression' ? '!' : '-';
+    console.log(`   ${mark} ${entry.patched ? '[patched] ' : ''}${entry.note.slice(0, 92)}`);
+}
 console.log(`  standing doctrine rank ${State.standingDoctrine || 0} (+${Math.round((game.getDoctrineBonus() - 1) * 100)}% all production)`);
 console.log(`  upgrades left     ${remainingUpgrades} / ${UpgradeList.length}`);
 console.log(`  mandates left     ${remainingMandates} / ${MandateList.length}`);

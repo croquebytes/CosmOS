@@ -6,8 +6,9 @@
     "test:e2e": "node tests/e2e-smoke.mjs",
     "test:save": "node tests/save-migration.mjs",
     "test:golden": "node tools/golden.mjs",
-    "test": "npm run test:save && npm run test:modifiers && npm run test:golden && npm run test:e2e",
-    "test:modifiers": "node tests/modifier-equivalence.mjs"
+    "test": "npm run test:save && npm run test:modifiers && npm run test:reality && npm run test:golden && npm run test:e2e",
+    "test:modifiers": "node tests/modifier-equivalence.mjs",
+    "test:reality": "node tests/reality-builds.mjs"
   },
   "devDependencies": {
     "playwright": "^1.62.0",

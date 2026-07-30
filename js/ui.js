@@ -66,6 +66,7 @@ const ui = {
         this.applyDesktopPlate();
         this.renderAutomatons();
         this.renderRepeatables();
+        this.renderRealityPanel();
         this.updateSkillButtons();
         this.updateLoopPanels();
         this.updateDimensionDisplay();
@@ -285,6 +286,116 @@ const ui = {
             </section>
         `;
         layer.classList.add('active');
+    },
+
+    /* ── Release notes ────────────────────────────────────────────────────
+       The moment a run's character is revealed. Deliberately styled as a
+       release note rather than a buff list, because the mechanic and the
+       fiction are the same object here. */
+    releaseMarks: { improvement: '+', issue: '\u2715', regression: '!', deprecation: '\u2298' },
+
+    showReleaseNotes(build) {
+        const layer = document.getElementById('system-modal-layer');
+        if (!layer || !build) return;
+
+        const lines = (build.entries || []).map((entry) => {
+            const mark = this.releaseMarks[entry.kind] || '-';
+            const sev = entry.severity ? ` <span class="rn-sev">SEV-${entry.severity}</span>` : '';
+            return `<li class="rn-line rn-${entry.kind}">
+                <span class="rn-mark">${mark}</span>
+                <span class="rn-note">${entry.note}${sev}</span>
+            </li>`;
+        }).join('');
+
+        const channel = RealityChannels[build.channel]?.label || build.channel;
+
+        layer.innerHTML = `
+            <section class="system-dialog release-notes" role="dialog" aria-modal="true" aria-labelledby="rn-title">
+                <div class="system-dialog-titlebar">
+                    <span>REALITY — RELEASE NOTES</span>
+                    <button type="button" onclick="ui.closeReleaseNotes()" aria-label="Close release notes">X</button>
+                </div>
+                <div class="rn-head">
+                    <div>
+                        <div class="briefing-eyebrow">${channel} channel</div>
+                        <h2 id="rn-title">COSMOS — REALITY v${build.version}</h2>
+                        <p class="rn-meta">Released to Sector 7G &middot; Operator: you &middot; Rollback: unavailable</p>
+                    </div>
+                </div>
+                <ul class="rn-list">${lines || '<li class="rn-line"><span class="rn-mark">-</span><span class="rn-note">No changes recorded. Suspicious.</span></li>'}</ul>
+                <p class="rn-foot">Known issues can be patched from the Universal Engine, or routed around. Your call.</p>
+                <div class="system-dialog-actions">
+                    <button class="dialog-primary" type="button" onclick="ui.closeReleaseNotes()">Accept this reality</button>
+                </div>
+            </section>
+        `;
+        layer.classList.add('active');
+    },
+
+    closeReleaseNotes() {
+        this.dismissSystemModal();
+        this.renderRealityPanel();
+    },
+
+    /* The persistent view: what build you are on and what is still broken. */
+    renderRealityPanel() {
+        const host = document.getElementById('reality-panel');
+        if (!host) return;
+
+        const build = State.reality?.build;
+        if (!build) {
+            host.innerHTML = '';
+            return;
+        }
+
+        const channel = RealityChannels[build.channel]?.label || build.channel;
+        const issues = Reality.unpatchedIssues(build);
+
+        const issueRows = issues.map((entry) => {
+            const cost = Reality.patchCostOf(build, entry.id);
+            const affordable = cost && (cost.bag[cost.resource] || 0) >= cost.amount;
+            return `<button class="win-btn reality-issue ${affordable ? '' : 'unaffordable'}"
+                        onclick="game.patchKnownIssue('${entry.id}')"
+                        title="${entry.note}">
+                    <span class="reality-issue-note">
+                        <span class="code-stamp is-alarm">SEV-${entry.severity || 3}</span>
+                        ${entry.note.split('.')[0]}.
+                    </span>
+                    <span class="reality-issue-cost">${cost ? `Patch — ${this.formatNumber(cost.amount)} ${cost.resource}` : 'will not fix'}</span>
+                </button>`;
+        }).join('');
+
+        const others = (build.entries || []).filter((e) => e.kind !== 'issue' || e.patched);
+
+        /* Channel selection lives here rather than in a settings menu: it is a
+           run decision, made where you can see what the current run cost you. */
+        const available = Reality.channelsFor(State.prestigeLevel || 0);
+        const selector = available.length > 1
+            ? `<label class="reality-next">Next build:
+                   <select onchange="game.setBuildChannel(this.value)">
+                     ${available.map((key) => `<option value="${key}"${State.reality.channel === key ? ' selected' : ''}>${RealityChannels[key].label} — ${RealityChannels[key].divinity}x Divinity</option>`).join('')}
+                   </select>
+               </label>`
+            : '';
+
+        host.innerHTML = `
+            <div class="reality-head">
+                <span class="reality-version">REALITY v${build.version}</span>
+                <span class="reality-channel">${channel}</span>
+            </div>
+            ${selector}
+            ${issues.length
+                ? `<div class="reality-issues">${issueRows}</div>`
+                : '<p class="reality-clean">No outstanding known issues. Enjoy it.</p>'}
+            <details class="reality-changelog">
+                <summary>Full changelog (${(build.entries || []).length} entries)</summary>
+                <ul class="rn-list">${(build.entries || []).map((entry) => `
+                    <li class="rn-line rn-${entry.kind}${entry.patched ? ' rn-patched' : ''}">
+                        <span class="rn-mark">${this.releaseMarks[entry.kind] || '-'}</span>
+                        <span class="rn-note">${entry.patched ? '<s>' : ''}${entry.note}${entry.patched ? '</s> <em>patched</em>' : ''}</span>
+                    </li>`).join('')}</ul>
+            </details>
+        `;
     },
 
     closeOfflineReport() {

@@ -195,6 +195,18 @@ const State = {
        so it is persisted rather than derived. */
     modifierLog: null,
 
+    /* The build of reality this run is running on. `runSeed` is rolled once
+       per save so two players do not walk the same sequence of universes;
+       `build` is persisted rather than re-rolled on load, both so it survives
+       a reload identically and so reloading cannot be used to shop for a
+       better universe. See js/reality.js. */
+    reality: {
+        runSeed: 0,          // 0 means unrolled; ensureReality() assigns
+        channel: 'stable',
+        build: null,
+        shipped: 0,          // builds released, for the version history
+    },
+
     // System Settings
     epoch: 0,
     startTime: Date.now(),
