@@ -1,0 +1,186 @@
+#!/usr/bin/env node
+/**
+ * Save-layer regression tests.
+ *
+ *   node tests/save-migration.mjs
+ *
+ * Every case here is a failure mode that would cost a player their run, so
+ * these assert behaviour rather than implementation: a save is never deleted,
+ * defaults survive a partial save, and nothing a save says can reach the
+ * prototype chain.
+ */
+
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const noop = () => {};
+
+/* Each case gets a pristine State, because load() mutates it in place. */
+function bootWith(stored) {
+    const store = new Map(Object.entries(stored || {}));
+    const localStorage = {
+        getItem: (k) => (store.has(k) ? store.get(k) : null),
+        setItem: (k, v) => store.set(k, String(v)),
+        removeItem: (k) => store.delete(k),
+    };
+    const ctx = vm.createContext({
+        console: { log: noop, warn: noop, error: noop },
+        Math, Date, JSON, Number, Object, Array, String, Boolean,
+        isNaN, parseInt, parseFloat,
+        setTimeout: noop, clearTimeout: noop, setInterval: noop, clearInterval: noop,
+        localStorage,
+        ui: new Proxy({}, { get: () => noop }),
+        window: {}, document: { addEventListener: noop },
+    });
+    vm.runInContext(readFileSync(resolve(ROOT, 'js/state.js'), 'utf8'), ctx, { filename: 'state.js' });
+    return { State: vm.runInContext('State', ctx), store };
+}
+
+let passed = 0;
+const check = (name, fn) => {
+    try {
+        fn();
+        passed++;
+        console.log(`  ok    ${name}`);
+    } catch (error) {
+        console.log(`  FAIL  ${name}\n        ${error.message}`);
+        process.exitCode = 1;
+    }
+};
+
+console.log('\nSave layer\n');
+
+check('a fresh install loads with no save', () => {
+    const { State } = bootWith({});
+    assert.equal(State.resources.souls, 100);
+});
+
+check('a legacy save (no version) is migrated to current', () => {
+    const { State } = bootWith({
+        cosmos_save: JSON.stringify({
+            resources: { praise: 500, offerings: 20, souls: 900 },
+            automatons: { seraphCount: 12 },
+            pps: 12,
+        }),
+    });
+    assert.equal(State.resources.praise, 500);
+    assert.equal(State.automatons.seraphCount, 12);
+    assert.equal(State.saveVersion, State.SAVE_VERSION, 'version should be stamped forward');
+});
+
+check('a corrupted save is PRESERVED, never deleted', () => {
+    const { State, store } = bootWith({ cosmos_save: '{"bad_json":' });
+    assert.equal(State.resources.souls, 100, 'should fall back to defaults');
+    assert.ok(
+        store.get('cosmos_save_backup_unreadable'),
+        'the unreadable save must be kept for recovery',
+    );
+});
+
+check('defaults survive a save that omits nested keys', () => {
+    // The aliasing bug: Object.assign(this.X, parsed.X) rebound this.X.sub to
+    // the save's object, so every default sub-key absent from the save was lost.
+    const { State } = bootWith({
+        cosmos_save: JSON.stringify({
+            saveVersion: 3,
+            loopSystems: { miracleStreak: 7 },
+            documents: { collected: ['doc_welcome'] },
+        }),
+    });
+    assert.equal(State.loopSystems.miracleStreak, 7, 'saved value wins');
+    assert.equal(State.loopSystems.overclock.duration, 30000, 'default sub-object survives');
+    assert.ok(State.documents.categories, 'default categories survive');
+});
+
+check('a repeatable id absent from an old save gets its default', () => {
+    const { State } = bootWith({
+        cosmos_save: JSON.stringify({
+            saveVersion: 3,
+            repeatables: { praise_vault: 9 },
+        }),
+    });
+    assert.equal(State.repeatables.praise_vault, 9);
+    assert.equal(State.repeatables.offline_capacitor, 0, 'missing id defaults rather than undefined');
+});
+
+check('void repeatables survive a pre-Void-rebuild save', () => {
+    const { State } = bootWith({
+        cosmos_save: JSON.stringify({
+            saveVersion: 3,
+            dimensions: { void: { unlocked: true, automatons: { wraithCount: 9 } } },
+        }),
+    });
+    assert.equal(State.dimensions.void.automatons.wraithCount, 9);
+    assert.equal(State.dimensions.void.automatons.revenantCount, 0, 'new rank defaults');
+    assert.equal(State.dimensions.void.repeatables.darkness_vault, 0, 'new repeatables default');
+});
+
+check('a save cannot reach the prototype chain', () => {
+    const { State } = bootWith({
+        cosmos_save: `{"saveVersion":3,"__proto__":{"pwned":true},"constructor":{"pwned":true}}`,
+    });
+    assert.equal({}.pwned, undefined, 'Object.prototype must be untouched');
+    assert.equal(State.pwned, undefined);
+});
+
+check('a save cannot replace State methods', () => {
+    const { State } = bootWith({
+        cosmos_save: JSON.stringify({ saveVersion: 3, save: 'not-a-function', load: 42 }),
+    });
+    assert.equal(typeof State.save, 'function', 'save() must survive a hostile save');
+    assert.equal(typeof State.load, 'function');
+});
+
+check('migration 2 zeroes the phantom mps income source', () => {
+    // mps is never produced but IS spent by Temporal Rift's offline payout,
+    // so a stale nonzero value is unbounded free Offerings on every reload.
+    const { State } = bootWith({
+        cosmos_save: JSON.stringify({ resources: { praise: 1 }, mps: 9999 }),
+    });
+    assert.equal(State.mps, 0);
+});
+
+check('migration 3 clears a ghost divine event', () => {
+    const { State } = bootWith({
+        cosmos_save: JSON.stringify({
+            resources: { praise: 1 },
+            divineEvent: { x: -40, y: -900, value: 5, expiresAt: 1 },
+        }),
+    });
+    assert.equal(State.divineEvent, null, 'a stale event blocks all new spawns');
+});
+
+check('migration 1 prunes dead fields', () => {
+    const { State } = bootWith({
+        cosmos_save: JSON.stringify({
+            resources: { praise: 1 },
+            unlockedRegions: ['x'], activeRegion: 'x', unlockedDocuments: ['y'],
+        }),
+    });
+    assert.equal(State.unlockedRegions, undefined);
+    assert.equal(State.activeRegion, undefined);
+});
+
+check('migrations do not re-run on an already-current save', () => {
+    const { State } = bootWith({
+        cosmos_save: JSON.stringify({
+            saveVersion: 3, resources: { praise: 1 }, mps: 77,
+        }),
+    });
+    assert.equal(State.mps, 77, 'a current save is taken at its word');
+});
+
+check('save() keeps the previous write as a backup', () => {
+    const { State, store } = bootWith({ cosmos_save: JSON.stringify({ saveVersion: 3, resources: { praise: 5 } }) });
+    State.resources.praise = 6;
+    State.save();
+    assert.ok(store.get('cosmos_save_backup'), 'previous save retained');
+    assert.equal(JSON.parse(store.get('cosmos_save')).resources.praise, 6);
+    assert.equal(JSON.parse(store.get('cosmos_save_backup')).resources.praise, 5);
+});
+
+console.log(`\n${passed} passed${process.exitCode ? ' — with failures' : ''}\n`);

@@ -1,0 +1,196 @@
+[
+  {
+    "doc_id": "DOC-NEW-01",
+    "filename": "HR/PerformanceReview_OPERATOR.txt",
+    "category": "HR",
+    "unlock_condition": "Prestige #1 complete",
+    "tags": [
+      "CMS",
+      "HR",
+      "Operator",
+      "comedy",
+      "bureaucracy"
+    ],
+    "title": "Quarterly Operator Evaluation (CONFIDENTIAL-ish)"
+  },
+  {
+    "doc_id": "DOC-NEW-02",
+    "filename": "Legal/Reality_TermsOfService.rtf",
+    "category": "Legal",
+    "unlock_condition": "Prestige #2 complete",
+    "tags": [
+      "CMS",
+      "legal",
+      "prestige",
+      "branching"
+    ],
+    "title": "CosmOS™ Reality Interface — Terms of Service (Excerpted)"
+  },
+  {
+    "doc_id": "DOC-NEW-03",
+    "filename": "Logs/Sector7G_Maintenance.log",
+    "category": "Logs",
+    "unlock_condition": "Attempt to end process sector7g_indexer (TaskMgr)",
+    "tags": [
+      "Sector7G",
+      "maintenance",
+      "corruption",
+      "horror-lite"
+    ],
+    "title": "Sector 7G Maintenance Log (Recovered)"
+  },
+  {
+    "doc_id": "DOC-NEW-04",
+    "filename": "Incidents/VoidDimension_Report.REDACTED",
+    "category": "Incident",
+    "unlock_condition": "Void depth milestone (deep)",
+    "tags": [
+      "Void",
+      "Watchers",
+      "redaction",
+      "bureaucracy"
+    ],
+    "title": "Incident Report: Void Dimension Entry (REDACTED)"
+  },
+  {
+    "doc_id": "DOC-NEW-05",
+    "filename": "Inbox/Message_From_NULL.OPERATOR.eml",
+    "category": "Inbox",
+    "unlock_condition": "Prestige #5 complete",
+    "tags": [
+      "Adversary",
+      "mirror",
+      "prestige",
+      "threat"
+    ],
+    "title": "Email: Message From NULL.OPERATOR"
+  },
+  {
+    "doc_id": "DOC-NEW-06",
+    "filename": "Training/Operator_Onboarding_Quickstart.md",
+    "category": "Training",
+    "unlock_condition": "First launch OR open Help menu",
+    "tags": [
+      "CMS",
+      "training",
+      "operator",
+      "systems"
+    ],
+    "title": "Operator Onboarding — Quickstart (v4.2.0.69)"
+  },
+  {
+    "doc_id": "DOC-NEW-07",
+    "filename": "Incidents/Seraph_Autonomy_Incident_32B.txt",
+    "category": "Incident",
+    "unlock_condition": "Buy 25 Seraphs OR unlock Void Navigator",
+    "tags": [
+      "Seraph",
+      "automation",
+      "self-awareness",
+      "foreshadow"
+    ],
+    "title": "Incident: Seraph Autonomy (32B)"
+  },
+  {
+    "doc_id": "DOC-NEW-08",
+    "filename": "Legal/Prestige_Addendum_ThreeLayers.rtf",
+    "category": "Legal",
+    "unlock_condition": "Prestige #3 complete",
+    "tags": [
+      "prestige",
+      "branching",
+      "layers"
+    ],
+    "title": "Addendum: Divine Reboot is Branch Compilation"
+  },
+  {
+    "doc_id": "DOC-NEW-09",
+    "filename": "Memos/Watcher_Protocol_Broadcast.msg",
+    "category": "Memo",
+    "unlock_condition": "First time hearing a Casino rare whisper OR open watcher.whisperd details",
+    "tags": [
+      "Watchers",
+      "whisper",
+      "protocol",
+      "mystery"
+    ],
+    "title": "Broadcast: WATCHER PROTOCOL (Partially Decoded)"
+  },
+  {
+    "doc_id": "DOC-NEW-10",
+    "filename": "Ads/InfernalSystemsPro_Flyer.html",
+    "category": "Ad",
+    "unlock_condition": "Collect 5 documents OR visit Casino twice",
+    "tags": [
+      "competitors",
+      "humor",
+      "worldbuilding"
+    ],
+    "title": "Advertisement: Infernal Systems Pro™"
+  },
+  {
+    "doc_id": "DOC-NEW-11",
+    "filename": "Logs/void_mirror.service.trace",
+    "category": "Logs",
+    "unlock_condition": "Adversary contact OR Void depth 25",
+    "tags": [
+      "void_mirror",
+      "adversary",
+      "duplicate session",
+      "technical"
+    ],
+    "title": "Trace: void_mirror.service (Shadow Instance)"
+  },
+  {
+    "doc_id": "DOC-NEW-12",
+    "filename": "Casino/HouseRules_and_Payouts.md",
+    "category": "Casino",
+    "unlock_condition": "First Casino visit",
+    "tags": [
+      "casino",
+      "fate",
+      "rules",
+      "easter eggs"
+    ],
+    "title": "Fate’s Casino — House Rules & Payouts"
+  },
+  {
+    "doc_id": "DOC-NEW-13",
+    "filename": "Archive/Branch_Postmortem_Alpha-2.md",
+    "category": "Archive",
+    "unlock_condition": "Unlock Archive Diver achievement OR Prestige #6",
+    "tags": [
+      "archive",
+      "branch",
+      "postmortem",
+      "previous operators"
+    ],
+    "title": "Archived Branch Postmortem: ALPHA-2"
+  },
+  {
+    "doc_id": "DOC-NEW-14",
+    "filename": "HR/Ticket_HR-VOID-7781.txt",
+    "category": "HR",
+    "unlock_condition": "Triggered automatically after SCN-ADV-001",
+    "tags": [
+      "HR",
+      "incident",
+      "comedy",
+      "adversary"
+    ],
+    "title": "HR Ticket: Unauthorized Self-Encounter (HR-VOID-7781)"
+  },
+  {
+    "doc_id": "DOC-NEW-15",
+    "filename": "System/README_DO_NOT_SHIP.txt",
+    "category": "System",
+    "unlock_condition": "Collect 15 documents OR view Sector7G log",
+    "tags": [
+      "devnotes",
+      "meta",
+      "CMS",
+      "worldbuilding"
+    ],
+    "title": "README_DO_NOT_SHIP (Internal CMS Dev Notes)"
+  }
+]
