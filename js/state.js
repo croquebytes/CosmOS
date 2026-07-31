@@ -330,20 +330,33 @@ const State = {
     // === THE ADVERSARY ===
     adversary: {
         contacted: false,
-        relationship: null, // 'hostile', 'curious', 'complicit'
         sceneCompleted: false,
-        playerChoice: null, // 'OP-A', 'OP-B', 'OP-C'
+        playerChoice: null, // 'OP-A', 'OP-B', 'OP-C' — the origin fact, never rewritten
+
+        /* Presentation attempts, incremented by ui.playAdversaryScene() itself
+           rather than by the trigger. The trigger fires once ever, so counting
+           there would freeze this at 1 and the self-resolve below could never
+           fire — which is the whole point of having it. */
+        sceneAttempts: 0,
+
+        /* The relationship MOVES. playerChoice sets the opening position and
+           then every act he has an opinion about nudges this; `relationship`
+           is a band over it, not a stored verdict. A flag written once in a
+           25-second window at hour eight is not a relationship, it is a
+           setting. */
+        standing: 0,
 
         barks: {
             lastBarkId: null,
             lastBarkTime: 0,
-            heardBarks: []
+            heardBarks: [],
+            playCounts: {} // { lineId: n } — lines retire at AdversaryBarkPolicy.lifetimeCap
         },
 
         // Patch file
         patchInRecycleBin: false,
         patchExecuted: false,
-        patchUIEnabled: false // Toggle for alternate UI theme
+        auditLogEntries: 0 // hostile branch: the receipts he said he was keeping
     },
 
     // === TASK MANAGER ===
@@ -476,8 +489,20 @@ const State = {
     save() {
         this.runtime.lastUpdateTime = Date.now();
         this.saveVersion = State.SAVE_VERSION;
-        // Order is load-bearing and unrecoverable from the ledgers alone.
-        if (typeof Modifiers !== 'undefined') this.modifierLog = Modifiers.serialize();
+        /* Order is load-bearing and unrecoverable from the ledgers alone.
+
+           Never trade a non-empty stored log for an empty one. An empty
+           registry at save time means "not hydrated yet", never "the player
+           owns nothing" — and a save fired in that window (ensureReality does
+           exactly this during boot) would drop every record the content
+           ledgers cannot rebuild. */
+        if (typeof Modifiers !== 'undefined') {
+            const next = Modifiers.serialize();
+            const stored = this.modifierLog;
+            const wouldDrop = !next.records.length &&
+                stored && Array.isArray(stored.records) && stored.records.length > 0;
+            if (!wouldDrop) this.modifierLog = next;
+        }
         try {
             const payload = JSON.stringify(this);
             // Keep the last good write. If a future load throws, this is what
@@ -2175,10 +2200,38 @@ const CasinoHostBarks = [
 const AdversaryScene = {
     sceneId: 'SCN-ADV-001',
     title: 'Mirror Login Incident',
+    /* ── Reachability ────────────────────────────────────────────────────
+       The original gate was `prestige_count >= 5 AND (void_depth_reached >= 25
+       OR souls >= 1000)`, and it is why this scene sat unplayed. Measured with
+       tools/balance_sim.mjs at seed 20260726, 40 clicks/min:
+
+         - Under the simulator's shipped (realistic) prestige policy, prestige 1
+           lands at 23:46 and prestige 2 never arrives at all inside 72h.
+         - Under a maximally greedy policy — reboot the instant one point
+           exists, the fastest the economy permits — prestige 5 lands at
+           22h18m, with 1h23m of dead time before it.
+         - `achievementProgress.void_depth_reached` has ZERO write sites in the
+           whole js/ tree, so clause 2 always degraded to `souls >= 1000` — an
+           instantaneous check against a resource that resets on every reboot,
+           so it could also simply be missed between polls.
+
+       So: prestige count becomes an OR rather than an AND, against a LIFETIME
+       souls figure that a never-prestiging player also reaches. 700k is not a
+       guess — it is tools/golden/8h.json's own endpoint (711,493 lifetime
+       souls at eight hours), so first contact lands at roughly hour eight for
+       every play policy, and earlier for an aggressive one.
+
+       The deeper finding this measurement turned up is NOT fixed here and is
+       worth more than this scene: on the current curve, reboot 8 needs ~6.1M
+       lifetime souls and reboot 12 needs ~15.0M, so the Nightly and Archived
+       channels in DESIGN_DIRECTION.md §2 — the stated replayability payload —
+       are effectively unreachable. That is a prestige-curve problem. */
     trigger: {
         conditions: [
-            () => State.achievementProgress.prestige_count >= 5,
-            () => State.achievementProgress.void_depth_reached >= 25 || State.resources.souls >= 1000,
+            () => (State.achievementProgress.prestige_count || 0) >= 3 ||
+                  (State.totalStats?.soulsGained || 0) >= 700000,
+            () => State.dimensions.void.unlocked ||
+                  (State.totalStats?.soulsGained || 0) >= 250000,
             () => !State.adversary.contacted
         ],
         location: 'Any (overlay UI)',
@@ -2196,6 +2249,16 @@ const AdversaryScene = {
         { id: 'ADV-009', speaker: 'SYS', type: 'system', text: '[ERROR] Duplicate session detected.' },
         { id: 'ADV-010', speaker: 'ADV', type: 'voice', text: "Don't panic. Panic is a waste of cycles." },
         { id: 'ADV-011', speaker: 'ADV', type: 'voice', text: "I'm you—after your fifth excuse became policy." },
+        /* ADV-011 names a reboot count the retuned gate no longer guarantees.
+           Rather than edit a written line to match a tuning number, the SYS
+           layer notices the discrepancy — a shadow instance miscounting your
+           history is better characterisation than a shadow instance being
+           right, and it costs one line. Suppressed when he happens to be
+           correct. `showIf` is evaluated at render time only; declaring it is
+           safe in the vm harnesses, which boot state.js with no `game`. */
+        { id: 'ADV-011B', speaker: 'SYS', type: 'system', added: 'session-3',
+          showIf: () => (State.achievementProgress.prestige_count || 0) !== 5,
+          text: '[NOTICE] Reboot count mismatch. Local ledger: {REBOOTS}. Claimed: 5. Discrepancy logged; no owner assigned.' },
         { id: 'ADV-012', speaker: 'ADV', type: 'voice', text: "You call it a Divine Reboot. You've been doing it often enough to make it a personality." },
         { id: 'ADV-013', speaker: 'SYS', type: 'system', text: '[ALERT] Unrecognized process requesting elevated privileges: void_mirror.service (shadow instance)' },
         { id: 'ADV-014', speaker: 'ADV', type: 'voice', text: "Relax. I'm not here to take your throne. I'm here to tighten the bolts you keep stripping." },
@@ -2257,6 +2320,82 @@ const AdversaryBarks = [
     { id: 'ADV-L-19', trigger: 'void_depth_50', text: "Deep enough and you'll see where your branches intersect. It's ugly." },
     { id: 'ADV-L-20', trigger: 'attempt_resign', text: "You can't leave. You can only change what leaving means." }
 ];
+
+/* ── How loudly he speaks ────────────────────────────────────────────────
+
+   Volume is inverted against intuition on purpose. Denying him does NOT make
+   him nag — a nagging antagonist becomes wallpaper, and these are the best
+   lines in the project. Hostile makes him RARE: he turns up when you reboot,
+   exactly as ADV-BARK-02 promises ("I'm keeping the receipts"), and the
+   pressure between visits comes from the audit log accruing, not from text
+   popping. Complicit makes him LOUD, because he has standing now and is in
+   your house — which is the honest reading of ADV-023C, "You've been training
+   for consent screens." Leaving the consenting player in peace would read as
+   a reward for consent.
+
+   `lifetimeCap` retires a line after N plays for the life of the save. There
+   are 25 lines and a save that lasts weeks; without it every one of them
+   becomes a screensaver. `idle_60s` is deliberately in NO trigger set —
+   ADV-L-01 is a good line exactly once, and this is an idle game where idling
+   is the intended state, so a line keyed to it would fire forever. */
+const AdversaryBarkPolicy = {
+    lifetimeCap: 3,
+    bands: {
+        hostile:   { globalCooldownMs: 900000, lineCooldownMs: 1800000, chance: 0.85 },
+        curious:   { globalCooldownMs: 300000, lineCooldownMs: 900000,  chance: 0.7 },
+        complicit: { globalCooldownMs: 120000, lineCooldownMs: 600000,  chance: 0.9 },
+    },
+    /* Which triggers each band reacts to. A test asserts this union is exactly
+       the set of triggers the code actually fires (AdversaryHookedTriggers) —
+       no bark hooked to a set nobody listens on, no set entry nothing fires. */
+    triggers: {
+        hostile: [
+            'prestige_prompt', 'prestige_count_6', 'prestige_count_8',
+            'taskmgr_end_process_attempt', 'open_taskmgr_after_contact',
+            'enter_void', 'open_docs_folder',
+        ],
+        curious: [
+            'prestige_prompt', 'open_taskmgr_after_contact', 'enter_void',
+            'open_docs_folder', 'hover_patch_file', 'open_recycle_bin',
+            'void_upgrade_bought', 'achievement_unlocked', 'buy_seraph',
+            'praise_spike_event', 'prestige_count_6', 'prestige_count_8',
+            'taskmgr_end_process_attempt',
+        ],
+        complicit: [
+            'open_recycle_bin', 'hover_patch_file', 'prestige_prompt',
+            'open_settings', 'achievement_unlocked', 'souls_threshold',
+            'offerings_spent_large', 'void_upgrade_bought',
+            'buy_seraph', 'enter_void', 'open_docs_folder',
+            'open_taskmgr_after_contact', 'praise_spike_event',
+            'prestige_count_6', 'prestige_count_8', 'taskmgr_end_process_attempt',
+        ],
+    },
+};
+
+/* Every trigger string the code actually fires. Kept beside the policy so the
+   two cannot drift silently; tests/adversary-scene.mjs asserts set equality
+   against the union above, in both directions. */
+const AdversaryHookedTriggers = [
+    'prestige_prompt', 'prestige_count_6', 'prestige_count_8',
+    'open_taskmgr_after_contact', 'taskmgr_end_process_attempt',
+    'enter_void', 'void_upgrade_bought', 'buy_seraph',
+    'open_recycle_bin', 'hover_patch_file', 'open_docs_folder',
+    'open_settings', 'achievement_unlocked',
+    'souls_threshold', 'offerings_spent_large', 'praise_spike_event',
+];
+
+/* Deliberately NOT hooked, and why — so the next reader does not assume these
+   were missed:
+     casino_enter, casino_win_streak_5, casino_lose_streak_5 — no Casino app
+       exists. Blocks ADV-BARK-04, ADV-L-15, ADV-L-16, all 80 CasinoHostBarks
+       and all 12 lore whispers.
+     idle_60s (ADV-L-01) — good line, wrong cadence for an idle game.
+     toggle_music (ADV-L-03) — no music to toggle; the game ships silent.
+     warning_popup, seraph_self_awareness_event, void_depth_50, attempt_resign
+       (ADV-L-05, -18, -19, -20) — no such events exist yet.
+   That is 9 of the 25 Adversary lines still unreachable; the other 16 play.
+   tests/adversary-scene.mjs pins those 9 by id, so a TENTH falling out of the
+   hook table fails the suite rather than passing quietly. */
 
 // === ACHIEVEMENT LIST (40 achievements across 5 tiers) ===
 const AchievementList = [
@@ -2362,6 +2501,22 @@ const TaskManagerProcesses = [
       onEnd: () => {
           ui.log('[ERROR] Mirror service terminated. Identity drift detected.');
           State.achievementProgress.trigger_any_warning++;
+      }
+    },
+    /* The scene's permanent residue is a row in Task Manager, not a line in a
+       changelog. ADV-013 announces "void_mirror.service (shadow instance)";
+       until contact this process does not exist, and afterwards it cannot be
+       removed. It is also the referent ADV-BARK-01 ("If you end that process")
+       and ADV-L-12 ("End it. Watch what leaks out.") were written for — both
+       barks are filtered to this name, so they never fire on an unrelated
+       kill. `hiddenUntilContact` is read by ui.updateTaskManagerList. */
+    { name: 'void_mirror.service#2', cpu: 7, mem: 13, status: 'Not Responding', critical: false,
+      desc: 'Reflection consistency daemon (unowned session)', endable: false,
+      hiddenUntilContact: true,
+      onAttempt: () => {
+          ui.log('[BLOCKED] Process is not owned by this session.');
+          game.triggerAdversaryBark('taskmgr_end_process_attempt');
+          game.nudgeAdversaryStanding(-2, 'tried to end the mirror');
       }
     },
     { name: 'sector7g_indexer.exe', cpu: 1, mem: 4, status: 'Not Responding', critical: true, desc: 'Causal address indexer (CORRUPTED)', endable: false,

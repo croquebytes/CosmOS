@@ -100,6 +100,51 @@ const system = {
                 return;
             }
 
+            /* The Adversary scene owns the keyboard while it is up — Space
+               must not fire a Miracle behind a blocking modal. But it must not
+               own it so completely that a keyboard-only player can never
+               ANSWER: swallowing Tab means focus can never reach the three
+               choice buttons, and swallowing Enter means a focused button can
+               never fire, so Escape (which resolves as DENY) becomes their
+               only exit. That is railroading, not a choice. */
+            if (ui.isAdversarySceneOpen && ui.isAdversarySceneOpen()) {
+                const choices = Array.from(
+                    document.querySelectorAll('.adversary-scene .adv-choice'));
+
+                // Trap Tab inside the dialog rather than swallowing it —
+                // passing it through would walk focus onto the desktop behind
+                // an aria-modal dialog.
+                if (e.code === 'Tab' && choices.length) {
+                    e.preventDefault();
+                    const i = choices.indexOf(document.activeElement);
+                    const next = e.shiftKey
+                        ? (i <= 0 ? choices.length - 1 : i - 1)
+                        : (i === -1 || i === choices.length - 1 ? 0 : i + 1);
+                    choices[next].focus();
+                    return;
+                }
+
+                // Let a focused choice button activate itself.
+                const onChoice = e.target && e.target.closest && e.target.closest('.adv-choice');
+                if (onChoice && (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space')) {
+                    return;
+                }
+
+                e.preventDefault();
+                if (e.code === 'Escape') { ui.escapeAdversaryScene(); return; }
+
+                // 1/2/3 answer directly, so the choice is reachable even when
+                // focus is elsewhere entirely.
+                if (choices.length) {
+                    const n = { Digit1: 0, Digit2: 1, Digit3: 2,
+                                Numpad1: 0, Numpad2: 1, Numpad3: 2 }[e.code];
+                    if (n !== undefined && choices[n]) { choices[n].click(); return; }
+                    return; // never auto-advance past an unanswered choice
+                }
+                ui.advanceAdversaryScene();
+                return;
+            }
+
             // Space: Perform Miracle
             if (e.code === 'Space') {
                 e.preventDefault();
@@ -525,6 +570,26 @@ const system = {
 
         if (appConfig.onOpen) appConfig.onOpen();
         this.updateTaskbar();
+
+        /* He has opinions about which windows you open. One table rather than
+           five scattered calls, so AdversaryHookedTriggers stays honest. */
+        const advTrigger = {
+            taskmgr: 'open_taskmgr_after_contact',
+            recyclebin: 'open_recycle_bin',
+            notepad: 'open_docs_folder',
+            settings: 'open_settings',
+            /* No `casino:` entry — there is no Casino app. ADV-BARK-04 ("Fate
+               is a contractor. I'm in-house.") stays unreachable, along with
+               the 80 CasinoHostBarks and 12 lore whispers, until one exists.
+               Wiring a trigger to an app id that is never opened would put a
+               line in AdversaryHookedTriggers that nothing can fire. */
+        }[id];
+        if (advTrigger) {
+            game.triggerAdversaryBark(advTrigger);
+            if (advTrigger === 'open_docs_folder') {
+                game.nudgeAdversaryStanding(1, 'read the paperwork');
+            }
+        }
     },
 
     closeApp(id) {

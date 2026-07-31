@@ -747,6 +747,17 @@ const game = {
                 this.updateDirectiveProgress();
                 this.checkAchievements();
                 this.checkDocuments();
+                this.checkAdversaryTrigger();
+
+                /* "Count them if you must." Fires once per power of ten of
+                   lifetime Souls, so it marks scale rather than nagging. */
+                if (State.adversary?.sceneCompleted) {
+                    const decade = Math.floor(Math.log10(Math.max(1, State.totalStats?.soulsGained || 0)));
+                    if (decade > (State.adversary.lastSoulDecade || 0)) {
+                        State.adversary.lastSoulDecade = decade;
+                        this.triggerAdversaryBark('souls_threshold');
+                    }
+                }
                 this.systemCheckAccumulator %= 1;
             }
 
@@ -999,9 +1010,26 @@ const game = {
     },
 
     bootstrapModifiers(now = Date.now()) {
+        /* Read the persisted log BEFORE ensureReality().
+
+           ensureReality() calls State.save() whenever the build re-derives
+           differently from the stored one — which is exactly the case its own
+           comment says the re-derivation exists to serve, "what lets a content
+           fix reach a save that is already mid-run". And save() does
+           `this.modifierLog = Modifiers.serialize()`, mutating State in RAM as
+           well as on disk. At this point in boot the registry is still empty,
+           so reading the log afterwards saw `records: []`, fell through to
+           rebuildModifierLog(), and silently destroyed every record the
+           content ledgers cannot regenerate.
+
+           Until now nothing was in that category, so the bug was latent. The
+           adversary patch's two `scope: 'permanent'` records are the first —
+           they are added from a click, are in no ledger, and executeAdversary-
+           Patch refuses to re-run once patchExecuted is set. Losing them is
+           silent and unrecoverable. */
+        const persisted = State.modifierLog;
         const build = this.ensureReality();
 
-        const persisted = State.modifierLog;
         if (persisted && Array.isArray(persisted.records) && persisted.records.length) {
             Modifiers.hydrate(persisted);
         } else {
@@ -1109,6 +1137,19 @@ const game = {
         }
         const progressKey = `buy_${type}_count`;
         State.achievementProgress[progressKey] = (State.achievementProgress[progressKey] || 0) + amount;
+
+        /* Safe to call from the simulator: selectAdversaryBark returns null on
+           `!sceneCompleted` before it reaches any Math.random(), and the scene
+           cannot complete headlessly, so the golden master's random stream is
+           untouched. Same reasoning at every other hook site. */
+        if (type === 'seraph') this.triggerAdversaryBark('buy_seraph');
+        if (spec.currency === 'offerings' && amount >= 5) {
+            this.triggerAdversaryBark('offerings_spent_large');
+        }
+        if (spec.pool === 'void') {
+            this.triggerAdversaryBark('void_upgrade_bought');
+            this.nudgeAdversaryStanding(1, 'fed the reflection');
+        }
     },
 
     buyAutomator(type, event) {
@@ -1338,6 +1379,7 @@ const game = {
         // Show notification
         ui.showAchievementToast(achievement);
         ui.log(`[ACHIEVEMENT] ${achievement.name}`);
+        this.triggerAdversaryBark('achievement_unlocked');
 
         // Update achievement progress trackers
         const tierCounts = {
@@ -1449,6 +1491,9 @@ const game = {
         const overclockBoost = loops.overclock.active ? 0.02 : 0;
         const spawnRate = Math.min(0.35, (State.divineEventSpawnRate || 0.05) + chainBoost + streakBoost + overclockBoost);
         if (Math.random() > spawnRate) return;
+
+        // "Attention is cheap. Consequence is not." (ADV-L-07)
+        this.triggerAdversaryBark('praise_spike_event');
 
         /* Keep the token inside the desktop even on a narrow or not-yet-laid-out
            viewport. The old maths subtracted a fixed 200px margin, so anything
@@ -1932,6 +1977,17 @@ const game = {
         const nextBuild = this.rollNextBuild(Date.now());
         ui.showReleaseNotes(nextBuild);
 
+        /* He turns up when you reboot — ADV-BARK-02, "Reset again. I dare you.
+           I'm keeping the receipts." The receipts are a file, and this is where
+           they accrue. Fired before the count-specific lines so the generic
+           dare does not eat their cooldown slot. */
+        this.appendAdversaryAuditEntry();
+        this.nudgeAdversaryStanding(-1, 'rebooted', { exempt: true }); // already once per run
+        const reboots = State.achievementProgress.prestige_count || 0;
+        if (reboots === 6) this.triggerAdversaryBark('prestige_count_6');
+        else if (reboots === 8) this.triggerAdversaryBark('prestige_count_8');
+        else this.triggerAdversaryBark('prestige_prompt');
+
         for (const mandateId in State.purchasedMandates) {
             const mandate = MandateList.find((m) => m.id === mandateId);
             if (!mandate) continue;
@@ -2071,8 +2127,10 @@ const game = {
         State.casino.hostDialogue.barkCooldowns = State.casino.hostDialogue.barkCooldowns || {};
         State.casino.hostDialogue.barkCooldowns[bark.id] = now;
 
-        // Track lore whispers (rare lines)
-        if (bark.context === 'Lore Whisper') {
+        // Track lore whispers (rare lines). The data says 'LoreWhisper'; this
+        // compared against 'Lore Whisper' and so never recorded one, leaving
+        // DOC-NEW-12's `loreWhispersHeard.length >= 1` unlock permanently shut.
+        if (bark.context === 'LoreWhisper') {
             State.casino.hostDialogue.loreWhispersHeard = State.casino.hostDialogue.loreWhispersHeard || [];
             if (!State.casino.hostDialogue.loreWhispersHeard.includes(bark.id)) {
                 State.casino.hostDialogue.loreWhispersHeard.push(bark.id);
@@ -2087,12 +2145,249 @@ const game = {
         return bark;
     },
 
-    // Attempt to trigger a lore whisper (1% chance)
+    /* Attempt to trigger a lore whisper (1% chance).
+
+       This asked for trigger 'casino_idle_30s' and context 'Lore Whisper'; the
+       twelve whisper lines declare trigger 'casino_rare_whisper' and context
+       'LoreWhisper'. Both strings were wrong, so the filter in selectHostBark
+       matched zero lines every time.
+
+       The strings are fixed, but this function is STILL UNCALLED: there is no
+       Casino app, so all 80 CasinoHostBarks and all 12 lore whispers remain
+       unreachable, and State.casino.visited is never written (which also
+       leaves DOC-NEW-12 permanently locked). Hook this to a Casino idle tick
+       when that app exists. See the note beside AdversaryHookedTriggers in
+       js/state.js and the openApp trigger table in js/system.js. */
     attemptLoreWhisper() {
         if (Math.random() < 0.01) {
-            // Select a random lore whisper
-            this.triggerHostBark('casino_idle_30s', 'Lore Whisper');
+            this.triggerHostBark('casino_rare_whisper', 'LoreWhisper');
         }
+    },
+
+    /* ════════════════════════════════════════════════════════════════════
+       THE ADVERSARY
+
+       SCN-ADV-001 "Mirror Login Incident" — 31 authored lines that no file in
+       the project read until now, plus 25 barks behind a function nothing
+       called. This section makes them reachable and keeps them reachable.
+
+       The relationship is a SIGNED INTEGER, not a stored verdict. The choice
+       at ADV-022 sets the opening position; after that every act he has an
+       opinion about moves it, and `adversaryRelationship()` reads a band off
+       the total. A one-way flag chosen blind in a 25-second window is a
+       setting; this is a relationship, and it is the part that survives into
+       the next playthrough.
+       ════════════════════════════════════════════════════════════════════ */
+
+    /* Bands over `standing`. playerChoice seeds it (-4 / 0 / +4) so the
+       opening position is the band you chose, and then it moves. */
+    adversaryRelationship() {
+        const s = State.adversary?.standing || 0;
+        if (s <= -3) return 'hostile';
+        if (s >= 3) return 'complicit';
+        return 'curious';
+    },
+
+    /* Per-reason cooldown, in ms. Without it the relationship is worthless:
+       opening the Recovered Documents window is +1, so twelve clicks on the
+       same icon walk a hostile player to complicit. A nudge should cost an
+       ACT, not a repetition of one. Reboots and patch execution are exempt —
+       they are already once-per-run or once-ever. */
+    ADVERSARY_NUDGE_COOLDOWN_MS: 600000,
+
+    nudgeAdversaryStanding(delta, reason, options = {}) {
+        const adv = State.adversary;
+        if (!adv?.sceneCompleted) return; // no relationship yet
+
+        if (reason && !options.exempt) {
+            adv.nudgeCooldowns = adv.nudgeCooldowns || {};
+            const now = Date.now();
+            if (now - (adv.nudgeCooldowns[reason] || 0) < this.ADVERSARY_NUDGE_COOLDOWN_MS) return;
+            adv.nudgeCooldowns[reason] = now;
+        }
+
+        const before = this.adversaryRelationship();
+        adv.standing = Math.max(-12, Math.min(12, (adv.standing || 0) + delta));
+        const after = this.adversaryRelationship();
+        if (after !== before) {
+            ui.log(`[void_mirror] Relationship reclassified: ${before} → ${after}.`);
+        }
+    },
+
+    /* ── Trigger ──────────────────────────────────────────────────────────
+       Polled from the existing 1 Hz block in tick(). Ordering matters: the
+       cheapest and most-often-false test comes first, and nothing in here may
+       reach Math.random() or the golden master stops being reproducible. */
+    checkAdversaryTrigger() {
+        const adv = State.adversary;
+        if (!adv || (adv.contacted && adv.sceneCompleted)) return;
+
+        /* Never open behind the boot overlay. game.loop() starts at parse time,
+           so this polls at ~t+1s, while #boot-overlay (z-index 10000) still
+           covers the modal layer (9500) and system.init has not yet shown the
+           offline report at t+3.9s. A scene started here plays UNSEEN and is
+           then destroyed when showOfflineReport rewrites the layer — leaving
+           advScene.open true over an empty layer, which makes system.js
+           swallow every keypress for the rest of the session. Defer instead. */
+        if (typeof document !== 'undefined' && document.getElementById('boot-overlay')) return;
+
+        // An interrupted scene (tab closed mid-scene) resumes here rather than
+        // being lost — contacted is true but sceneCompleted is not.
+        if (adv.contacted && !adv.sceneCompleted) {
+            if (this.adversarySceneExhausted()) return;
+            if (ui.isSystemModalOpen && ui.isSystemModalOpen()) return;
+            if (ui.isAdversarySceneOpen && ui.isAdversarySceneOpen()) return;
+            ui.playAdversaryScene();
+            return;
+        }
+
+        if ((State.achievementProgress.prestige_count || 0) < 3 &&
+            (State.totalStats?.soulsGained || 0) < 700000) return;
+
+        /* Defer, never clobber. #system-modal-layer is a single slot and every
+           show* rewrites innerHTML, so firing while the release notes or the
+           offline report are up would destroy them unread. Retry next second. */
+        if (ui.isSystemModalOpen && ui.isSystemModalOpen()) return;
+
+        let met = true;
+        try {
+            met = AdversaryScene.trigger.conditions.every((c) => c());
+        } catch (err) {
+            return; // house style: a throwing condition skips silently
+        }
+        if (!met) return;
+
+        /* Written BEFORE presenting. If playAdversaryScene throws, the scene
+           does not re-fire once per second forever; the resume branch above
+           picks it up on the next boot instead, under the attempt cap. */
+        adv.contacted = true;
+        State.achievementProgress.adversary_contacted = true;
+        State.save();
+        ui.playAdversaryScene();
+    },
+
+    /* Three failed presentations means the renderer is broken on this machine.
+       Rather than a modal that reappears on every single boot forever, the arc
+       resolves headlessly and play continues. */
+    adversarySceneExhausted() {
+        return (State.adversary?.sceneAttempts || 0) >= 3;
+    },
+
+    resolveAdversaryChoice(choiceId) {
+        const adv = State.adversary;
+        if (!adv || adv.sceneCompleted) return;
+
+        const seed = { 'OP-A': -4, 'OP-B': 0, 'OP-C': 4 };
+        adv.playerChoice = choiceId;
+        adv.standing = seed[choiceId] ?? 0;
+        adv.sceneCompleted = true;
+        adv.contacted = true;
+        State.achievementProgress.adversary_contacted = true;
+
+        // ADV-024/025 are unconditional in the written data: the patch is left
+        // in the bin on every branch. What differs is what sits beside it.
+        this.grantAdversaryPatch();
+        if (choiceId === 'OP-A') this.grantAdversaryAuditLog();
+
+        this.unlockDocument('DOC-NEW-11');
+        this.checkAchievements();
+        State.save();
+    },
+
+    /* ── The patch ────────────────────────────────────────────────────── */
+
+    grantAdversaryPatch() {
+        const adv = State.adversary;
+        // Guard on either flag: after execution the item is removed from the
+        // bin, so patchInRecycleBin alone would let a re-grant through.
+        if (adv.patchInRecycleBin || adv.patchExecuted) return;
+        adv.patchInRecycleBin = true;
+        this.addToRecycleBin({
+            id: 'adversary_patch',
+            name: 'PATCH_NULL_RESTORE.pkg',
+            type: 'patch',
+            description: adv.playerChoice === 'OP-B'
+                // The curious branch actually gets its question answered —
+                // partially, unhelpfully. This is what ADV-L-14 is for.
+                ? 'Size: 0 bytes. Manifest: 1 entry — restore(operator.continuity). Signed by: OPERATOR (this session).'
+                : 'Size: 0 bytes. Manifest: unreadable.',
+            deletable: false,
+            onRestore: null,
+            onDelete: null,
+        });
+    },
+
+    grantAdversaryAuditLog() {
+        if (State.recycleBin.items.some((i) => i.id === 'adversary_audit')) return;
+        State.adversary.auditLogEntries = 1;
+        this.addToRecycleBin({
+            id: 'adversary_audit',
+            name: 'OPERATOR_AUDIT.log',
+            type: 'log',
+            description: 'Appended on every reboot. 1 entry. Owner: not you.',
+            deletable: false,
+            onRestore: null,
+            onDelete: null,
+        });
+    },
+
+    /* He said he was keeping the receipts (ADV-BARK-02). Called from prestige
+       so the hostile branch's pressure accrues in a file rather than in text
+       popping every sixty seconds. */
+    appendAdversaryAuditEntry() {
+        if (State.adversary?.playerChoice !== 'OP-A') return;
+        const item = State.recycleBin.items.find((i) => i.id === 'adversary_audit');
+        if (!item) return;
+        State.adversary.auditLogEntries = (State.adversary.auditLogEntries || 0) + 1;
+        const n = State.adversary.auditLogEntries;
+        item.description = `Appended on every reboot. ${n} entries. Owner: not you.`;
+    },
+
+    /* ── Barks ────────────────────────────────────────────────────────────
+       Routed by band. Deliberately NOT reusing the casino router: that one
+       keys off State.casino.hostDialogue and has no per-line lifetime cap. */
+    selectAdversaryBark(trigger) {
+        const adv = State.adversary;
+        if (!adv?.sceneCompleted) return null;
+
+        const band = this.adversaryRelationship();
+        const allowed = AdversaryBarkPolicy.triggers[band] || [];
+        if (!allowed.includes(trigger)) return null;
+
+        const policy = AdversaryBarkPolicy.bands[band];
+        const now = Date.now();
+        adv.barks = adv.barks || { lastBarkTime: 0, heardBarks: [], playCounts: {} };
+        adv.barks.playCounts = adv.barks.playCounts || {};
+
+        if (now - (adv.barks.lastBarkTime || 0) < policy.globalCooldownMs) return null;
+
+        const eligible = AdversaryBarks.filter((b) => {
+            if (b.trigger !== trigger) return false;
+            if ((adv.barks.playCounts[b.id] || 0) >= AdversaryBarkPolicy.lifetimeCap) return false;
+            const last = adv.barks.cooldowns?.[b.id] || 0;
+            return now - last >= policy.lineCooldownMs;
+        });
+        if (!eligible.length) return null;
+        if (Math.random() > policy.chance) return null;
+
+        return eligible[Math.floor(Math.random() * eligible.length)];
+    },
+
+    triggerAdversaryBark(trigger) {
+        const bark = this.selectAdversaryBark(trigger);
+        if (!bark) return null;
+
+        const adv = State.adversary;
+        const now = Date.now();
+        adv.barks.lastBarkId = bark.id;
+        adv.barks.lastBarkTime = now;
+        adv.barks.cooldowns = adv.barks.cooldowns || {};
+        adv.barks.cooldowns[bark.id] = now;
+        adv.barks.playCounts[bark.id] = (adv.barks.playCounts[bark.id] || 0) + 1;
+        if (!adv.barks.heardBarks.includes(bark.id)) adv.barks.heardBarks.push(bark.id);
+
+        ui.displayAdversaryBark(bark);
+        return bark;
     },
 
     // === PROPHET SYSTEM ===

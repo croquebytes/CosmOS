@@ -34,6 +34,7 @@
     /* ── Verdigris: aged copper, the secondary accent ── */
     --cos-verd-300: #8ac8b6;
     --cos-verd-500: #42907d;
+    --cos-verd-600: #285d53; /* vellum-safe: 4.69:1 on --cos-vellum-300 */
     --cos-verd-700: #225049;
 
     /* ── Ichor: the void, corruption, prestige ── */
@@ -4103,4 +4104,296 @@ kbd {
     font: 10px var(--cos-font-machine);
     text-transform: none;
     letter-spacing: 0.03em;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   SCN-ADV-001 — Mirror Login Incident
+
+   Two phases in one shell. Phase 1 wears the ordinary authentication
+   chrome, so the wrongness is entirely in behaviour: fields that fill
+   themselves, a greeting that arrives three times. Phase 2 drops the
+   iron and lets the ichor through. Nothing here invents a colour — every
+   value is a token from the identity layer at the top of this file.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.adversary-scene {
+    max-width: 640px;
+    cursor: pointer;
+    border-color: var(--cos-iron-600);
+}
+
+.adversary-scene .adv-body {
+    padding: 22px 26px 6px;
+    min-height: 210px;
+}
+
+/* ── Phase 1: authentication ─────────────────────────────────────────── */
+
+.adv-notice {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0 0 18px;
+    font-family: var(--cos-font-mono, monospace);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    /* Phase 1 sits on the standard vellum .system-dialog panel, so it reads
+       as an ordinary CMS authentication prompt. Nothing here should look
+       wrong — the wrongness is entirely in what the dialog DOES. */
+    color: var(--cos-ink-dim);
+}
+
+.adv-notice-line::before {
+    content: '';
+}
+
+.adv-field {
+    display: grid;
+    grid-template-columns: 92px 1fr;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.adv-field label {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--cos-ink-dim);
+}
+
+.adv-field input {
+    /* Inset, disabled, and filling itself. The player never touches it. */
+    background: var(--cos-vellum-100);
+    border: 1px solid var(--cos-vellum-500);
+    box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.22);
+    color: var(--cos-ink);
+    font-family: var(--cos-font-mono, monospace);
+    font-size: 13px;
+    letter-spacing: 0.16em;
+    padding: 7px 9px;
+    width: 100%;
+}
+
+.adv-field input:disabled {
+    opacity: 1; /* the browser's grey would read as "inactive"; it is not */
+}
+
+.adv-field-settled {
+    border-color: var(--cos-brass-500) !important;
+}
+
+.adv-welcome {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 20px;
+    min-height: 66px;
+}
+
+.adv-welcome-line {
+    font-family: var(--cos-font-mono, monospace);
+    font-size: 13px;
+    color: var(--cos-verd-700);
+    animation: adv-fade-in 260ms ease-out both;
+}
+
+/* The second and third arrive fractionally offset and in a slightly different
+   hand — the same sentence, not quite in the same voice. */
+/* verd-500 measured 2.4:1 on the vellum panel — illegible. verd-600 sits at
+   4.69:1 while still reading visibly lighter and greener than line 1, so the
+   colour drift that IS the beat survives and all three steps clear AA. */
+.adv-welcome-2 { color: var(--cos-verd-600); transform: translateX(2px); }
+.adv-welcome-3 { color: var(--cos-ichor-700); transform: translateX(5px); letter-spacing: 0.03em; }
+
+.adv-error-line {
+    margin-top: 10px;
+    font-family: var(--cos-font-mono, monospace);
+    font-size: 13px;
+    font-weight: 700;
+    color: #9c2f1c; /* the alarm token, darkened to carry on the vellum panel */
+    animation: adv-fade-in 200ms ease-out both;
+}
+
+.adversary-scene.adv-conflict .system-dialog-titlebar {
+    background: linear-gradient(180deg, var(--cos-alarm), #7d2c1c);
+    color: var(--cos-halo);
+}
+
+/* ── Phase 2: the transcript ─────────────────────────────────────────── */
+
+/* The panel itself degrades. Phase 1 is CMS vellum; the moment he starts
+   talking the dialog stops being the institution's and becomes his. */
+.adversary-scene.adv-phase-voice {
+    background: linear-gradient(180deg, var(--cos-iron-900), var(--cos-void));
+    border-color: var(--cos-ichor-700);
+    color: var(--cos-ink-inv);
+    transition: background 700ms ease, border-color 700ms ease;
+}
+
+.adversary-scene.adv-phase-voice .adv-hint { color: var(--cos-ink-inv-dim); }
+
+.adv-transcript {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 46vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+}
+
+.adv-line {
+    display: grid;
+    grid-template-columns: 42px 1fr;
+    gap: 12px;
+    align-items: baseline;
+    animation: adv-fade-in 300ms ease-out both;
+}
+
+.adv-mark {
+    font-family: var(--cos-font-mono, monospace);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-align: right;
+    opacity: 0.8;
+}
+
+.adv-text {
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.adv-sys .adv-mark { color: var(--cos-ink-inv-dim); }
+.adv-sys .adv-text {
+    font-family: var(--cos-font-mono, monospace);
+    font-size: 12px;
+    color: var(--cos-ink-inv-dim);
+}
+
+.adv-voice .adv-mark { color: var(--cos-ichor-300); }
+.adv-voice .adv-text {
+    font-family: var(--cos-font-display, serif);
+    color: var(--cos-vellum-100);
+    font-size: 15px;
+}
+
+.adv-host .adv-mark { color: var(--cos-brass-300); }
+.adv-host .adv-text { color: var(--cos-brass-100); font-style: italic; }
+
+.adv-you .adv-mark { color: var(--cos-verd-300); }
+.adv-you .adv-text { color: var(--cos-verd-300); }
+
+/* ── The choice ──────────────────────────────────────────────────────── */
+
+/* The choice row has no speaker mark, so it must not inherit .adv-line's
+   42px marker track — otherwise the buttons render inside it and every
+   answer wraps one word per line. */
+.adv-choice-row {
+    grid-template-columns: 1fr;
+}
+
+.adv-choices {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 6px 0;
+}
+
+.adv-choice {
+    display: grid;
+    grid-template-columns: 130px 1fr;
+    gap: 12px;
+    align-items: center;
+    text-align: left;
+    padding: 11px 14px;
+    background: var(--cos-iron-800);
+    border: 1px solid var(--cos-iron-600);
+    box-shadow: inset 1px 1px 0 var(--cos-iron-500), inset -1px -1px 0 var(--cos-iron-900);
+    color: var(--cos-vellum-200);
+    cursor: pointer;
+    font: inherit;
+}
+
+.adv-choice:hover {
+    background: var(--cos-iron-700);
+    border-color: var(--cos-ichor-500);
+}
+
+.adv-choice-label {
+    font-family: var(--cos-font-mono, monospace);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    color: var(--cos-brass-300);
+}
+
+.adv-choice-text { font-size: 14px; }
+
+.adv-escape-note {
+    margin: 8px 0 0;
+    min-height: 16px;
+    font-family: var(--cos-font-mono, monospace);
+    font-size: 11px;
+    color: var(--cos-alarm);
+}
+
+.adv-hint {
+    margin: 0;
+    padding: 10px 26px 16px;
+    font-family: var(--cos-font-mono, monospace);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--cos-ink-dim);
+    text-align: right;
+}
+
+@keyframes adv-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Barks ───────────────────────────────────────────────────────────── */
+
+.adversary-bark-layer {
+    position: fixed;
+    left: 18px;
+    bottom: 56px;
+    /* Above .system-modal-layer (9500), matching .achievement-toast — a
+       transient notification that renders under the modal scrim is a
+       notification nobody sees. Anchored bottom-left with pointer-events
+       none, so it never covers a centred dialog or steals its clicks. */
+    z-index: 11000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+    max-width: min(420px, 70vw);
+}
+
+.adversary-bark {
+    display: grid;
+    grid-template-columns: 18px 1fr;
+    gap: 10px;
+    align-items: baseline;
+    padding: 11px 14px;
+    background: linear-gradient(180deg, var(--cos-iron-900), var(--cos-void));
+    border: 1px solid var(--cos-ichor-700);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+    color: var(--cos-vellum-100);
+    font-family: var(--cos-font-display, serif);
+    font-size: 14px;
+    line-height: 1.45;
+    opacity: 0;
+    transform: translateX(-14px);
+    transition: opacity 420ms ease, transform 420ms ease;
+}
+
+.adversary-bark.is-visible { opacity: 1; transform: translateX(0); }
+.adversary-bark-mark { color: var(--cos-ichor-300); }
+
+@media (prefers-reduced-motion: reduce) {
+    .adv-line, .adv-welcome-line, .adv-error-line { animation: none; }
+    .adversary-bark { transition: none; }
 }

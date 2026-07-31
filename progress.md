@@ -467,3 +467,149 @@ than the 250-seed check written alongside the feature.
   versus ~1e14/s for the primordial chain alone. Intentional — it is optional
   content that requires actively switching dimensions — but worth revisiting if
   it starts to feel mandatory rather than rewarding.
+
+---
+
+## 2026-07-31 — Session 3: the Adversary scene
+
+`AdversaryScene` had sat in `state.js` since the content pack landed, declared
+and read by no file in the project: 31 authored dialogue entries including a
+three-way branch, plus 25 barks behind a function nothing called. This session
+made it reachable and made it matter.
+
+### Why it was never reachable
+
+The gate was `prestige_count >= 5 AND (void_depth_reached >= 25 OR souls >= 1000)`.
+Measured with `tools/balance_sim.mjs`, seed 20260726, 40 clicks/min:
+
+| policy | result |
+|---|---|
+| the simulator's shipped realistic policy | prestige 1 at 23:46; prestige 2 never inside 72h |
+| maximally greedy (reboot the instant 1 DP exists) | prestige 5 at **22:18:40**, with 1h23m of dead time first |
+
+And `achievementProgress.void_depth_reached` **has no write site anywhere in
+`js/`**, so clause 2 always silently degraded to `souls >= 1000` — an
+instantaneous check against a resource that resets on every reboot, so it could
+also simply be missed between polls.
+
+The gate is now `prestige_count >= 3 OR lifetime souls >= 700000`. That number
+is `tools/golden/8h.json`'s own endpoint (711,493), so a never-prestiging player
+arrives around hour eight; a test asserts the gate is open at exactly the
+baseline figure, read from the file rather than restated.
+
+> **The bigger finding, not fixed here.** On the current curve the Nth reboot
+> needs `60000 * N^(1/0.45)` lifetime souls — reboot 8 needs ~6.1M and reboot 12
+> ~15.0M, against 2.14M measured at 22h of greedy play. So the Nightly (reboot 8)
+> and Archived (reboot 12) channels in `DESIGN_DIRECTION.md` §2 — the stated
+> replayability payload — are effectively unreachable. **The prestige curve is
+> the blocker, not any individual piece of content.** This is worth more than
+> this scene was.
+
+### What the scene is
+
+Two phases in one `.system-dialog`, because ADV-001..009 are **not dialogue —
+they are a login box**. Phase 1 wears the ordinary CMS vellum chrome so nothing
+*looks* wrong; the wrongness is entirely behavioural. The username field fills
+itself with OPERATOR, the password fills with dots (that is ADV-005), and
+"Welcome back, Operator." arrives three times **in the same place**, so the third
+reads as wrongness rather than as three list items. Then the titlebar goes red
+and the panel degrades into the transcript. Rendering those nine as chat rows
+would have thrown away the best prop this game has.
+
+The choice is a starting position, not a verdict. `State.adversary.standing` is
+a signed integer with derived bands (≤−3 hostile, −2..2 curious, ≥3 complicit);
+`playerChoice` seeds it and stays immutable as the origin fact. Each branch has
+one distinct consequence visible before the modal closes: hostile gets an
+undeletable audit log that gains a line every reboot, curious gets a partial
+manifest on the patch (which is what ADV-L-14 is *for*), complicit has the
+Recycle Bin open itself.
+
+The permanent residue is a row in Task Manager — `void_mirror.service#2`,
+unownable and unendable — which is what ADV-013 announces and what ADV-BARK-01
+and ADV-L-12 were written to refer to. Both barks are filtered to that process
+name, so they never fire on an unrelated kill.
+
+### Bugs this turned up
+
+**In the existing code:**
+- `attemptLoreWhisper` asked for trigger `'casino_idle_30s'` and context
+  `'Lore Whisper'`; the data declares `'casino_rare_whisper'` and `'LoreWhisper'`.
+  Both strings wrong, so the filter matched zero lines — and nothing called it.
+- The Task Manager read `proc.memory` and `proc.description` while all 8
+  processes declare `mem` and `desc`: every row showed "undefined MB" with an
+  "undefined" description, and the memory total was `NaN`.
+- `deleteItemPermanently` ignored `deletable === false`, which `restoreItem`
+  honours. `emptyRecycleBin` ignored it too and truncated the array outright.
+- **`bootstrapModifiers` read `State.modifierLog` AFTER `ensureReality()`.**
+  `ensureReality` calls `State.save()` whenever the build re-derives differently
+  — precisely the case its own comment says the re-derivation exists to serve —
+  and `save()` overwrites `modifierLog` with `Modifiers.serialize()`, which is
+  empty that early in boot. So the log was destroyed and `rebuildModifierLog()`
+  replayed only the content ledgers. Latent until now because every record was
+  ledger-derived; the patch's two `scope: 'permanent'` records are the first
+  that are not, and losing them is silent and unrecoverable. Fixed in both
+  halves: read before, and `save()` now refuses to trade a populated log for an
+  empty one.
+
+**In this session's own work, found by the sweep after the tests were green:**
+- The scene could open **behind the boot overlay**. `game.loop()` starts at
+  parse time, so the 1 Hz poll runs ~1s in, while `#boot-overlay` (z-index
+  10000) still covers the modal layer (9500) and 3s before `system.init` shows
+  the offline report — which then rewrote the layer and destroyed the scene,
+  leaving `advScene.open` true over an empty layer. Since `system.js` routes
+  every keypress into an open scene, that was a **dead keyboard for the rest of
+  the session** plus an unfinishable scene. Now defers on the overlay, and
+  `dismissSystemModal` tears the scene down defensively.
+- `sceneAttempts` counted **presentations, not failures**, so two ordinary
+  mid-scene page reloads spent the whole budget and forfeited the scene to a
+  headless default. Now refunded at the phase-two boundary — proof the renderer
+  works — and the headless fallback resolves as OP-B, not the hostile extreme,
+  since that player was never shown the buttons.
+- Keyboard-only players **could not answer**: `Tab` was swallowed so focus never
+  reached the buttons, and `Enter` was swallowed so a focused button never
+  fired, leaving Escape (which resolves as DENY) as the only exit. Tab is now
+  trapped and cycled, Enter/Space pass through, and 1/2/3 answer directly.
+- Barks rendered at z-index 9000, **underneath** the modal scrim at 9500.
+- Escape's skip-to-choice loop re-rendered the current line (duplicating it) and
+  dumped the login script into the transcript as chat rows.
+- Standing had no cooldown, so opening one window twelve times walked a hostile
+  player to complicit. Now a 10-minute per-reason cooldown, with once-per-run
+  acts (reboot, patch) exempt.
+- `.adv-welcome-2` measured 2.4:1 on the vellum panel. Added `--cos-verd-600`
+  (#285d53, 4.69:1) so the colour drift that *is* the beat survives legibly.
+
+### Method notes
+
+A survey + three-critique workflow ran before implementation; the craft lens
+returned **rework** and its central objection (the login box) reshaped the whole
+presentation. A five-lens adversarial sweep ran after the suite was green and
+returned 17 confirmed findings including three blockers — **none of which the
+38 passing tests could see**, because two lived in boot timing that `?testMode`
+structurally skips and one only manifests when a build re-derives.
+
+Both new regression tests were verified by reverting the fix and watching them
+fail. The e2e boot-race assertion deliberately runs on a **non-testMode** page.
+
+### Content reachable now
+
+- The scene: all 32 dialogue entries present, 30 shown per run (two branch
+  replies belong to paths not taken). Previously **zero**.
+- Barks: **16 of 25** play. The other 9 are pinned by id in
+  `tests/adversary-scene.mjs` so a tenth cannot fall out silently.
+- `ACH-S-005 Mirror Login` and `DOC-NEW-11` are reachable for the first time;
+  `DOC-NEW-14` unlocks on patch execution.
+
+### Still dead, and why
+
+- **There is no Casino app.** ADV-BARK-04, ADV-L-15, ADV-L-16, all 80
+  `CasinoHostBarks` and all 12 lore whispers stay unreachable, and
+  `State.casino.visited` has no write site so DOC-NEW-12 stays locked. The
+  whisper string bugs are fixed but `attemptLoreWhisper` still has no caller.
+- ADV-L-01 (`idle_60s`) is deliberately unhooked — a good line, wrong cadence
+  for a game where idling is the intended state.
+- ADV-L-03 (`toggle_music`) — the game ships silent.
+- ADV-L-05/-18/-19/-20 — `warning_popup`,
+  `seraph_self_awareness_event`, `void_depth_50`, `attempt_resign` are events
+  that do not exist.
+- ACH-S-006 and ACH-S-007 need `onClick` handlers that
+  `ui.updateTaskManagerList` declares in the data but never binds.

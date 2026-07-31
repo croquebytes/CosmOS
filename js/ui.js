@@ -237,6 +237,16 @@ const ui = {
             State.settings.briefingSeen = true;
             State.save();
         }
+        /* Defensive teardown. Clearing the layer without clearing advScene
+           would leave isAdversarySceneOpen() true over an empty layer, and
+           system.js routes EVERY keypress into the scene while that is so —
+           a dead keyboard with no way back. finishAdversaryScene captures its
+           own `s` and clears the timer before calling this, so it is safe. */
+        if (this.advScene) {
+            clearTimeout(this.advScene.timer);
+            this.advScene.open = false;
+            this.advScene = null;
+        }
         if (layer) {
             layer.classList.remove('active');
             layer.innerHTML = '';
@@ -335,6 +345,400 @@ const ui = {
     closeReleaseNotes() {
         this.dismissSystemModal();
         this.renderRealityPanel();
+    },
+
+    /* ════════════════════════════════════════════════════════════════════
+       SCN-ADV-001 — "Mirror Login Incident"
+
+       Presented in two phases, because ADV-001 through ADV-009 are not
+       dialogue — they are a login box. Rendering "Username:" and "…" as rows
+       in a chat log throws away the best prop this game will ever have: a
+       login dialog that authenticates you as someone else, three times,
+       without you typing anything.
+
+       Phase 1 IS that dialog. Phase 2 is the same <section> degrading into a
+       transcript once the thing on the other side starts talking. The
+       degradation from a form you cannot fill into a conversation you did not
+       start is the scene.
+
+       Every authored line is PRESENTED, but phase 1 presents four of them as
+       chrome rather than as text: ADV-003 "Username:" and ADV-004 "Password:"
+       become the two field labels, ADV-005 "…" is the settled password field,
+       and their content is the beat rather than the string. Phase 2 renders
+       its lines verbatim.
+       ════════════════════════════════════════════════════════════════════ */
+
+    advScene: null,
+
+    isSystemModalOpen() {
+        const layer = document.getElementById('system-modal-layer');
+        return !!(layer && layer.classList.contains('active'));
+    },
+
+    isAdversarySceneOpen() {
+        return !!(this.advScene && this.advScene.open);
+    },
+
+    advSpeed() {
+        // The e2e harness and the vm tests must not wait on 40 seconds of
+        // theatre. Everything scales off this one number.
+        try {
+            if (new URLSearchParams(window.location.search).has('testMode')) return 0;
+        } catch (err) { /* no window (headless) — fall through */ }
+        return 1;
+    },
+
+    /* The beat list, resolved against the player's choice and any showIf. */
+    buildAdversaryBeats(choiceId) {
+        const out = [];
+        for (const line of AdversaryScene.dialogue) {
+            if (typeof line.showIf === 'function') {
+                let ok = false;
+                try { ok = !!line.showIf(); } catch (err) { ok = false; }
+                if (!ok) continue;
+            }
+            // ADV-023A/B/C are the branch replies; only the taken one plays.
+            if (line.condition && line.condition !== choiceId) continue;
+            out.push(line);
+        }
+        return out;
+    },
+
+    advText(line) {
+        const reboots = State.achievementProgress?.prestige_count || 0;
+        return String(line.text || '').replace('{REBOOTS}', reboots);
+    },
+
+    playAdversaryScene() {
+        /* Count the attempt HERE, not in the trigger. The trigger fires once
+           ever, so counting there would freeze this at 1 and the exhaustion
+           guard could never trip — leaving a scene that throws on render as a
+           modal that reappears on every boot, forever. Every presentation
+           path runs through this function, so every attempt counts. */
+        State.adversary.sceneAttempts = (State.adversary.sceneAttempts || 0) + 1;
+        State.save();
+
+        if (game.adversarySceneExhausted() && !State.adversary.sceneCompleted) {
+            /* Three presentations that never got past the login sequence: the
+               renderer is broken on this machine. Resolve headlessly rather
+               than trap the player behind a modal that cannot draw itself.
+
+               Resolved as OP-B, not OP-A. Walking out of a choice you SAW is
+               fairly read as denial — that is escapeAdversaryScene's contract.
+               Assigning the hostile extreme to someone who was never shown the
+               buttons is not, so the neutral band is the honest default. */
+            game.resolveAdversaryChoice('OP-B');
+            this.log('[void_mirror] Session conflict closed without operator input.');
+            this.log('[SYSTEM] Ticket auto-filed: HR-VOID-7781 "Unauthorized self-encounter."');
+            return;
+        }
+
+        const layer = document.getElementById('system-modal-layer');
+        if (!layer) return;
+
+        this.advScene = { open: true, phase: 1, index: 0, choiceId: null, escapeArmed: false, timer: null };
+
+        layer.innerHTML = `
+            <section class="system-dialog adversary-scene adv-phase-login" role="dialog" aria-modal="true"
+                     aria-labelledby="adv-title" onclick="ui.advanceAdversaryScene()">
+                <div class="system-dialog-titlebar" id="adv-titlebar">
+                    <span id="adv-title">COSMOS &mdash; OPERATOR AUTHENTICATION</span>
+                </div>
+                <div class="adv-body" id="adv-body">
+                    <div class="adv-login">
+                        <p class="adv-notice" id="adv-notice"></p>
+                        <div class="adv-field">
+                            <label for="adv-user">Username</label>
+                            <input id="adv-user" type="text" value="" disabled autocomplete="off">
+                        </div>
+                        <div class="adv-field">
+                            <label for="adv-pass">Password</label>
+                            <input id="adv-pass" type="text" value="" disabled autocomplete="off">
+                        </div>
+                        <div class="adv-welcome" id="adv-welcome" aria-live="polite"></div>
+                    </div>
+                </div>
+                <p class="adv-hint" id="adv-hint">Click to continue</p>
+            </section>
+        `;
+        layer.classList.add('active');
+
+        this.advBeats = this.buildAdversaryBeats(null);
+        this.advStep();
+    },
+
+    /* One beat per call. Phase 1 beats manipulate the login chrome; phase 2
+       beats append transcript rows. */
+    advStep() {
+        const s = this.advScene;
+        if (!s || !s.open) return;
+        const beat = this.advBeats[s.index];
+        if (!beat) return;
+
+        const speed = this.advSpeed();
+        const id = beat.id;
+
+        if (s.phase === 1) {
+            const notice = document.getElementById('adv-notice');
+            const user = document.getElementById('adv-user');
+            const pass = document.getElementById('adv-pass');
+            const welcome = document.getElementById('adv-welcome');
+
+            if (id === 'ADV-001' || id === 'ADV-002') {
+                if (notice) notice.innerHTML += `<span class="adv-notice-line">${this.advText(beat)}</span>`;
+            } else if (id === 'ADV-003') {
+                // The field fills itself. You are not typing this.
+                this.advTypeInto(user, 'OPERATOR', speed);
+            } else if (id === 'ADV-004') {
+                this.advTypeInto(pass, '••••••••••••', speed);
+            } else if (id === 'ADV-005') {
+                if (pass) pass.classList.add('adv-field-settled');
+            } else if (id === 'ADV-006' || id === 'ADV-007' || id === 'ADV-008') {
+                // Stacking in one place, so the third arrives as wrongness
+                // rather than as three list items.
+                if (welcome) {
+                    const n = welcome.childElementCount;
+                    welcome.innerHTML += `<span class="adv-welcome-line adv-welcome-${n + 1}">${this.advText(beat)}</span>`;
+                }
+            } else if (id === 'ADV-009') {
+                const section = document.querySelector('.adversary-scene');
+                const title = document.getElementById('adv-title');
+                if (section) section.classList.add('adv-conflict');
+                if (title) title.textContent = 'COSMOS — SESSION CONFLICT';
+                if (welcome) welcome.innerHTML += `<span class="adv-error-line">${this.advText(beat)}</span>`;
+            }
+        } else {
+            this.advAppendLine(beat);
+        }
+
+        this.advScheduleNext(beat, speed);
+    },
+
+    advTypeInto(el, text, speed) {
+        if (!el) return;
+        el.value = '';
+        if (!speed) { el.value = text; return; }
+        let i = 0;
+        const tick = () => {
+            if (!this.advScene || !this.advScene.open) return;
+            el.value = text.slice(0, ++i);
+            if (i < text.length) setTimeout(tick, 70);
+        };
+        setTimeout(tick, 90);
+    },
+
+    advScheduleNext(beat, speed) {
+        const s = this.advScene;
+        if (!s) return;
+        if (beat.type === 'choice_prompt') return; // waits on the player
+
+        // Dwell: the login beats want air, the transcript wants rhythm.
+        const dwell = !speed ? 0
+            : beat.id === 'ADV-005' ? 1500
+            : beat.id === 'ADV-008' ? 1600
+            : beat.id === 'ADV-009' ? 2000
+            : s.phase === 1 ? 1200
+            : 2100;
+
+        clearTimeout(s.timer);
+        s.timer = setTimeout(() => this.advanceAdversaryScene(true), dwell);
+    },
+
+    advanceAdversaryScene(fromTimer = false) {
+        const s = this.advScene;
+        if (!s || !s.open) return;
+        const current = this.advBeats[s.index];
+        /* Block on the choice ONLY while it is unanswered. Without the
+           `!s.choiceId` half, chooseAdversaryResponse — which repoints index
+           back at ADV-022 to replay the tail — leaves the scene parked on the
+           choice beat forever, and the modal never closes. */
+        if (current && current.type === 'choice_prompt' && !s.choiceId) return;
+
+        clearTimeout(s.timer);
+        s.index++;
+
+        if (s.index >= this.advBeats.length) { this.finishAdversaryScene(); return; }
+
+        // Phase boundary: ADV-010 is where the thing starts talking.
+        const next = this.advBeats[s.index];
+        if (s.phase === 1 && next && next.id === 'ADV-010') this.advEnterPhaseTwo();
+
+        this.advStep();
+    },
+
+    advEnterPhaseTwo() {
+        const s = this.advScene;
+        s.phase = 2;
+        /* Reaching phase two proves the renderer works on this machine, so
+           this presentation must not spend the exhaustion budget — otherwise
+           two ordinary mid-scene page reloads burn all three attempts and the
+           player forfeits the whole scene to a choice they never saw.
+
+           Reset HERE rather than on the first drawn beat: advStep schedules
+           later beats through setTimeout, so a scene that draws beat 1 and
+           throws on beat 5 would reset every boot and loop forever, which is
+           the exact failure the counter exists to stop. */
+        if (State.adversary.sceneAttempts) {
+            State.adversary.sceneAttempts = 0;
+            State.save();
+        }
+        const section = document.querySelector('.adversary-scene');
+        const body = document.getElementById('adv-body');
+        const title = document.getElementById('adv-title');
+        if (section) { section.classList.remove('adv-phase-login'); section.classList.add('adv-phase-voice'); }
+        if (title) title.textContent = 'SESSION 0002 — IDENTITY CONFLICT';
+        if (body) body.innerHTML = '<ol class="adv-transcript" id="adv-transcript"></ol>';
+    },
+
+    advAppendLine(beat) {
+        const list = document.getElementById('adv-transcript');
+        if (!list) return;
+
+        if (beat.type === 'choice_prompt') {
+            const buttons = (beat.choices || []).map((c) =>
+                `<button type="button" class="adv-choice" onclick="event.stopPropagation();ui.chooseAdversaryResponse('${c.id}')">
+                    <span class="adv-choice-label">${c.label}</span>
+                    <span class="adv-choice-text">${c.text}</span>
+                </button>`).join('');
+            list.innerHTML += `<li class="adv-line adv-choice-row">
+                <div class="adv-choices">${buttons}</div>
+                <p class="adv-escape-note" id="adv-escape-note"></p>
+            </li>`;
+            const hint = document.getElementById('adv-hint');
+            if (hint) hint.textContent = 'Choose a response';
+        } else {
+            const cls = beat.speaker === 'ADV' ? 'adv-voice'
+                : beat.speaker === 'HOST' ? 'adv-host' : 'adv-sys';
+            const mark = beat.speaker === 'ADV' ? '◆' : beat.speaker === 'HOST' ? '✧' : 'SYS';
+            list.innerHTML += `<li class="adv-line ${cls}">
+                <span class="adv-mark">${mark}</span>
+                <span class="adv-text">${this.advText(beat)}</span>
+            </li>`;
+        }
+        list.scrollTop = list.scrollHeight;
+    },
+
+    chooseAdversaryResponse(choiceId) {
+        const s = this.advScene;
+        if (!s || !s.open || s.choiceId) return;
+        s.choiceId = choiceId;
+
+        const chosen = (AdversaryScene.dialogue.find((l) => l.type === 'choice_prompt')?.choices || [])
+            .find((c) => c.id === choiceId);
+
+        // Replace the button row with the line the player actually said.
+        const row = document.querySelector('.adv-choice-row');
+        if (row) {
+            row.className = 'adv-line adv-you';
+            row.innerHTML = `<span class="adv-mark">YOU</span><span class="adv-text">${chosen ? chosen.text : ''}</span>`;
+        }
+        const hint = document.getElementById('adv-hint');
+        if (hint) hint.textContent = 'Click to continue';
+
+        game.resolveAdversaryChoice(choiceId);
+
+        // Rebuild the tail so only the taken branch reply plays, then resume
+        // at the line after the choice.
+        const consumed = this.advBeats.slice(0, s.index + 1).map((b) => b.id);
+        this.advBeats = this.buildAdversaryBeats(choiceId);
+        s.index = Math.max(0, this.advBeats.findIndex((b) => b.id === 'ADV-022'));
+        void consumed;
+
+        this.advanceAdversaryScene();
+    },
+
+    /* Escape. Two presses at the choice, one everywhere else.
+
+       Escape is the game's advertised close-window key and now closes the
+       briefing, the offline report and the release notes with no consequence.
+       Letting the same key silently commit a permanent relationship would be
+       a trap, so at the choice the first press only arms it and says so. */
+    escapeAdversaryScene() {
+        const s = this.advScene;
+        if (!s || !s.open) return true;
+
+        const current = this.advBeats[s.index];
+        if (current && current.type === 'choice_prompt' && !s.choiceId) {
+            if (!s.escapeArmed) {
+                s.escapeArmed = true;
+                const note = document.getElementById('adv-escape-note');
+                if (note) note.textContent = 'Walking out is an answer. Press Escape again to DENY.';
+                return true;
+            }
+            this.chooseAdversaryResponse('OP-A');
+            return true;
+        }
+
+        /* Before the choice: skip the theatre and jump straight to it.
+
+           Two things this must not do. It must not replay ADV-001..009 into
+           the transcript — those are the login chrome, and rendering
+           "Username:" and "…" as dialogue rows is exactly the mistake the
+           two-phase presentation exists to avoid. And in phase 2 it must not
+           re-render the beat at s.index, which has already been drawn, or
+           Escape duplicates the line the player is looking at.
+
+           `start` is computed BEFORE advEnterPhaseTwo(), which flips s.phase. */
+        const choiceAt = this.advBeats.findIndex((b) => b.type === 'choice_prompt');
+        if (choiceAt >= 0 && s.index < choiceAt) {
+            const start = s.phase === 2
+                ? s.index + 1
+                : this.advBeats.findIndex((b) => b.id === 'ADV-010');
+            if (s.phase === 1) this.advEnterPhaseTwo();
+            for (let i = Math.max(0, start); i <= choiceAt; i++) {
+                this.advAppendLine(this.advBeats[i]);
+            }
+            clearTimeout(s.timer);
+            s.index = choiceAt;
+            return true;
+        }
+
+        // After the choice everything is already committed: just close.
+        this.finishAdversaryScene();
+        return true;
+    },
+
+    finishAdversaryScene() {
+        const s = this.advScene;
+        if (!s) return;
+        clearTimeout(s.timer);
+        s.open = false;
+
+        // A scene that reached the end without a choice still resolves, so
+        // sceneCompleted can never be left false with contacted true.
+        if (!State.adversary.sceneCompleted) game.resolveAdversaryChoice(s.choiceId || 'OP-A');
+
+        this.dismissSystemModal();
+        this.advScene = null;
+
+        this.log('[SYSTEM] Ticket auto-filed: HR-VOID-7781 "Unauthorized self-encounter."');
+        this.updateRecycleBinList();
+        this.updateTaskManagerList();
+
+        /* Complicit opens a window you did not ask for — guaranteed, once, at
+           the moment it lands hardest, rather than rolled at 9% two hours
+           later. DESIGN_DIRECTION §5.3. */
+        if (State.adversary.playerChoice === 'OP-C') {
+            setTimeout(() => {
+                system.openApp('recyclebin');
+                this.log('[void_mirror] Recycle Bin opened. You did not open it.');
+            }, this.advSpeed() ? 700 : 0);
+        }
+        State.save();
+    },
+
+    displayAdversaryBark(bark) {
+        if (!bark) return;
+        const host = document.getElementById('adversary-bark-layer') || document.body;
+        const el = document.createElement('div');
+        el.className = 'adversary-bark';
+        el.innerHTML = `<span class="adversary-bark-mark">◆</span><span>${bark.text}</span>`;
+        host.appendChild(el);
+        setTimeout(() => el.classList.add('is-visible'), 20);
+        setTimeout(() => {
+            el.classList.remove('is-visible');
+            setTimeout(() => el.remove(), 600);
+        }, 7000);
     },
 
     /* The persistent view: what build you are on and what is still broken. */
@@ -1590,6 +1994,8 @@ const ui = {
 
     switchDimension(dimensionId) {
         State.currentDimension = dimensionId;
+        // "Careful. Mirrors are contagious." (ADV-BARK-03)
+        if (dimensionId === 'void') game.triggerAdversaryBark('enter_void');
 
         // Update tab styling
         document.querySelectorAll('.dimension-tab').forEach(tab => {
@@ -2336,10 +2742,18 @@ const ui = {
         TaskManagerProcesses.forEach(proc => {
             const isRunning = !endedProcesses.includes(proc.name);
             if (!isRunning) return; // Don't show ended processes
+            // The shadow instance does not exist until it announces itself in
+            // ADV-013, and cannot be removed afterwards.
+            if (proc.hiddenUntilContact && !State.adversary?.contacted) return;
 
             runningCount++;
             totalCPU += proc.cpu;
-            totalMemory += proc.memory;
+            /* Every entry in TaskManagerProcesses declares `mem` and `desc`;
+               this read `memory` and `description`, so all 8 rows rendered
+               "undefined MB" with an "undefined" description and the memory
+               total was NaN. Accept either key rather than rewriting the data
+               under the achievement conditions that reference it. */
+            totalMemory += (proc.memory ?? proc.mem ?? 0);
 
             const row = document.createElement('tr');
             row.className = 'taskmgr-row';
@@ -2359,9 +2773,9 @@ const ui = {
             row.innerHTML = `
                 <td class="process-name ${proc.critical ? 'critical-text' : ''}">${proc.name}</td>
                 <td class="process-cpu">${proc.cpu}%</td>
-                <td class="process-memory">${proc.memory} MB</td>
+                <td class="process-memory">${proc.memory ?? proc.mem ?? 0} MB</td>
                 <td class="process-status ${statusClass}">${statusText}</td>
-                <td class="process-desc">${proc.description}</td>
+                <td class="process-desc">${proc.description ?? proc.desc ?? ''}</td>
                 <td class="process-action">
                     ${proc.endable || proc.onAttempt ?
                         `<button class="btn-end-process" onclick="ui.endProcess('${proc.name}')">End Process</button>` :
@@ -2448,7 +2862,12 @@ const ui = {
         items.forEach(item => {
             const itemDiv = document.createElement('div');
             itemDiv.className = 'recyclebin-item';
-            if (item.type === 'patch') itemDiv.classList.add('item-patch');
+            if (item.type === 'patch') {
+                itemDiv.classList.add('item-patch');
+                // "PATCH_NULL_RESTORE.pkg — size: 0 bytes. Impact:
+                // immeasurable." (ADV-L-14) needs somewhere to fire from.
+                itemDiv.addEventListener('mouseenter', () => game.triggerAdversaryBark('hover_patch_file'));
+            }
             if (item.type === 'achievement') itemDiv.classList.add('item-achievement');
 
             const icon = this.getRecycleBinItemIcon(item.type);
@@ -2509,6 +2928,16 @@ const ui = {
         const item = State.recycleBin.items.find(i => i.id === itemId);
         if (!item) return;
 
+        /* restoreItem honours `deletable === false`; this did not. The Delete
+           button is only rendered for deletable items, so it was reachable
+           only from the console — but "unreachable so it does not matter" is
+           exactly the reasoning that left the patch path rotting for a year,
+           and the Adversary's two files depend on being undeletable. */
+        if (item.deletable === false) {
+            ui.log('[BLOCKED] This item is not owned by this session.');
+            return;
+        }
+
         // Confirmation for special items
         if (item.type === 'achievement' || item.type === 'patch') {
             if (!confirm(`Are you sure you want to permanently delete "${item.name}"? This action cannot be undone.`)) {
@@ -2565,64 +2994,89 @@ const ui = {
     },
 
     emptyRecycleBin() {
-        if (State.recycleBin.items.length === 0) {
-            ui.log('Recycle Bin is already empty.');
+        /* Honours `deletable === false`, as restoreItem and
+           deleteItemPermanently do. This truncated the array outright, which
+           destroyed the Adversary's two undeletable files — the patch and the
+           audit log — through the one door that never checked. */
+        const doomed = State.recycleBin.items.filter((i) => i.deletable !== false);
+        const kept = State.recycleBin.items.filter((i) => i.deletable === false);
+
+        if (doomed.length === 0) {
+            ui.log(State.recycleBin.items.length === 0
+                ? 'Recycle Bin is already empty.'
+                : '[BLOCKED] Nothing here is owned by this session.');
             return;
         }
 
-        if (!confirm(`Are you sure you want to permanently delete all ${State.recycleBin.items.length} items? This cannot be undone.`)) {
+        if (!confirm(`Are you sure you want to permanently delete all ${doomed.length} items? This cannot be undone.`)) {
             return;
         }
 
-        // Delete all items
-        State.recycleBin.items.forEach(item => {
-            if (item.onDelete) {
-                item.onDelete();
-            }
-        });
+        doomed.forEach((item) => { if (item.onDelete) item.onDelete(); });
+        State.recycleBin.items = kept;
 
-        State.recycleBin.items = [];
-
-        ui.log('Recycle Bin emptied.');
+        ui.log(kept.length
+            ? `Recycle Bin emptied. ${kept.length} item(s) could not be removed.`
+            : 'Recycle Bin emptied.');
         ui.updateRecycleBinList();
         State.save();
     },
 
+    /* ADV-026: "Run it when you're ready to stop pretending resets are
+       kindness." The patch is about continuity across reboots, so that is what
+       it buys — and it charges for it, because he sells repairs, not comfort.
+
+       Both effects are DECLARED modifiers at `scope: 'permanent'`, so they
+       survive Divine Reboot through the registry rather than by being re-
+       applied in performPrestige's grant loop. Nothing here is reachable from
+       the simulator or any test horizon: it needs a click and a confirm. */
     executeAdversaryPatch(itemId) {
         const item = State.recycleBin.items.find(i => i.id === itemId);
         if (!item || item.type !== 'patch') return;
+        if (State.adversary.patchExecuted) return;
 
-        if (!confirm(`Execute "${item.name}"? This will apply permanent changes to your reality. This action cannot be undone.`)) {
+        if (!confirm('Execute "PATCH_NULL_RESTORE.pkg"?\n\n' +
+            'Reboots will carry 25% more Divinity forward.\n' +
+            'Praise throughput drops 10%, permanently.\n\n' +
+            'This cannot be undone, and he will know.')) {
             return;
         }
 
-        // Apply patch effects based on user's design decision:
-        // "Unlock alt prestige path and narrative/relationship change"
         State.adversary.patchExecuted = true;
-        State.adversary.relationship = 'disciplined'; // Mark relationship status
-
-        // Unlock alternate prestige path (to be implemented later)
-        State.unlockedFeatures = State.unlockedFeatures || [];
-        if (!State.unlockedFeatures.includes('cosmic_defrag_alt')) {
-            State.unlockedFeatures.push('cosmic_defrag_alt');
-        }
-
-        // Change narrative tone - add permanent Adversary presence
-        State.adversary.persistent = true;
-
-        // Track for achievements
+        State.adversary.patchInRecycleBin = false;
         State.achievementProgress.execute_adversary_patch = true;
 
-        // Remove patch from bin
+        Modifiers.add({
+            id: 'adversary_patch_continuity',
+            target: 'souls.multiplier',
+            op: 'mul',
+            value: 1.25,
+            scope: 'permanent',
+            source: 'adversary_patch',
+            label: 'PATCH_NULL_RESTORE — continuity restored',
+        });
+        Modifiers.add({
+            id: 'adversary_patch_toll',
+            target: 'praise.multiplier',
+            op: 'mul',
+            value: 0.9,
+            scope: 'permanent',
+            source: 'adversary_patch',
+            label: 'PATCH_NULL_RESTORE — throughput toll',
+        });
+        Modifiers.commit(Date.now());
+
+        // Consenting to his repair moves the relationship hard, which is the
+        // largest single nudge in the game.
+        game.nudgeAdversaryStanding(5, 'executed the patch', { exempt: true }); // once ever
+
         State.recycleBin.items = State.recycleBin.items.filter(i => i.id !== itemId);
 
         ui.log('[SYSTEM] Patch executed. Reality parameters updated.');
         ui.log('[ADVERSARY] "Good. Now we can begin the real work."');
         ui.screenPulse('rgba(138, 43, 226, 0.5)');
 
-        // Unlock document
         game.unlockDocument('DOC-NEW-14');
-
         ui.updateRecycleBinList();
         game.checkAchievements();
         State.save();
