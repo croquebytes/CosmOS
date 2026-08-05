@@ -2735,6 +2735,16 @@ body.performance-mode .crt-overlay {
     background: #f5f5f5;
 }
 
+/* Rows carrying an onClick easter egg need an affordance, or nobody finds
+   ACH-S-006 and ACH-S-007. */
+.taskmgr-row-clickable {
+    cursor: pointer;
+}
+
+.taskmgr-row-clickable:hover {
+    background: var(--cos-brass-100);
+}
+
 .taskmgr-row.critical-process {
     background: rgba(255, 200, 200, 0.3);
 }
@@ -4119,7 +4129,10 @@ kbd {
 .adversary-scene {
     max-width: 640px;
     cursor: pointer;
-    border-color: var(--cos-iron-600);
+    /* No border-color override: a flat colour here replaced .system-dialog's
+       four-sided bevel, making phase 1 the only system dialog without the
+       chrome — which defeats the point of it looking like an ordinary CMS
+       prompt. Phase 2 sets its own ichor border below. */
 }
 
 .adversary-scene .adv-body {
@@ -4301,6 +4314,20 @@ kbd {
     margin: 6px 0;
 }
 
+/* Unarmed. pointer-events: none is the load-bearing half — a click that was
+   already in flight from mashing through the scene falls through to the
+   section handler, which refuses to advance past an unanswered choice. The
+   dimming tells the player why nothing happened. */
+.adv-choices.is-arming {
+    pointer-events: none;
+    opacity: 0.45;
+    filter: saturate(0.4);
+}
+
+.adv-choices:not(.is-arming) {
+    transition: opacity 220ms ease, filter 220ms ease;
+}
+
 .adv-choice {
     display: grid;
     grid-template-columns: 130px 1fr;
@@ -4391,6 +4418,12 @@ kbd {
 }
 
 .adversary-bark.is-visible { opacity: 1; transform: translateX(0); }
+
+/* The bark layer sits above the modal scrim (9500), but .start-menu is 9100
+   and the bark panel is fully opaque — so while Genesis is open it would hide
+   two menu entries that stay clickable through it (the layer is
+   pointer-events: none). Demote it for exactly that window. */
+body.start-menu-open .adversary-bark-layer { z-index: 9000; }
 .adversary-bark-mark { color: var(--cos-ichor-300); }
 
 @media (prefers-reduced-motion: reduce) {

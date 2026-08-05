@@ -124,9 +124,13 @@ const system = {
                     return;
                 }
 
-                // Let a focused choice button activate itself.
+                // Let a focused choice button activate itself — but only once
+                // the row is armed, or Space (which this scene teaches as
+                // "advance") commits a choice the player never read.
                 const onChoice = e.target && e.target.closest && e.target.closest('.adv-choice');
                 if (onChoice && (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space')) {
+                    if (ui.adversaryChoiceArmed()) return;
+                    e.preventDefault();
                     return;
                 }
 
@@ -138,7 +142,12 @@ const system = {
                 if (choices.length) {
                     const n = { Digit1: 0, Digit2: 1, Digit3: 2,
                                 Numpad1: 0, Numpad2: 1, Numpad3: 2 }[e.code];
-                    if (n !== undefined && choices[n]) { choices[n].click(); return; }
+                    if (n !== undefined && choices[n]) {
+                        // Goes through the guarded entry point, which refuses
+                        // while the row is still arming.
+                        const id = ['OP-A', 'OP-B', 'OP-C'][n];
+                        ui.adversaryChoiceClicked(id);
+                    }
                     return; // never auto-advance past an unanswered choice
                 }
                 ui.advanceAdversaryScene();
@@ -258,6 +267,9 @@ const system = {
         menu.hidden = !shouldOpen;
         button?.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
         button?.classList.toggle('pressed', shouldOpen);
+        // Lets the CSS drop the (opaque, above-the-scrim) bark layer back
+        // below the menu for exactly as long as the menu is up.
+        document.body.classList.toggle('start-menu-open', shouldOpen);
 
         if (shouldOpen) {
             this.renderStartMenu();

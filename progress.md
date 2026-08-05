@@ -613,3 +613,56 @@ fail. The e2e boot-race assertion deliberately runs on a **non-testMode** page.
   that do not exist.
 - ACH-S-006 and ACH-S-007 need `onClick` handlers that
   `ui.updateTaskManagerList` declares in the data but never binds.
+
+### Second sweep — reviewing the fixes
+
+The seventeen fixes above had been through one round of testing and no
+independent review. A second five-lens sweep over them returned 7 confirmed
+findings, one a blocker, plus 4 partials. The lesson repeated: **the riskiest
+code in a session is the code written to fix the last review.**
+
+- **BLOCKER — the choice could be committed blind.** The scene teaches clicking:
+  the whole section advances on click and the hint says "Click to continue",
+  across ~40s of theatre. A player skipping ahead is mid-mash when three buttons
+  materialise under the cursor, in the same band every previous line was drawn
+  in. Reproduced in Chromium: clicking the dialog centre every 300ms committed a
+  permanent, unreplayable relationship one click after the row rendered, and all
+  three branches were reachable purely as a function of cursor Y. The choice row
+  now renders `is-arming` and arms only on **delay AND deliberate intent** (a
+  pointer move or keypress since it rendered) — a bare timeout would only move
+  the accidental commit to the next click in the mash.
+- Writing that guard exposed a second one: **`element.click()` ignores
+  `pointer-events`.** The CSS stops real mashing but nothing programmatic, so
+  the guard also needed a UI entry point. `ui.adversaryChoiceClicked` is now the
+  only path a player can take; `chooseAdversaryResponse` remains the mechanism.
+- The attempt budget granted **two** presentations while both comments said
+  three — it incremented before testing exhaustion.
+- The bark layer at z-index 11000 painted opaquely over two Genesis menu entries
+  that stayed clickable through it. Demoted to 9000 only while the menu is open.
+- Phase 1 was the only system dialog **without the bevel**: a flat
+  `border-color` override was replacing `.system-dialog`'s four-sided one.
+- `ACH-S-006` and `ACH-S-007` were unreachable — two processes declare `onClick`
+  handlers writing the exact keys those achievements read, and
+  `updateTaskManagerList` never bound a listener.
+
+**And a test that lied.** `check('reaching the transcript refunds the attempt
+budget')` asserted the exhaustion *threshold* and string-matched ui.js for the
+headless default — neither of which is the refund. A reviewer deleted the entire
+refund block and the test stayed green. It is split in two with honest names,
+and the real assertion moved to `tests/e2e-smoke.mjs`, which runs a live page and
+can therefore reach `advEnterPhaseTwo` at all. The load-bearing line checks the
+**persisted** value, so dropping the `State.save()` while keeping the in-memory
+reset now fails.
+
+> This is the third time in this project a test has asserted the wrong property
+> and passed while the thing it named was broken. The pattern is always the
+> same: the assertion tests what is *easy to reach from the harness* rather than
+> what the name claims. When a harness structurally cannot reach the code — as
+> the vm suite cannot reach `js/ui.js` — that is a signal to move the test, not
+> to assert something adjacent.
+
+Finally, the new e2e boot-race check was flaky (3 of 5 runs). Two real causes,
+both mine: the seeding page's own autosave raced the `localStorage.setItem`, and
+the seeded save had zero production so `initializeSession` returned no report at
+all. Seeding now happens in an `addInitScript` that runs before the app boots,
+with production included. Five consecutive green runs.

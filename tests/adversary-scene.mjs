@@ -556,22 +556,28 @@ check('a save while the registry is cold never empties a populated log', () => {
         'a cold-registry save wiped the persisted log');
 });
 
-check('reaching the transcript refunds the attempt budget', () => {
-    /* sceneAttempts is the anti-boot-loop guard, but it counted every
-       PRESENTATION — so two ordinary mid-scene page reloads spent the whole
-       budget and forfeited the player's choice to a headless default. It must
-       measure "cannot render", not "player closed the tab". */
+/* NOTE ON WHAT THIS FILE CAN AND CANNOT PROVE.
+   js/ui.js is not loaded here (see SOURCES), so nothing below can exercise the
+   scene's renderer. A previous version of the next two checks was named
+   "reaching the transcript refunds the attempt budget" and asserted neither
+   half of it: deleting the entire refund block from js/ui.js left it green.
+   The refund itself is now asserted in tests/e2e-smoke.mjs, which runs a live
+   page. These two keep the names honest — each says exactly what it checks. */
+
+check('the exhaustion threshold is three presentations', () => {
     const env = primed(boot());
     env.State.adversary.sceneAttempts = 2;
     assert.equal(env.game.adversarySceneExhausted(), false);
     env.State.adversary.sceneAttempts = 3;
     assert.equal(env.game.adversarySceneExhausted(), true);
+});
 
-    // And the headless resolution must not hand out the hostile extreme to a
-    // player who was never shown the buttons.
+check('an unseen scene resolves neutral, not hostile', () => {
+    // A player shown nothing must not be handed the hostile extreme. Walking
+    // out of a choice you SAW reading as DENY is a different contract.
     const src = readFileSync(resolve(ROOT, 'js/ui.js'), 'utf8');
     const fn = src.slice(src.indexOf('adversarySceneExhausted() && !State.adversary.sceneCompleted'));
-    const branch = fn.slice(0, fn.indexOf('const layer'));
+    const branch = fn.slice(0, fn.indexOf('State.adversary.sceneAttempts ='));
     assert.ok(branch.includes("resolveAdversaryChoice('OP-B')"),
         'an unseen scene still resolves as hostile');
 });

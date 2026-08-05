@@ -244,6 +244,7 @@ const ui = {
            own `s` and clears the timer before calling this, so it is safe. */
         if (this.advScene) {
             clearTimeout(this.advScene.timer);
+            this.disarmAdversaryListeners();
             this.advScene.open = false;
             this.advScene = null;
         }
@@ -410,14 +411,9 @@ const ui = {
     },
 
     playAdversaryScene() {
-        /* Count the attempt HERE, not in the trigger. The trigger fires once
-           ever, so counting there would freeze this at 1 and the exhaustion
-           guard could never trip — leaving a scene that throws on render as a
-           modal that reappears on every boot, forever. Every presentation
-           path runs through this function, so every attempt counts. */
-        State.adversary.sceneAttempts = (State.adversary.sceneAttempts || 0) + 1;
-        State.save();
-
+        /* Test exhaustion BEFORE spending the attempt. Incrementing first made
+           the third presentation short-circuit, so the budget was really two
+           renders while both comments said three. */
         if (game.adversarySceneExhausted() && !State.adversary.sceneCompleted) {
             /* Three presentations that never got past the login sequence: the
                renderer is broken on this machine. Resolve headlessly rather
@@ -432,6 +428,14 @@ const ui = {
             this.log('[SYSTEM] Ticket auto-filed: HR-VOID-7781 "Unauthorized self-encounter."');
             return;
         }
+
+        /* Count HERE, not in the trigger. The trigger fires once ever, so
+           counting there would freeze this at 1 and the exhaustion guard could
+           never trip — a scene that throws on render would reappear on every
+           boot forever. Every presentation path runs through this function.
+           advEnterPhaseTwo refunds it once the renderer has proved itself. */
+        State.adversary.sceneAttempts = (State.adversary.sceneAttempts || 0) + 1;
+        State.save();
 
         const layer = document.getElementById('system-modal-layer');
         if (!layer) return;
@@ -596,14 +600,23 @@ const ui = {
 
         if (beat.type === 'choice_prompt') {
             const buttons = (beat.choices || []).map((c) =>
-                `<button type="button" class="adv-choice" onclick="event.stopPropagation();ui.chooseAdversaryResponse('${c.id}')">
+                `<button type="button" class="adv-choice" onclick="event.stopPropagation();ui.adversaryChoiceClicked('${c.id}')">
                     <span class="adv-choice-label">${c.label}</span>
                     <span class="adv-choice-text">${c.text}</span>
                 </button>`).join('');
+            /* `is-arming` sets pointer-events: none. The scene teaches clicking
+               — the whole section advances on click and the hint says "Click to
+               continue" — across ~40 seconds of theatre, so a player skipping
+               ahead is mid-mash when three buttons materialise under the cursor
+               in the same band every previous line was drawn in. Without this
+               the next click commits a permanent, unreplayable relationship
+               they never read. A mashed click now falls through to the section
+               handler, which refuses to advance past an unanswered choice. */
             list.innerHTML += `<li class="adv-line adv-choice-row">
-                <div class="adv-choices">${buttons}</div>
+                <div class="adv-choices is-arming">${buttons}</div>
                 <p class="adv-escape-note" id="adv-escape-note"></p>
             </li>`;
+            this.armAdversaryChoice();
             const hint = document.getElementById('adv-hint');
             if (hint) hint.textContent = 'Choose a response';
         } else {
@@ -616,6 +629,70 @@ const ui = {
             </li>`;
         }
         list.scrollTop = list.scrollHeight;
+    },
+
+    /* Arms the choice buttons on deliberate intent, not on elapsed time alone.
+
+       Both conditions must hold: a settle delay AND a fresh pointer movement
+       or keypress since the row rendered. A bare timeout would only move the
+       accidental commit from the first post-render click to the second — a
+       sustained mash outlives any fixed window. Requiring the player to move
+       the mouse or touch the keyboard means the input that commits is one they
+       aimed. */
+    ADV_CHOICE_ARM_MS: 700,
+
+    armAdversaryChoice() {
+        const s = this.advScene;
+        if (!s) return;
+        s.choiceRenderedAt = Date.now();
+        s.choiceArmed = false;
+        s.choiceIntent = false;
+
+        const settle = () => {
+            if (this.advScene !== s || !s.open) return;
+            if (!s.choiceIntent) return;
+            if (Date.now() - s.choiceRenderedAt < this.ADV_CHOICE_ARM_MS) return;
+            s.choiceArmed = true;
+            const host = document.querySelector('.adv-choices');
+            if (host) host.classList.remove('is-arming');
+            const hint = document.getElementById('adv-hint');
+            if (hint) hint.textContent = 'Choose a response — 1, 2 or 3';
+            this.disarmAdversaryListeners();
+        };
+
+        const onIntent = () => { s.choiceIntent = true; settle(); };
+        s._advIntent = onIntent;
+        document.addEventListener('pointermove', onIntent);
+        document.addEventListener('keydown', onIntent);
+        /* Deliberately NOT collapsed under testMode, unlike every other delay
+           in this scene. This gate is a safety property, and a harness that
+           silently skips it cannot test it. */
+        setTimeout(settle, this.ADV_CHOICE_ARM_MS);
+    },
+
+    disarmAdversaryListeners() {
+        const s = this.advScene;
+        if (!s || !s._advIntent) return;
+        document.removeEventListener('pointermove', s._advIntent);
+        document.removeEventListener('keydown', s._advIntent);
+        s._advIntent = null;
+    },
+
+    adversaryChoiceArmed() {
+        return !!(this.advScene && this.advScene.choiceArmed);
+    },
+
+    /* The guarded UI entry point. Every path a PLAYER can take — the buttons
+       and the 1/2/3 shortcuts — goes through here; chooseAdversaryResponse
+       below is the mechanism, used directly by Escape and by the tests.
+
+       This exists because `pointer-events: none` is not sufficient on its own:
+       it blocks real hit-testing but a programmatic .click() sails straight
+       through it. The CSS stops the mash; this stops everything else. */
+    adversaryChoiceClicked(choiceId) {
+        if (!this.adversaryChoiceArmed()) return false;
+        this.chooseAdversaryResponse(choiceId);
+        return true;
     },
 
     chooseAdversaryResponse(choiceId) {
@@ -702,6 +779,7 @@ const ui = {
         const s = this.advScene;
         if (!s) return;
         clearTimeout(s.timer);
+        this.disarmAdversaryListeners();
         s.open = false;
 
         // A scene that reached the end without a choice still resolves, so
@@ -2782,6 +2860,19 @@ const ui = {
                         '<span class="no-action">—</span>'}
                 </td>
             `;
+
+            /* Two processes declare onClick handlers that write the exact
+               progress keys ACH-S-006 and ACH-S-007 read, and nothing ever
+               bound them — so both Secret achievements were unreachable. */
+            if (typeof proc.onClick === 'function') {
+                row.classList.add('taskmgr-row-clickable');
+                row.addEventListener('click', (event) => {
+                    if (event.target.closest('.btn-end-process')) return;
+                    proc.onClick();
+                    game.checkAchievements();
+                    State.save();
+                });
+            }
 
             tbody.appendChild(row);
         });

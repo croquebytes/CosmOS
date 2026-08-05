@@ -2537,7 +2537,8 @@ const TaskManagerProcesses = [
     },
     { name: 'cms_hr_portal.service', cpu: 1, mem: 3, status: 'Running', critical: false, desc: 'Bureaucracy backend', endable: false,
       onClick: () => {
-          State.achievementProgress.open_cms_hr_portal++;
+          State.achievementProgress.open_cms_hr_portal =
+              (State.achievementProgress.open_cms_hr_portal || 0) + 1;
       }
     },
     { name: 'divine_reboot.pending', cpu: 0, mem: 1, status: 'Suspended', critical: false, desc: 'Branch compilation queue', endable: false },
@@ -2552,7 +2553,8 @@ const TaskManagerProcesses = [
           const rare = Math.random() < 0.05;
           if (rare) {
               ui.log('[HIDDEN LINE] "Operator... do you know what you are operating?"');
-              State.achievementProgress.hear_hidden_boot_line = true;
+              State.achievementProgress.hear_hidden_boot_line =
+                  (State.achievementProgress.hear_hidden_boot_line || 0) + 1;
           }
       }
     },

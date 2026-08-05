@@ -120,6 +120,87 @@ try {
     assert.ok(scene.patch.includes('PATCH_NULL_RESTORE.pkg'), 'no patch was left in the Recycle Bin');
     assert.equal(scene.mirrorAchievement, true, 'ACH-S-005 Mirror Login is still unreachable');
 
+    /* The attempt-budget refund. This lives here rather than in
+       tests/adversary-scene.mjs because that harness does not load js/ui.js and
+       so cannot reach advEnterPhaseTwo at all — an earlier unit test carrying
+       this name passed with the entire refund block deleted.
+
+       The persisted assertion is the load-bearing one: it is what fails if the
+       State.save() inside advEnterPhaseTwo is dropped while the in-memory
+       reset survives. */
+    const refund = await scenePage.evaluate(() => {
+        State.adversary = { contacted: false, sceneCompleted: false, playerChoice: null,
+                            sceneAttempts: 2, standing: 0,
+                            barks: { lastBarkId: null, lastBarkTime: 0, heardBarks: [], playCounts: {} },
+                            patchInRecycleBin: false, patchExecuted: false, auditLogEntries: 0 };
+        game.checkAdversaryTrigger();
+        const spent = State.adversary.sceneAttempts;
+        let guard = 0;
+        while (ui.isAdversarySceneOpen() && ui.advScene.phase === 1 && guard++ < 40) {
+            ui.advanceAdversaryScene();
+        }
+        return {
+            spent,
+            phase: ui.advScene && ui.advScene.phase,
+            live: State.adversary.sceneAttempts,
+            persisted: JSON.parse(localStorage.getItem('cosmos_save')).adversary.sceneAttempts,
+        };
+    });
+    assert.equal(refund.spent, 3, 'the presentation did not spend an attempt');
+    assert.equal(refund.phase, 2, 'never reached the transcript, so the refund was not exercised');
+    assert.equal(refund.live, 0, 'reaching the transcript did not refund the attempt budget');
+    assert.equal(refund.persisted, 0, 'the refund was never written to the save');
+
+    /* The choice must not be committable by the click-mashing the scene itself
+       teaches. Everything before the choice advances on a click of the whole
+       section, so a player skipping the theatre is mid-mash when three buttons
+       materialise under the cursor. */
+    const mash = await scenePage.evaluate(() => {
+        ui.dismissSystemModal();   // the refund block above left a scene open
+        State.adversary.sceneCompleted = false;
+        State.adversary.playerChoice = null;
+        State.adversary.contacted = false;
+        State.adversary.sceneAttempts = 0;
+        game.checkAdversaryTrigger();
+        let guard = 0;
+        while (ui.isAdversarySceneOpen() && guard++ < 60) {
+            const beat = ui.advBeats[ui.advScene.index];
+            if (beat && beat.type === 'choice_prompt') break;
+            ui.advanceAdversaryScene();
+        }
+        const row = document.querySelector('.adv-choices');
+        const snapshot = {
+            sceneOpen: ui.isAdversarySceneOpen(),
+            armedAtRender: ui.adversaryChoiceArmed(),
+            arming: row ? row.classList.contains('is-arming') : null,
+            // CSS stops a real in-flight click from ever reaching the button.
+            pointerEvents: row ? getComputedStyle(row).pointerEvents : null,
+        };
+        /* Programmatic clicks IGNORE pointer-events, so this also proves the
+           guarded entry point holds — which is the half that CSS cannot do. */
+        document.querySelectorAll('.adv-choice').forEach((b) => b.click());
+        snapshot.committedByMash = State.adversary.playerChoice;
+        return snapshot;
+    });
+    assert.equal(mash.sceneOpen, true, 'the mash check never got a scene on screen');
+    assert.equal(mash.armedAtRender, false, 'the choice was live the instant it rendered');
+    assert.equal(mash.arming, true, 'the choice row rendered without the arming guard');
+    assert.equal(mash.pointerEvents, 'none', 'an in-flight mash click can still hit the buttons');
+    assert.equal(mash.committedByMash, null, 'mashing committed a choice the player never read');
+
+    // ...and the gate must then open for a player who actually aims. Deliberate
+    // intent (a pointer move) plus the settle delay, then the click lands.
+    await scenePage.mouse.move(400, 300);
+    await scenePage.waitForTimeout(900);
+    await scenePage.mouse.move(420, 320);
+    const aimed = await scenePage.evaluate(() => {
+        const armed = ui.adversaryChoiceArmed();
+        document.querySelectorAll('.adv-choice')[1].click();   // ASK / OP-B
+        return { armed, choice: State.adversary.playerChoice };
+    });
+    assert.equal(aimed.armed, true, 'the choice never armed — it is now unanswerable by mouse');
+    assert.equal(aimed.choice, 'OP-B', 'an aimed click did not register');
+
     // Escape must always terminate, from any point, without stranding anyone.
     const escaped = await scenePage.evaluate(() => {
         State.adversary.contacted = false;
@@ -154,19 +235,34 @@ try {
 
     await racePage.goto(`${baseUrl}/?testMode=1`, { waitUntil: 'domcontentloaded' });
     await racePage.getByRole('button', { name: 'Perform Miracle' }).waitFor();
-    await racePage.evaluate(() => {
-        // A returning player who qualifies for the scene and was away long
-        // enough to be shown an offline report on the next boot.
-        State.totalStats.soulsGained = 800000;
-        State.dimensions.void.unlocked = true;
-        State.adversary = { contacted: false, sceneCompleted: false, playerChoice: null,
-                            sceneAttempts: 0, standing: 0,
-                            barks: { lastBarkId: null, lastBarkTime: 0, heardBarks: [], playCounts: {} },
-                            patchInRecycleBin: false, patchExecuted: false, auditLogEntries: 0 };
-        State.runtime.lastUpdateTime = Date.now() - 300_000;
-        localStorage.setItem('cosmos_save', JSON.stringify(State));
+    /* Build the save shape from a booted page, but do NOT write it here: the
+       running page autosaves on a timer, so any localStorage write races that
+       autosave and gets clobbered — which is what made this check pass alone
+       and time out under load. The payload is written by an init script
+       instead, which runs before the app boots on the next navigation. */
+    const raceSave = await racePage.evaluate(() => {
+        const payload = JSON.parse(JSON.stringify(State));
+        payload.totalStats.soulsGained = 800000;      // qualifies for the scene
+        payload.dimensions.void.unlocked = true;
+        /* Something to have produced while away: initializeSession returns no
+           report for a save with zero production, and this page never bought
+           anything. */
+        payload.automatons.seraphCount = 5;
+        payload.unlockedOfferings = true;
+        payload.adversary = { contacted: false, sceneCompleted: false, playerChoice: null,
+                              sceneAttempts: 0, standing: 0,
+                              barks: { lastBarkId: null, lastBarkTime: 0, heardBarks: [], playCounts: {} },
+                              patchInRecycleBin: false, patchExecuted: false, auditLogEntries: 0 };
         State.suppressUnloadSave = true;
+        return JSON.stringify(payload);
     });
+
+    await racePage.addInitScript((json) => {
+        const save = JSON.parse(json);
+        // Backdated at load time, so a slow navigation cannot shrink the gap.
+        save.runtime.lastUpdateTime = Date.now() - 300000;
+        localStorage.setItem('cosmos_save', JSON.stringify(save));
+    }, raceSave);
 
     await racePage.goto(baseUrl, { waitUntil: 'domcontentloaded' });   // no testMode: real boot timings
     await racePage.waitForTimeout(1600);
