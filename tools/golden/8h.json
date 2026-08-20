@@ -2,35 +2,35 @@
  "hours": 8,
  "clicksPerMin": 40,
  "resources": {
-  "praise": 6500,
+  "praise": 7000,
   "offerings": 350,
   "souls": 4000
  },
  "caps": {
-  "praise": 6500,
+  "praise": 7000,
   "offerings": 350,
   "souls": 4000
  },
- "lifetimeSouls": 711493.3165185392,
+ "lifetimeSouls": 774154.1027730944,
  "rates": {
-  "praise": 3218.159894128,
-  "praiseGross": 3260.659894128,
-  "offerings": 16.254375409999998,
-  "souls": 25.242088872,
-  "darkness": 69.25774,
-  "shadows": 3.0428775,
+  "praise": 6229.463236683221,
+  "praiseGross": 6271.963236683221,
+  "offerings": 22.10706731860498,
+  "souls": 61.79575523412405,
+  "darkness": 101.3966588757741,
+  "shadows": 4.138522461674117,
   "echoes": 0
  },
  "automatons": {
-  "seraphCount": 49,
-  "seraphCostMultiplier": 0.765,
+  "seraphCount": 50,
+  "seraphCostMultiplier": 0.6885,
   "seraphProduction": 2,
   "throneCount": 17,
   "throneCostMultiplier": 1,
   "throneProduction": 2,
   "cherubCount": 22,
   "cherubCostMultiplier": 0.9,
-  "cherubProduction": 0.4,
+  "cherubProduction": 0.6000000000000001,
   "dominionCount": 0,
   "dominionCostMultiplier": 1,
   "dominionProduction": 1
@@ -44,10 +44,10 @@
   "offline_capacitor": 4
  },
  "multipliers": {
-  "praise": 12,
-  "offering": 1,
-  "soul": 2,
-  "divinityPoint": 1,
+  "praise": 22.620662705798672,
+  "offering": 1.3600687052548506,
+  "soul": 3.264164892611641,
+  "divinityPoint": 1.3600687052548506,
   "throneDraw": 1,
   "offlineEfficiency": 0.6
  },
@@ -62,9 +62,9 @@
   "voidRefinement": 1
  },
  "prestige": {
-  "level": 0,
-  "totalDivinityPoints": 0,
-  "spent": 0,
+  "level": 7,
+  "totalDivinityPoints": 7,
+  "spent": 7,
   "standingDoctrine": 0,
   "nullDoctrine": 0
  },
@@ -105,10 +105,13 @@
  "reality": {
   "seed": 20260726,
   "channel": "stable",
-  "shipped": 0,
-  "version": "4.2.0",
+  "shipped": 7,
+  "version": "4.8.0",
   "entries": [
-   "issue:iss_sector_7g"
+   "improvement:imp_anomaly_sensitivity",
+   "improvement:imp_praise_throughput",
+   "improvement:imp_cherub_parallel",
+   "issue:iss_dedup_overeager"
   ]
  },
  "upgradesOwned": [
@@ -130,7 +133,49 @@
   "void_darkness_multi_1",
   "void_unlock"
  ],
- "mandatesOwned": [],
- "lastPurchaseSecond": 1817,
- "prestigeLog": []
+ "mandatesOwned": [
+  "creation_root",
+  "creation_t2_left",
+  "creation_t2_right",
+  "entropy_root",
+  "maintenance_root"
+ ],
+ "lastPurchaseSecond": 28746,
+ "prestigeLog": [
+  {
+   "t": 1871,
+   "gain": 1,
+   "total": 1
+  },
+  {
+   "t": 5792,
+   "gain": 1,
+   "total": 2
+  },
+  {
+   "t": 8831,
+   "gain": 1,
+   "total": 3
+  },
+  {
+   "t": 11344,
+   "gain": 1,
+   "total": 4
+  },
+  {
+   "t": 18166,
+   "gain": 1,
+   "total": 5
+  },
+  {
+   "t": 22806,
+   "gain": 1,
+   "total": 6
+  },
+  {
+   "t": 27799,
+   "gain": 1,
+   "total": 7
+  }
+ ]
 }

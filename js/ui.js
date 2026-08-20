@@ -2551,10 +2551,29 @@ const ui = {
         if (pointsEl) pointsEl.innerText = this.formatNumber(State.totalDivinityPoints);
         if (bonusEl) bonusEl.innerText = this.formatNumber((State.divinityPointMultiplier - 1) * 100);
 
-        const divinityGain = game.calculateDivinityPoints();
+        // The award, channel multiplier included — this is the number the
+        // reboot will actually hand over.
+        const divinityGain = game.getPrestigeAward();
         if (gainEl) {
             gainEl.innerText = this.formatNumber(divinityGain);
             gainEl.closest('.prestige-gain').style.color = divinityGain > 0 ? '#4caf50' : '#666';
+        }
+
+        /* The reboot is a decision now — bank this run, or push it deeper for
+           a bigger award — and a decision the player cannot see the terms of
+           is not one. getSoulsUntilNextPoint has existed since the economy
+           rebuild and nothing has ever rendered it. */
+        const nextEl = document.getElementById('prestige-next-point');
+        if (nextEl) {
+            const remaining = game.getSoulsUntilNextPoint();
+            const runSouls = game.getRunSouls();
+            const payout = game.getPrestigeChannelPayout();
+            const nextAward = Math.floor((game.calculateDivinityPoints() + 1) * payout);
+            // "banked" would be wrong here: these Souls are earned but not yet
+            // cashed in, and cashing in is the decision being described.
+            nextEl.innerText = divinityGain > 0
+                ? `+${this.formatNumber(nextAward)} after ${this.formatNumber(remaining)} more Souls this run`
+                : `first point after ${this.formatNumber(remaining)} more Souls (${this.formatNumber(runSouls)} earned this run)`;
         }
 
         if (buttonEl) {

@@ -249,11 +249,24 @@ function run() {
         if (buyAutomatons(log, t)) lastPurchaseSecond = t;
         if (playVoid(log, t)) lastPurchaseSecond = t;
 
-        /* Prestige like a player would: only when the run is clearly tapped
-           out and the payout is a real step up, never on a 3-point trickle. */
+        /* Prestige like a player would.
+
+           The old policy waited for `gain >= max(5, banked * 0.5)`, which made
+           sense when Divinity was a function of LIFETIME souls: reboot timing
+           could not change the total, so hoarding cost nothing and rebooting
+           early wasted production. Under the run-scoped curve that policy
+           models nobody — it reaches reboot 3 at 18h and never reaches 8.
+
+           Now the bar rises with banked Divinity, so banking a point as soon
+           as the run clears the bar IS the loop rather than spam: each reboot
+           makes the next one harder. Measured over 24h, this reaches Beta
+           (reboot 3) at 3h20, Nightly (8) at 9h16 and Archived (12) at 14h09,
+           and yields more Divinity than waiting for a fatter payout — while a
+           patient player still lands within ~20%, which is what keeps it a
+           decision rather than a solved one. Five minutes of spacing stands in
+           for a player who is not staring at the button. */
         const gain = game.calculateDivinityPoints();
-        const worthIt = gain >= Math.max(5, (State.totalDivinityPoints || 0) * 0.5);
-        if (worthIt && t - lastPrestigeSecond > 900) {
+        if (gain >= 1 && t - lastPrestigeSecond > 300) {
             game.performPrestige();
             lastPrestigeSecond = t;
             prestigeLog.push({ t, gain, total: State.totalDivinityPoints });

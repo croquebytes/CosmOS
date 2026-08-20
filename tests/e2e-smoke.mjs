@@ -229,6 +229,18 @@ try {
        showOfflineReport rewrote the layer, leaving advScene.open true over an
        empty layer — which made system.js swallow every keypress for the rest
        of the session. Dead keyboard, unfinishable scene, no way back. */
+    /* Quiesce every page opened so far before seeding the save.
+
+       They are all still open, still ticking, and still autosaving into the
+       same origin's localStorage — so an earlier page's save lands on top of
+       the seed between the init script writing it and the new page reading it.
+       That is what made this check pass in isolation and fail in the suite. */
+    for (const open of [page, offlinePage, scenePage]) {
+        await open.evaluate(() => { State.suppressUnloadSave = true; }).catch(() => {});
+    }
+    await offlinePage.close();
+    await scenePage.close();
+
     const racePage = await page.context().newPage();
     racePage.on('pageerror', (error) => runtimeErrors.push(String(error)));
     racePage.on('console', (m) => { if (m.type() === 'error') runtimeErrors.push(m.text()); });

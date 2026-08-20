@@ -737,7 +737,8 @@ const system = {
                                 <div class="stat-line"><strong>Prestige Level:</strong> <span id="prestige-level">0</span></div>
                                 <div class="stat-line"><strong>Total Divinity Points:</strong> <span id="divinity-points">0</span></div>
                                 <div class="stat-line"><strong>Current Bonus:</strong> +<span id="prestige-bonus">0</span>%</div>
-                                <div class="stat-line prestige-gain"><strong>Next Prestige:</strong> +<span id="divinity-gain">0</span> Divinity Points</div>
+                                <div class="stat-line prestige-gain"><strong>Divine Reboot pays:</strong> +<span id="divinity-gain">0</span> Divinity</div>
+                                <div class="stat-line prestige-next"><strong>Next point at:</strong> <span id="prestige-next-point">&mdash;</span></div>
                             </div>
                             <button class="win-btn prestige-btn" id="prestige-button" onclick="game.performPrestige()">Divine Reboot</button>
                             <p class="prestige-description">Reset progress to gain permanent bonuses. Keeps Mandates, Achievements, and Documents.</p>

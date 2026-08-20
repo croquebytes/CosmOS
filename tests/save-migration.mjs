@@ -174,6 +174,51 @@ check('migrations do not re-run on an already-current save', () => {
     assert.equal(State.mps, 77, 'a current save is taken at its word');
 });
 
+check('migration 5 closes the run so a returning player is not handed the ladder', () => {
+    /* Divinity is scored on the run now. A pre-v5 save has no baseline, so
+       without this migration its whole lifetime reads as one uncashed run —
+       a player with 5M Souls would collect ~55 Divinity from a single reboot
+       and unlock every Reality channel at once. Those Souls were already paid
+       for under the old formula. */
+    const { State } = bootWith({
+        cosmos_save: JSON.stringify({
+            saveVersion: 4,
+            resources: { praise: 1 },
+            totalStats: { praiseGained: 0, offeringsGained: 0, soulsGained: 5_000_000 },
+        }),
+    });
+    assert.equal(State.runSoulsBaseline, 5_000_000,
+        'the migrated run is still open — the next reboot re-sells every banked Soul');
+    assert.equal(State.totalStats.soulsGained - State.runSoulsBaseline, 0,
+        'run Souls did not start clean after migration');
+});
+
+check('a v5 save keeps its own baseline instead of being re-migrated', () => {
+    /* The migration must not re-run on a save already at the current version:
+       a player mid-run would have their run closed on every load, so they
+       could never reboot again. The existing "migrations do not re-run" test
+       is pinned to v3 and cannot see this. */
+    const { State } = bootWith({
+        cosmos_save: JSON.stringify({
+            saveVersion: 5,
+            resources: { praise: 1 },
+            totalStats: { praiseGained: 0, offeringsGained: 0, soulsGained: 900_000 },
+            runSoulsBaseline: 400_000,
+        }),
+    });
+    assert.equal(State.runSoulsBaseline, 400_000,
+        'a current save had its run closed by a migration that should not have run');
+    assert.equal(State.totalStats.soulsGained - State.runSoulsBaseline, 500_000,
+        'the in-progress run was destroyed on load');
+});
+
+check('a fresh save starts with an open run, not a closed one', () => {
+    // The mirror: migration 5 must not leak into a new game, or the first
+    // reboot would be unreachable.
+    const { State } = bootWith({});
+    assert.equal(State.runSoulsBaseline, 0);
+});
+
 check('save() keeps the previous write as a backup', () => {
     const { State, store } = bootWith({ cosmos_save: JSON.stringify({ saveVersion: 3, resources: { praise: 5 } }) });
     State.resources.praise = 6;

@@ -666,3 +666,136 @@ both mine: the seeding page's own autosave raced the `localStorage.setItem`, and
 the seeded save had zero production so `initializeSession` returned no report at
 all. Seeding now happens in an `addInitScript` that runs before the app boots,
 with production included. Five consecutive green runs.
+
+---
+
+## 2026-08-05 — Session 4: the reboot economy
+
+### The diagnosis
+
+Divinity was `floor((lifetimeSouls / 60000) ^ 0.45) - alreadyBanked` — a pure
+function of LIFETIME Souls. Measured over 48h with `tools/balance_sim.mjs`,
+every prestige policy converged on the same ~8 Divinity:
+
+| policy | reboots | total Divinity |
+|---|---|---|
+| reboot at +1 | 8 | 8 |
+| wait for +2 | 4 | 8 |
+| wait for +3 | 2 | 6 |
+| wait for +5 | 1 | 5 |
+
+**Reboot timing could not change what you earned.** Since a reboot also resets
+production, rebooting was strictly a cost, and the only reason to press the
+button was to tick a counter gating channels and mandates. Reboot 8 (Nightly)
+landed at 45 hours; reboot 12 (Archived) never arrived. Dead time after the last
+purchase ran from 2h42 to 23h53 depending on how patient the player was.
+
+That is `DESIGN_DIRECTION.md` §1's "prestige is a ratchet, not a game", sitting
+in the arithmetic.
+
+### The fix, and the two ways it went wrong first
+
+Divinity now scores **the run**: Souls earned since the last reboot, against a
+bar that rises with what you have banked. Both halves are load-bearing, and I
+found that out by shipping each one alone:
+
+1. **Run-scoring alone made reboot-spam dominant** — measured at prestige level
+   848 and 34,124 Divinity in 24 hours.
+2. **The rising bar alone left patience worthless** — at exponent 0.45, doubling
+   your award cost 4.7x the Souls, so banking immediately always won.
+
+3. **And then the fix itself was divergent, past the window I measured.** With
+   growth 0.55 against a bonus exponent of 0.75, income (~D^0.75) outgrew the
+   bar (~D^0.55), so the reboot period shrank as D^-0.20 — without bound. At 24h
+   it looked healthy at 26 Divinity. At 48h it was **3,116 Divinity and prestige
+   level 194**, with reboots landing exactly 5:01 apart — pinned to the
+   simulator's own policy gate rather than to anything in the economy. An
+   adversarial sweep caught it; my tuning window was simply too short.
+
+> **The invariant that was missing:** the reboot bar must outgrow the bonus that
+> funds it, with margin, because run Souls grow *superlinearly* in the
+> multiplier — income is reinvested into automatons inside the run, so merely
+> matching the exponents still diverged in measurement. Raising growth to 0.90
+> was not enough; the bonus exponent had to come down to 0.45.
+
+### Final constants, all measured
+
+| constant | was | now |
+|---|---|---|
+| `prestigeSoulsPerPoint` | 60000 | 35000 |
+| `prestigeExponent` | 0.45 | 0.90 |
+| `prestigeThresholdGrowth` | — | 0.80 |
+| `prestigeBonusExponent` | 0.75 | 0.45 |
+
+| | before | after |
+|---|---|---|
+| Beta channel (reboot 3) | 18h+ | **2h27** |
+| Nightly (reboot 8) | 45h | **8h37** |
+| Archived (reboot 12) | never | **15h11** |
+| Divinity at 24/48/72/96h | 8 (flat) | **18 / 36 / 79 / 208** |
+| dead time per 24h | 2h42–23h53 | **~1h18** |
+
+Bounded across 96 hours of continuous play: the reboot period drifts from ~30
+minutes to ~8 minutes over four days and the payout stays +1, rather than
+collapsing onto the tick.
+
+### Also fixed
+
+- **Migration 5.** A pre-v5 save has no baseline, so its entire lifetime would
+  read as one uncashed run — a returning player with 5M Souls would collect ~55
+  Divinity from a single reboot and unlock every channel at once. Those Souls
+  were already paid for under the old formula, so the migration closes the run.
+- **The panel understated its own payout.** `performPrestige` multiplies the
+  award by the channel (Beta 1.4x, Nightly 2.2x) but the Divine Settings panel
+  rendered the unmultiplied score — the exact number that is supposed to make a
+  riskier channel worth choosing. Both now route through `getPrestigeAward()`.
+- **`getSoulsUntilNextPoint` had never been rendered by anything** since the
+  economy rebuild. The panel now reads "+9 after 2.1K more Souls this run", so
+  the push-vs-bank decision is visible instead of implied.
+- The simulator's own prestige policy still modelled the old economy
+  (`gain >= max(5, banked * 0.5)`), which under the new curve reaches reboot 3
+  at 18h and never reaches 8. Replaced, with the reasoning recorded in the tool.
+
+### On the tests, again
+
+The first version of `tests/prestige-curve.mjs` passed 13/13 **while the economy
+was divergent**, and the sweep demonstrated it passed at `prestigeExponent:
+0.45` — the exact value the test's own comment names as the bug. Its bound was
+`cost < 5`; the broken value costs 4.66.
+
+Every bound is now mutation-verified. All four of these previously passed
+silently and now fail:
+
+| mutant | result |
+|---|---|
+| `prestigeExponent: 0.45` | 2 failed |
+| `prestigeExponent: 1.60` | 1 failed |
+| `prestigeThresholdGrowth: 0.30` | 1 failed |
+| `prestigeBonusExponent: 0.75` (the blocker) | 1 failed |
+
+The single most valuable addition is one line of arithmetic —
+`prestigeThresholdGrowth > prestigeBonusExponent`, with margin. It would have
+caught the blocker instantly and costs nothing to run.
+
+Also: "the run baseline survives a save round trip" hand-copied two fields
+between two State objects and never called `save()` or `load()`, so it could not
+have caught a serialiser that dropped the baseline — the only failure it existed
+for. It now writes through the real save path into a shared store and boots a
+second game against it.
+
+**Fourth time in this project a test has asserted the wrong property and stayed
+green.** The pattern does not vary: the assertion tests what is convenient from
+the harness rather than what the name claims.
+
+### Known gaps, carried forward
+
+- Every balance figure here is measured on the **stable** channel. Nightly pays
+  2.2x for more volatility, so a Nightly player climbs the same ladder faster —
+  the reachability numbers are ceilings, not estimates. Whether Nightly is
+  *correctly* priced against its risk has not been measured.
+- The golden master still only pins 2h, 8h and 2h-idle. The divergence lived
+  past all three. A 48h horizon would have caught it, at the cost of roughly
+  doubling the suite's runtime.
+- `archived` remains unoffered — it is byte-identical to stable and pays no
+  Divinity, so reaching reboot 12 unlocks nothing yet. That is a separate
+  unimplemented feature, not a curve problem.

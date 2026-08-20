@@ -450,6 +450,13 @@ const State = {
         soulsGained: 0
     },
 
+    /* Souls banked at the last Divine Reboot. Run souls are derived as
+       `totalStats.soulsGained - runSoulsBaseline` rather than tracked by a
+       parallel counter: there are six sites that add to soulsGained, and a
+       second counter beside each of them would drift the first time someone
+       adds a seventh. One write site, in performPrestige. */
+    runSoulsBaseline: 0,
+
     // === ACHIEVEMENT BONUSES ===
     achievementBonuses: {
         praiseGain: 1,
@@ -484,7 +491,7 @@ const State = {
        Migrations are pure data transforms on `parsed`. */
     SAVE_KEY: 'cosmos_save',
     BACKUP_KEY: 'cosmos_save_backup',
-    SAVE_VERSION: 4,
+    SAVE_VERSION: 5,
 
     save() {
         this.runtime.lastUpdateTime = Date.now();
@@ -545,6 +552,24 @@ const State = {
             // income source that survives every reload.
             parsed.mps = 0;
             if (parsed.dimensions?.void) parsed.dimensions.void.sdps = 0;
+        },
+
+        5(parsed) {
+            /* Divinity is now scored on the RUN rather than on lifetime Souls,
+               and run Souls are derived as
+               `totalStats.soulsGained - runSoulsBaseline`.
+
+               A save written before this change has no baseline, so its entire
+               lifetime would count as one uncashed run. A returning player with
+               5M lifetime Souls would be handed ~55 Divinity for a single
+               reboot — skipping the whole ladder the curve exists to create,
+               and unlocking every channel at once.
+
+               Closing the run at migration time is the conservative reading:
+               those Souls were already paid for under the old formula, so they
+               are banked, not owed. The next run starts clean. */
+            const earned = Number(parsed.totalStats?.soulsGained) || 0;
+            parsed.runSoulsBaseline = earned;
         },
 
         4(parsed) {
@@ -696,9 +721,37 @@ const Economy = {
 
     // Prestige. Measured against LIFETIME souls so that spending Souls on
     // Dominions or the Void never eats the player's prestige progress.
-    prestigeSoulsPerPoint: 60000,
-    prestigeExponent: 0.45,
-    prestigeBonusExponent: 0.75,
+    /* ── The reboot curve ──────────────────────────────────────────────
+       Every constant here is measured with tools/balance_sim.mjs, not chosen,
+       and the binding constraint is CONVERGENCE rather than any single
+       timing.
+
+       The loop is a feedback system: banked Divinity raises production, and
+       production earns Divinity. If the reboot bar does not outgrow the bonus
+       that funds it, the period between reboots shrinks without bound. A first
+       attempt tuned only against a 24-hour window looked healthy at 26
+       Divinity and was actually divergent — 3,116 Divinity and prestige level
+       194 by hour 48, which is the same runaway the bar exists to prevent,
+       merely past the horizon that had been measured. Anything changed here
+       must be re-checked at 48h and 72h, not just 24h. */
+    prestigeSoulsPerPoint: 35000,
+    /* How much a DEEPER run pays. At 0.45 a run had to be 4.7x longer to pay
+       double, so banking immediately always won and the decision stayed
+       solved. */
+    prestigeExponent: 0.90,
+    /* How fast the bar rises with banked Divinity. Must outrun the bonus
+       exponent below — run Souls grow superlinearly in the multiplier because
+       income is reinvested into automatons inside the run, so matching the two
+       exponents is not enough on its own. */
+    prestigeThresholdGrowth: 0.80,
+    /* Sub-linear on purpose, and lower than it looks it should be. This is the
+       exponent on the far side of the feedback loop: at 0.75 the bonus outgrew
+       every bar tested, up to and including 0.90 growth. At 0.45 total
+       Divinity grows about linearly with play time — 18 / 36 / 79 at 24h / 48h
+       / 72h — which is the shape an idle game wants. */
+    prestigeBonusExponent: 0.45,
+    /* Linear, so it changes how strong a reboot FEELS without touching whether
+       the loop converges. */
     prestigeBonusScale: 0.15,
 
     // Standing Doctrine: the endless Divinity sink.

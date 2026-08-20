@@ -1692,25 +1692,83 @@ const game = {
         );
     },
 
-    /* Cumulative against lifetime Souls: the formula gives the TOTAL a player
-       has ever been entitled to, minus what they have already banked. That is
-       what makes it impossible to farm the same souls twice.
-
-       Note the channel payout in performPrestige multiplies the award, so
-       totalDivinityPoints can exceed floor(scaled). The Math.max floor below
-       is what keeps that from producing a negative gain afterwards. */
-    calculateDivinityPoints() {
-        const lifetime = this.getLifetimeSouls();
-        if (lifetime < Economy.prestigeSoulsPerPoint) return 0;
-        const scaled = Math.pow(lifetime / Economy.prestigeSoulsPerPoint, Economy.prestigeExponent);
-        return Math.max(0, Math.floor(scaled) - (State.totalDivinityPoints || 0));
+    /* Souls earned since the last reboot. Derived from a baseline rather than
+       counted, so it cannot drift away from totalStats.soulsGained. */
+    getRunSouls() {
+        return Math.max(0,
+            (Number(State.totalStats?.soulsGained) || 0) -
+            (Number(State.runSoulsBaseline) || 0));
     },
 
-    /* Souls still needed for the next point, for the UI to show progress. */
+    /* ── Why this rewards the RUN, not the ledger ─────────────────────────
+
+       The previous formula was `floor((lifetime / k) ^ e) - alreadyBanked`:
+       a pure function of lifetime Souls. That made the reboot TIMING
+       irrelevant to what you earned — measured over 48h with tools/
+       balance_sim.mjs, every policy converged on the same 8 Divinity, whether
+       it took 8 reboots of +1 or a single reboot of +5. Since a reboot also
+       resets production, rebooting was strictly a cost, and the only reason to
+       do it was to tick the counter that gates channels and mandates. That is
+       DESIGN_DIRECTION.md §1's "prestige is a ratchet, not a game", written
+       out in arithmetic.
+
+       Scoring the run instead puts a real decision back: bank now for a small
+       award, or push deeper and compound. Souls-per-second grows within a run,
+       so waiting yields superlinearly more Souls and therefore more Divinity —
+       paid for in wall-clock time, against permanent bonuses you only get by
+       cashing out. Neither end dominates, which is the whole point.
+
+       The exponent stays below 1 so a single marathon run cannot outrun the
+       ladder, and the Math.max(1) floor means a qualifying run always pays
+       something rather than rounding to a wasted reboot. */
+    /* The bar rises with what you have already banked.
+
+       Scoring the run alone is not enough: with a flat bar, rebooting the
+       instant you clear it strictly dominates, because the Divinity multiplier
+       compounds while the cost of another reboot stays fixed. Measured, that
+       produced prestige level 848 and 34,124 Divinity in 24 hours — the same
+       degenerate loop as before, just pointing the other way.
+
+       Raising the bar in step with banked Divinity keeps each reboot worth
+       roughly a run's worth of progress no matter how deep the ladder goes, so
+       the cadence stays flat instead of spiralling in either direction. */
+    getPrestigeThreshold() {
+        return Economy.prestigeSoulsPerPoint *
+            Math.pow(1 + (State.totalDivinityPoints || 0), Economy.prestigeThresholdGrowth);
+    },
+
+    calculateDivinityPoints() {
+        const runSouls = this.getRunSouls();
+        const bar = this.getPrestigeThreshold();
+        if (runSouls < bar) return 0;
+        return Math.max(1, Math.floor(Math.pow(runSouls / bar, Economy.prestigeExponent)));
+    },
+
+    /* What a reboot ACTUALLY pays, channel multiplier included.
+
+       calculateDivinityPoints is the run's score; the channel then multiplies
+       it (Beta 1.4x, Nightly 2.2x, Archived 0). performPrestige has always
+       applied that, but the Divine Settings panel rendered the unmultiplied
+       score — so on Beta or Nightly the game quietly understated its own
+       award, which is exactly the number that is supposed to make a riskier
+       channel worth choosing. One helper, used by both, so they cannot drift
+       apart again. */
+    getPrestigeChannelPayout() {
+        const channel = State.reality?.build?.channel || State.reality?.channel || 'stable';
+        return RealityChannels[channel]?.divinity ?? 1;
+    },
+
+    getPrestigeAward() {
+        return Math.floor(this.calculateDivinityPoints() * this.getPrestigeChannelPayout());
+    },
+
+    /* Souls still needed for the next point, for the UI to show progress.
+       Run-scoped, matching calculateDivinityPoints — against lifetime it would
+       show a target the player had already passed. */
     getSoulsUntilNextPoint() {
-        const target = (State.totalDivinityPoints || 0) + this.calculateDivinityPoints() + 1;
-        const needed = Economy.prestigeSoulsPerPoint * Math.pow(target, 1 / Economy.prestigeExponent);
-        return Math.max(0, needed - this.getLifetimeSouls());
+        const target = this.calculateDivinityPoints() + 1;
+        const needed = this.getPrestigeThreshold() * Math.pow(target, 1 / Economy.prestigeExponent);
+        return Math.max(0, needed - this.getRunSouls());
     },
 
     getDoctrineBonus() {
@@ -1757,7 +1815,7 @@ const game = {
             ui.log(`The ${RealityChannels[playedChannel]?.label || playedChannel} channel pays no Divinity. Switch channels before rebooting.`);
             return;
         }
-        const divinityGain = Math.floor(this.calculateDivinityPoints() * channelPayout);
+        const divinityGain = this.getPrestigeAward();
 
         if (divinityGain === 0) {
             ui.log("Cannot prestige yet. Need more Souls.");
@@ -1787,6 +1845,10 @@ const game = {
         // Award divinity points
         State.prestigeLevel++;
         State.totalDivinityPoints += divinityGain;
+        /* Close the run. The single write site for the run-souls baseline —
+           everything downstream derives from it, so a reboot that forgot this
+           would let the next run re-sell the same Souls. */
+        State.runSoulsBaseline = Number(State.totalStats?.soulsGained) || 0;
         // Sub-linear on purpose. A linear bonus feeds straight back into the
         // production that earns the next reboot, and the two compound into a
         // runaway within a single session.
