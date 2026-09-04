@@ -483,6 +483,45 @@ check('patching relieves instability, and a clean build settles on its own', () 
         'a clean build did not settle — patching everything leaves the player stuck');
 });
 
+check('a simulated hour degrades the build like a real one', () => {
+    /* Temporal Rift grants an hour of production without going through
+       tick(), so instability had to be accrued by hand. Skipping it makes the
+       Rift a free way to push a run deeper — rifted Souls raise the prestige
+       award like any others, so an hour of them at no cost is strictly
+       dominant over waiting, and an active player never meets a cascade.
+
+       Offline progress is the deliberate opposite and is asserted separately:
+       a player cannot triage a cascade they were not present for. */
+    const env = game_();
+    env.State.prestigeLevel = 3;
+    env.State.reality.build = env.Reality.generate(20260726, 3, 'stable');
+    const rate = env.game.instabilityRatePerHour();
+    assert.ok(rate > 0, 'fixture check: this build is degrading');
+
+    env.State.skills.temporalRift.cooldownEndsAt = 0;
+    env.game.activateTemporalRift();
+    assert.ok(Math.abs(env.State.reality.instability - rate) < 1e-9,
+        `a rifted hour accrued ${env.State.reality.instability}, expected a full hour of ${rate}`);
+});
+
+check('offline progress does NOT degrade the build', () => {
+    /* The deliberate asymmetry with the Rift above. This is an idle game and
+       a player cannot triage a cascade they were not present for, so the
+       universe holds its breath while unattended. */
+    const store = {};
+    const env = game_(store);
+    env.State.prestigeLevel = 3;
+    env.State.reality.build = env.Reality.generate(20260726, 3, 'stable');
+    assert.ok(env.game.instabilityRatePerHour() > 0, 'fixture check: this build is degrading');
+    // Twelve hours ago, well inside the offline window.
+    env.State.runtime.lastUpdateTime = Date.now() - 12 * 3600 * 1000;
+
+    const report = env.game.initializeSession();
+    assert.ok(report && report.simulatedSeconds > 3600, 'fixture check: offline progress really ran');
+    assert.equal(env.State.reality.instability, 0,
+        'the build degraded while nobody was watching — a player cannot triage that');
+});
+
 check('a reboot clears the cascade throttle, not just the counter', () => {
     const env = game_();
     env.State.prestigeLevel = 3;

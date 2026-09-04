@@ -1824,6 +1824,22 @@ const game = {
         State.totalStats.offeringsGained = (State.totalStats.offeringsGained || 0) + offeringGain;
         State.totalStats.soulsGained = (State.totalStats.soulsGained || 0) + soulGain;
 
+        /* The hour DEGRADES too.
+
+           The Rift bypasses tick(), so instability had to be accrued by hand
+           or not at all — and not at all makes it a free way to push a run
+           deeper, which is the exact decision the cascade exists to price.
+           Rifted Souls raise the prestige award like any others, so an hour
+           of them for no degradation is strictly dominant: rift, bank a
+           bigger award, never see a cascade.
+
+           It is also the more honest fiction. The hour happened. Sector 7G
+           does not get to skip it because you were the one who asked for it.
+           Note that the rates above already carry the cascade throttle — a
+           degraded build rifts for less, which is the same trade as playing
+           it in real time. */
+        this.accrueInstability(3600, now);
+
         // Track for achievements
         State.achievementProgress.use_temporal_rift = (State.achievementProgress.use_temporal_rift || 0) + 1;
         this.gainOverclockCharge(12);
