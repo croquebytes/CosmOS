@@ -682,6 +682,10 @@ const game = {
             this.processLoopDecay(now);
             this.ensureDirective();
 
+            /* Before production is read, so a tier change throttles the tick
+               that crossed into it rather than the one after. */
+            this.accrueInstability(deltaSeconds, now);
+
             const rates = this.getProductionRates(now, true);
             const praiseGain = rates.praise * deltaSeconds;
             const offeringGain = rates.offerings * deltaSeconds;
@@ -878,6 +882,317 @@ const game = {
         Modifiers.commit(now);
     },
 
+    /* ── Certification ────────────────────────────────────────────────────
+       A mandate's bonuses belong to the certified path, not to the purchase.
+       Buying a node unlocks it forever; certification decides which unlocked
+       nodes are switched on this run.
+
+       Everything mandate-derived lives under `scope: 'cert'`, which exists so
+       this whole set can be dropped and rebuilt in one call — on purchase, on
+       load, and on the reboot that changes the path. Rebuilding rather than
+       patching keeps the residue arithmetic in exactly one place. */
+    CERT_BRANCHES: ['creation', 'maintenance', 'entropy'],
+
+    /* What a modifier is worth at a fraction of its strength.
+
+       Multiplicative records scale their DISTANCE FROM 1, not their value: a
+       tenth of `mul 1.4` is `mul 1.04`, and a tenth of a cost cut of `mul 0.8`
+       is `mul 0.98`. Scaling the value itself would turn every bonus into a
+       catastrophic penalty (0.14x praise) and every cost cut into a discount
+       of 92%, which is the same bug in both directions.
+
+       `set`, `max` and `min` have no partial form — half of "offline
+       efficiency is 1" is not a smaller guarantee, it is a different one — so
+       they return null and are dropped rather than guessed at. */
+    residueValue(mod, fraction) {
+        if (mod.op === 'mul' || mod.op === 'mulfloor') return 1 + (mod.value - 1) * fraction;
+        if (mod.op === 'add') return mod.value * fraction;
+        return null;
+    },
+
+    certification() {
+        if (!State.certification || typeof State.certification !== 'object') {
+            State.certification = { path: null, everCertified: [], history: [] };
+        }
+        const cert = State.certification;
+        if (!Array.isArray(cert.everCertified)) cert.everCertified = [];
+        if (!Array.isArray(cert.history)) cert.history = [];
+        if (!this.CERT_BRANCHES.includes(cert.path)) cert.path = cert.path || null;
+        return cert;
+    },
+
+    /* How a branch stands right now: owned nodes, and whether it is live, in
+       residue, or dormant. The picker renders this, and it is also the honest
+       answer to "what am I giving up" — which is the entire decision. */
+    branchStanding(branch) {
+        const cert = this.certification();
+        const owned = MandateList.filter((m) => m.branch === branch && State.purchasedMandates[m.id]);
+        const spent = owned.reduce((sum, m) => sum + m.cost, 0);
+        const status = cert.path === branch ? 'certified'
+            : cert.everCertified.includes(branch) ? 'residue'
+            : 'dormant';
+        return { branch, owned: owned.length, total: MandateList.filter((m) => m.branch === branch).length, spent, status };
+    },
+
+    /* Rebuilds every mandate-derived modifier from the certification and the
+       purchase ledger. Idempotent, and safe to call at any time.
+
+       Deliberately does NOT run grant closures. Grants (entropy_ultimate's
+       manualClickScaling, maintenance_apex's capacitor ranks) write into
+       ownership state that is already in the save, so re-running them on load
+       would compound the grant on every reload — the exact double-apply
+       applyContentItem's routing rule exists to prevent. Grants are re-issued
+       once, by performPrestige, after the reset that clears them. */
+    applyCertification(now = Date.now()) {
+        const cert = this.certification();
+        Modifiers.dropScope('cert');
+
+        for (const mandate of MandateList) {
+            if (!State.purchasedMandates[mandate.id] || !mandate.mods) continue;
+            const live = mandate.branch === cert.path;
+            const residual = !live && cert.everCertified.includes(mandate.branch);
+            if (!live && !residual) continue;
+
+            for (const mod of mandate.mods) {
+                const value = live ? mod.value : this.residueValue(mod, Economy.certificationResidue);
+                if (value === null || value === undefined) continue;
+                Modifiers.add({
+                    ...mod,
+                    value,
+                    scope: 'cert',
+                    source: { kind: 'mandate', id: mandate.id },
+                    label: live ? mandate.name : `${mandate.name} (lapsed)`,
+                });
+            }
+        }
+        Modifiers.commit(now);
+        return Modifiers.records.filter((r) => r.scope === 'cert').length;
+    },
+
+    /* Certifies on a path. Called by the ship dialog, and by
+       bootstrapCertification for a save that predates the mechanic. */
+    certifyOn(branch, { silent = false } = {}) {
+        if (!this.CERT_BRANCHES.includes(branch)) return false;
+        const cert = this.certification();
+        cert.path = branch;
+        if (!cert.everCertified.includes(branch)) cert.everCertified.push(branch);
+        cert.history.push(branch);
+        if (!silent) ui.log(`Certified on the path of ${branch.charAt(0).toUpperCase()}${branch.slice(1)}.`);
+        return true;
+    },
+
+    /* A save written before certification existed has bought into the tree
+       under the old rules, where every node was unconditionally live. Loading
+       it with `path: null` would switch the whole tree off until the player
+       next rebooted — which, for someone deep enough to own the 40-DP apex
+       nodes, is an unannounced amputation.
+
+       So the returning player is certified on whatever branch they have put
+       the most Divinity into, and every branch they have bought into counts
+       as previously certified so the residue is available at once. Ties go to
+       CERT_BRANCHES order, which is stable rather than meaningful. */
+    bootstrapCertification() {
+        const cert = this.certification();
+
+        /* Only for a save that has NEVER certified. `history` is appended by
+           certifyOn and by nothing else, so an empty history with no path is
+           the exact signature of a save written before the mechanic existed.
+
+           This guard is the whole correctness of the function. Without it the
+           re-derivation runs on every boot and marks any branch the player
+           owns a node on as previously certified — which means buying a
+           single node on a dormant path silently upgrades it to the residue
+           on the next reload. That is free value the player never certified
+           for, and it erases the difference between dormant and lapsed, which
+           is the difference the mechanic is made of. Caught by reloading the
+           game and watching Entropy change from DORMANT to LAPSED on its own. */
+        if (cert.path || cert.history.length) return cert.path;
+
+        // Re-derive from the real table; migration 6 could only read id prefixes.
+        for (const mandate of MandateList) {
+            if (!State.purchasedMandates[mandate.id]) continue;
+            if (!cert.everCertified.includes(mandate.branch)) cert.everCertified.push(mandate.branch);
+        }
+        if (!cert.everCertified.length) return null;
+
+        let best = null;
+        for (const branch of this.CERT_BRANCHES) {
+            const standing = this.branchStanding(branch);
+            if (!standing.owned) continue;
+            if (!best || standing.spent > best.spent) best = standing;
+        }
+        if (!best) return null;
+        cert.path = best.branch;
+        cert.history.push(best.branch);
+        return cert.path;
+    },
+
+    /* ── Scars ────────────────────────────────────────────────────────────
+       A known issue shipped unpatched is filed permanently and keeps a
+       fraction of its bite. Rebuilt from the ledger under `scope: 'scar'`
+       for the same reason certification is: one arithmetic site, idempotent
+       on every load. */
+    applyScars(now = Date.now()) {
+        const scars = Array.isArray(State.reality?.scars) ? State.reality.scars : [];
+        Modifiers.dropScope('scar');
+
+        for (const id of scars) {
+            const entry = this.scarSource(id);
+            if (!entry) continue;
+            for (const mod of entry.mods || []) {
+                const value = this.residueValue(mod, Economy.scarResidue);
+                if (value === null || value === undefined) continue;
+                Modifiers.add({
+                    ...mod,
+                    value,
+                    scope: 'scar',
+                    source: { kind: 'scar', id },
+                    label: `Known issue on file — ${entry.note.split('.')[0]}`,
+                });
+            }
+        }
+        Modifiers.commit(now);
+        return Modifiers.records.filter((r) => r.scope === 'scar').length;
+    },
+
+    /* Scars are stored as bare ids, so the pool is the source of truth for
+       what one costs. The opening build's issue is not in the pool — it is
+       the premise — so it is looked up separately. */
+    scarSource(id) {
+        const fromPool = RealityPool.issues.find((e) => e.id === id);
+        if (fromPool) return fromPool;
+        return (Reality.OPENING_BUILD.entries || []).find((e) => e.id === id) || null;
+    },
+
+    /* ── Instability ──────────────────────────────────────────────────────
+       Severity 1 is the worst, so weight is (4 - severity): a SEV-1 accrues
+       three times as fast as a SEV-3. */
+    issueWeight(entry) {
+        const severity = Math.min(3, Math.max(1, Number(entry?.severity) || 3));
+        return 4 - severity;
+    },
+
+    instabilityRatePerHour() {
+        const build = State.reality?.build;
+        if (!build) return 0;
+        /* The opening build does not degrade.
+
+           Sector 7G's failed integrity check is the premise and the tutorial:
+           it teaches what a known issue is and what patching one buys you. A
+           new player who leaves the tab open for two hours before their first
+           reboot would otherwise return to a collapsed universe having never
+           been told the mechanic existed. The cascade is introduced by the
+           first release, alongside everything else shipping is. */
+        if (!(State.prestigeLevel > 0)) return 0;
+        const weight = Reality.unpatchedIssues(build).reduce((sum, e) => sum + this.issueWeight(e), 0);
+        return weight * Economy.instabilityPerWeightHour;
+    },
+
+    /* The tier the current instability sits in, as an index into
+       Economy.cascadeTiers plus 1. Zero is nominal. */
+    cascadeTierFor(instability) {
+        let tier = 0;
+        Economy.cascadeTiers.forEach((step, index) => {
+            if (instability >= step.at) tier = index + 1;
+        });
+        return tier;
+    },
+
+    cascadeState() {
+        const reality = State.reality || {};
+        const instability = Number(reality.instability) || 0;
+        const tier = this.cascadeTierFor(instability);
+        const step = tier > 0 ? Economy.cascadeTiers[tier - 1] : null;
+        const ceiling = Economy.cascadeTiers[Economy.cascadeTiers.length - 1].at;
+        const ratePerHour = this.instabilityRatePerHour();
+        return {
+            instability,
+            tier,
+            label: step ? step.label : 'NOMINAL',
+            output: step ? step.output : 1,
+            award: step ? step.award : 1,
+            ratePerHour,
+            // Nothing unpatched and something still on the clock: the build is
+            // settling rather than degrading, and the panel should say so.
+            recovering: ratePerHour === 0 && instability > 0,
+            recoveryPerHour: Economy.instabilityRecoveryPerHour,
+            ceiling,
+        };
+    },
+
+    /* Accrues instability and keeps the throttle in step with it.
+
+       The throttle is a modifier rather than a multiplier applied at the
+       point of production, so it shows up in Modifiers.explain() alongside
+       everything else — a player looking at why their output collapsed sees
+       the outage in the stack rather than an unexplained gap. Records are
+       rewritten only when the TIER changes, so this costs nothing per tick.
+
+       `scope: 'build'` is correct and not laziness: a cascade belongs to the
+       build that caused it, and performPrestige already drops that scope. */
+    CASCADE_TARGETS: ['praise.multiplier', 'offerings.multiplier', 'souls.multiplier',
+        'void.darkness.multiplier', 'void.shadow.multiplier', 'void.echo.multiplier'],
+
+    accrueInstability(deltaSeconds, now = Date.now()) {
+        const reality = State.reality;
+        if (!reality || !reality.build) return;
+        if (!Number.isFinite(reality.instability)) reality.instability = 0;
+
+        const rate = this.instabilityRatePerHour();
+        if (deltaSeconds > 0) {
+            if (rate > 0) {
+                reality.instability = Math.min(
+                    Economy.cascadeTiers[Economy.cascadeTiers.length - 1].at,
+                    reality.instability + (rate * deltaSeconds) / 3600,
+                );
+            } else if (reality.instability > 0) {
+                // Nothing left unpatched: the build settles. See
+                // Economy.instabilityRecoveryPerHour for why this is not
+                // optional.
+                reality.instability = Math.max(
+                    0,
+                    reality.instability - (Economy.instabilityRecoveryPerHour * deltaSeconds) / 3600,
+                );
+            }
+        }
+        this.syncCascade(now);
+    },
+
+    syncCascade(now = Date.now()) {
+        const reality = State.reality;
+        if (!reality) return 0;
+        const tier = this.cascadeTierFor(Number(reality.instability) || 0);
+        if (tier === reality.cascadeTier) return tier;
+
+        reality.cascadeTier = tier;
+        for (const target of this.CASCADE_TARGETS) Modifiers.dropSource('cascade', target);
+        if (tier > 0) {
+            const step = Economy.cascadeTiers[tier - 1];
+            for (const target of this.CASCADE_TARGETS) {
+                Modifiers.add({
+                    target,
+                    op: 'mul',
+                    value: step.output,
+                    scope: 'build',
+                    source: { kind: 'cascade', id: target },
+                    label: `${step.label} — output throttled`,
+                });
+            }
+        }
+        Modifiers.commit(now);
+
+        /* The OS interrupts you. A cursed operating system that notices a
+           cascade and says nothing is just a number going down. Announced
+           once per tier per run — `alertedTier` never falls, so patching back
+           down and drifting up again does not re-open the same dialog. */
+        if (tier > (reality.alertedTier || 0)) {
+            reality.alertedTier = tier;
+            ui.showCascadeAlert?.(this.cascadeState());
+        }
+        ui.renderRealityPanel?.();
+        return tier;
+    },
+
     /* Rebuilds the log from the ownership ledgers, in content-table order.
 
        Needed for any save written before the log existed. The original
@@ -895,10 +1210,11 @@ const game = {
             if (!State.upgrades[upgrade.id] || !upgrade.mods) continue;
             Modifiers.addAll(upgrade.mods, { kind: 'upgrade', id: upgrade.id }, upgrade.name);
         }
-        for (const mandate of MandateList) {
-            if (!State.purchasedMandates[mandate.id] || !mandate.mods) continue;
-            Modifiers.addAll(mandate.mods, { kind: 'mandate', id: mandate.id }, mandate.name);
-        }
+        /* Mandates are deliberately absent. Their records are owned by
+           applyCertification(), which decides between full value, residue and
+           nothing — a rebuild here would restore all 21 at full strength and
+           silently undo the certification the run was banked under. The
+           caller runs applyCertification() straight after this. */
         for (const spec of RepeatableList) {
             const ranks = this.getRepeatableLevel(spec.id);
             for (let rank = 1; rank <= ranks; rank++) {
@@ -1003,6 +1319,18 @@ const game = {
         Modifiers.dropSource('build', entryId);
         Modifiers.commit(now);
 
+        /* Patching REPAIRS, it does not merely stop the bleeding.
+
+           Removing the entry already halts its accrual, but a run that has
+           spent an hour degrading would still be stuck in the tier it had
+           reached, which makes patching worthless exactly when it matters
+           most. The relief is proportional to what the issue was contributing,
+           and deliberately smaller than what it accrued: you can climb out of
+           a cascade, but not in one click. */
+        const relief = this.issueWeight(entry) * Economy.instabilityReliefPerWeight;
+        State.reality.instability = Math.max(0, (Number(State.reality.instability) || 0) - relief);
+        this.syncCascade(now);
+
         ui.log(`Patched: ${entry.note.split('.')[0]}.`);
         ui.screenPulse('rgba(66, 144, 125, 0.3)');
         ui.renderRealityPanel?.();
@@ -1036,6 +1364,20 @@ const game = {
             this.rebuildModifierLog();
         }
 
+        /* Certification and scars are rebuilt from their ledgers on every
+           boot, hydrated log or not.
+
+           This is not belt-and-braces. Both sets are DERIVED — the certified
+           path and the scar list are the state; the records are a projection
+           of them at the current residue constants. Rebuilding means a
+           balance change to certificationResidue or scarResidue reaches a
+           save already mid-run, for the same reason Reality re-derives its
+           build instead of trusting the stored entries. Both drop their own
+           scope first, so this is idempotent. */
+        this.bootstrapCertification();
+        this.applyCertification(now);
+        this.applyScars(now);
+
         /* Reconcile the build against the log rather than inferring from which
            branch ran.
 
@@ -1064,6 +1406,19 @@ const game = {
         }
 
         Modifiers.commit(now);
+
+        /* Re-derive the cascade throttle from the persisted instability.
+
+           syncCascade is a no-op when the tier it computes already matches
+           `cascadeTier`, which is exactly the case on load — so the throttle
+           records would be whatever the log happened to carry. On the rebuild
+           path it carries none, and a save mid-outage would come back at full
+           output. Forcing a mismatch makes the throttle a projection of
+           instability rather than of the log, which is what it is. */
+        if (State.reality) {
+            State.reality.cascadeTier = -1;
+            this.syncCascade(now);
+        }
     },
 
     resourceBag(resource) {
@@ -1607,14 +1962,27 @@ const game = {
 
         State.divinityPointsSpent = (State.divinityPointsSpent || 0) + effectiveCost;
 
-        // Mark as purchased and apply effect
+        // Mark as purchased. The bonus itself belongs to certification, not to
+        // the purchase — buying a node on a path you are not certified on
+        // unlocks it, it does not switch it on.
         State.purchasedMandates[mandateId] = true;
-        this.applyContentItem(mandate, 'mandate');
+        const live = mandate.branch === this.certification().path;
+        /* The grant half, once, and only while certified. applyCertification
+           cannot do this — it runs on every load, and a grant re-run on load
+           compounds. This is the one moment a newly bought grant exists and
+           has not been applied. */
+        if (live && typeof mandate.effect === 'function' && (mandate.modsSplit || !mandate.mods)) {
+            mandate.effect();
+        }
+        this.applyCertification();
 
         // Track for achievements
         State.achievementProgress.buy_mandate_count = (State.achievementProgress.buy_mandate_count || 0) + 1;
 
-        ui.log(`Divine Mandate enacted: ${mandate.name}${effectiveCost < mandate.cost ? ` (Efficiency: ${mandate.cost}→${effectiveCost})` : ''}`);
+        const dormant = live ? '' : (this.certification().everCertified.includes(mandate.branch)
+            ? ' — lapsed path, paying residue until you certify on it again'
+            : ' — dormant until you certify on this path');
+        ui.log(`Divine Mandate enacted: ${mandate.name}${effectiveCost < mandate.cost ? ` (Efficiency: ${mandate.cost}→${effectiveCost})` : ''}${dormant}`);
         ui.screenPulse('rgba(138, 43, 226, 0.3)');
         ui.updateMandates();
     },
@@ -1758,8 +2126,20 @@ const game = {
         return RealityChannels[channel]?.divinity ?? 1;
     },
 
+    /* What a cascade costs at ship time. A degraded build ships for less; a
+       collapsed one ships for nothing, which is the whole risk in "push the
+       run deeper". Separate from the output throttle on purpose — the
+       throttle is what you feel, this is what you lose. */
+    getCascadePenalty() {
+        return this.cascadeState().award;
+    },
+
     getPrestigeAward() {
-        return Math.floor(this.calculateDivinityPoints() * this.getPrestigeChannelPayout());
+        return Math.floor(
+            this.calculateDivinityPoints() *
+            this.getPrestigeChannelPayout() *
+            this.getCascadePenalty(),
+        );
     },
 
     /* Souls still needed for the next point, for the UI to show progress.
@@ -1801,7 +2181,14 @@ const game = {
         return this.calculateDivinityPoints() > 0;
     },
 
-    performPrestige() {
+    /* Shipping the build IS the reboot.
+
+       `options.certifyOn` is the path the next run runs on, and `options`
+       arriving at all means the caller was the ship dialog, which has already
+       confirmed. A bare call still works — the simulator and the tests use it
+       — and falls back to the existing confirm(), so nothing that predates
+       the dialog has to know about it. */
+    performPrestige(options = {}) {
         /* The channel's payout is what a riskier build is actually buying.
            Beta and Nightly ship more known issues and regressions; this is
            the compensation, and it is why the choice is a trade rather than
@@ -1815,32 +2202,55 @@ const game = {
             ui.log(`The ${RealityChannels[playedChannel]?.label || playedChannel} channel pays no Divinity. Switch channels before rebooting.`);
             return;
         }
-        const divinityGain = this.getPrestigeAward();
 
-        if (divinityGain === 0) {
+        /* Gated on the run's SCORE, not on the award.
+
+           A collapsed build pays nothing, and gating on the award would trap
+           the player inside it: the only other way out is patching, and
+           patching costs resources a collapsed run may not be able to earn.
+           Shipping a dead build for zero is a bad outcome the player chose;
+           being unable to ship at all is a soft-lock. */
+        const runScore = this.calculateDivinityPoints();
+        if (runScore === 0) {
             ui.log("Cannot prestige yet. Need more Souls.");
             return;
         }
+        const divinityGain = this.getPrestigeAward();
 
-        // Confirm prestige
-        const confirmed = confirm(
-            `Divine Reboot\n\n` +
-            `You will gain ${divinityGain} Divinity Points.\n` +
-            `+${(divinityGain * 10)}% to all production.\n\n` +
-            `This will reset:\n` +
-            `- All resources\n` +
-            `- All automatons\n` +
-            `- All upgrades\n` +
-            `- Dimensions progress\n\n` +
-            `This will KEEP:\n` +
-            `- Divine Mandates\n` +
-            `- Achievements\n` +
-            `- Documents\n` +
-            `- Divinity Points\n\n` +
-            `Proceed with Divine Reboot?`
-        );
+        if (!options.confirmed) {
+            const cascade = this.cascadeState();
+            const confirmed = confirm(
+                `Divine Reboot\n\n` +
+                `You will gain ${divinityGain} Divinity Points.\n` +
+                (cascade.tier > 0 ? `${cascade.label} — award reduced to ${Math.round(cascade.award * 100)}%.\n` : '') +
+                `+${(divinityGain * 10)}% to all production.\n\n` +
+                `This will reset:\n` +
+                `- All resources\n` +
+                `- All automatons\n` +
+                `- All upgrades\n` +
+                `- Dimensions progress\n\n` +
+                `This will KEEP:\n` +
+                `- Divine Mandates\n` +
+                `- Achievements\n` +
+                `- Documents\n` +
+                `- Divinity Points\n\n` +
+                `Proceed with Divine Reboot?`
+            );
 
-        if (!confirmed) return;
+            if (!confirmed) return;
+        }
+
+        /* File the known issues this build is shipping with, BEFORE the build
+           is replaced. One entry per id ever: a known issue is filed once, so
+           the ledger is bounded by the pool and the penalty cannot compound
+           into an unplayable game across a hundred runs. */
+        const shippedDirty = [];
+        if (!Array.isArray(State.reality.scars)) State.reality.scars = [];
+        for (const entry of Reality.unpatchedIssues(State.reality.build)) {
+            if (State.reality.scars.includes(entry.id)) continue;
+            State.reality.scars.push(entry.id);
+            shippedDirty.push(entry);
+        }
 
         // Award divinity points
         State.prestigeLevel++;
@@ -2020,23 +2430,37 @@ const game = {
         // Keep mandates, achievements, documents, unlocked apps
 
         /* THE prestige step. Everything the registry owns is rebuilt by
-           dropping run-scoped records and re-folding; mandate modifiers are
-           scope 'permanent' and survive untouched, which is what the reapply
-           loop below used to do by re-running their closures.
+           dropping run-scoped records and re-folding.
 
-           The loop is still here for one reason: mandates whose effect() is a
-           GRANT rather than a modifier (entropy_ultimate's manualClickScaling,
-           maintenance_apex's capacitor ranks) are cleared above and have to be
-           re-granted. A review caught that deleting the loop outright would
-           silently destroy a 40-DP apex mandate on the first reboot. */
+           Mandate modifiers used to be scope 'permanent' and survive
+           untouched. They are scope 'cert' now and are rebuilt below against
+           the path being certified on, which is the one line that turns the
+           Mandate tree from a checklist into a decision. */
         Modifiers.dropScope('run');
-        // The outgoing build goes with the outgoing run.
+        // The outgoing build goes with the outgoing run — cascade throttle
+        // included, since that is a record of the build that caused it.
         Modifiers.dropScope('build');
         Modifiers.commit(Date.now());
 
+        /* Certify for the run about to start. Ordered after the drops and
+           before the re-grant loop, because the grants below are only issued
+           for the branch being certified on. */
+        if (options.certifyOn) this.certifyOn(options.certifyOn, { silent: true });
+
         State.reality.shipped = (State.reality.shipped || 0) + 1;
         State.reality.build = null;
+
+        /* The new build starts clean. instability belongs to the build that
+           accrued it, and alertedTier resets so the next cascade announces
+           itself rather than being swallowed by the last run's high-water
+           mark. cascadeTier is set to -1 rather than 0 so syncCascade sees a
+           change and clears the throttle even if the tier is unchanged. */
+        State.reality.instability = 0;
+        State.reality.cascadeTier = -1;
+        State.reality.alertedTier = 0;
+
         const nextBuild = this.rollNextBuild(Date.now());
+        this.syncCascade(Date.now());
         ui.showReleaseNotes(nextBuild);
 
         /* He turns up when you reboot — ADV-BARK-02, "Reset again. I dare you.
@@ -2050,21 +2474,41 @@ const game = {
         else if (reboots === 8) this.triggerAdversaryBark('prestige_count_8');
         else this.triggerAdversaryBark('prestige_prompt');
 
+        const certPath = this.certification().path;
         for (const mandateId in State.purchasedMandates) {
             const mandate = MandateList.find((m) => m.id === mandateId);
             if (!mandate) continue;
-            // Grants only. Re-running a closure whose scalar half is already a
-            // permanent modifier would apply the same bonus a second time on
-            // every reboot — the exact same routing rule as applyContentItem.
+            /* Grants only. Re-running a closure whose scalar half is already
+               a modifier would apply the same bonus a second time on every
+               reboot — the same routing rule as applyContentItem.
+
+               And only for the certified branch. entropy_ultimate's
+               manualClickScaling and maintenance_apex's capacitor ranks are
+               the FULL value of those two nodes; issuing them regardless of
+               path would leave two mandates immune to certification, and
+               they are the 8-DP and 40-DP ones. A grant has no residue form
+               — you cannot be 10% self-service — so an uncertified branch
+               simply does not get it. */
+            if (mandate.branch !== certPath) continue;
             if (typeof mandate.effect === 'function' && (mandate.modsSplit || !mandate.mods)) {
                 mandate.effect();
             }
         }
 
+        /* Rebuild the mandate modifiers against the new path, and the scars
+           filed above. Both AFTER the grant loop, because maintenance_apex's
+           grant writes capacitor ranks that no modifier reads — the ordering
+           only matters for the commit, and both of these commit. */
+        this.applyCertification(Date.now());
+        this.applyScars(Date.now());
+
         // Save and refresh
         State.save();
         ui.log(`Divine Reboot complete! Gained ${divinityGain} Divinity Points.`);
         ui.log(`All production increased by ${(divinityGain * 10)}%!`);
+        if (shippedDirty.length) {
+            ui.log(`${shippedDirty.length} known issue${shippedDirty.length === 1 ? '' : 's'} shipped unpatched. Filed permanently.`);
+        }
         ui.screenPulse('rgba(255, 215, 0, 0.6)');
 
         // Refresh UI
@@ -2074,6 +2518,11 @@ const game = {
             ui.updateSeraphButton();
             ui.updateCherubButton();
             ui.renderDimensionContent();
+            /* The Mandate tree is certification's whole display surface and
+               performPrestige has never refreshed it. Without this the tree
+               shows the previous run's path until something else happens to
+               re-render it. */
+            ui.updateMandates();
         }, 500);
     },
 
