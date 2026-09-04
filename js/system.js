@@ -740,8 +740,9 @@ const system = {
                                 <div class="stat-line prestige-gain"><strong>Divine Reboot pays:</strong> +<span id="divinity-gain">0</span> Divinity</div>
                                 <div class="stat-line prestige-next"><strong>Next point at:</strong> <span id="prestige-next-point">&mdash;</span></div>
                             </div>
-                            <button class="win-btn prestige-btn" id="prestige-button" onclick="game.performPrestige()">Divine Reboot</button>
-                            <p class="prestige-description">Reset progress to gain permanent bonuses. Keeps Mandates, Achievements, and Documents.</p>
+                            <div class="stat-line prestige-stability"><strong>Build stability:</strong> <span id="prestige-stability">&mdash;</span></div>
+                            <button class="win-btn prestige-btn" id="prestige-button" onclick="ui.openShipDialog()">Ship this build</button>
+                            <p class="prestige-description">Cut a release. Resets the run for permanent bonuses, certifies a Mandate path, and files whatever known issues you did not patch.</p>
                         </div>
 
                         <h3>Save Management</h3>
@@ -816,6 +817,7 @@ const system = {
                 title: 'Divine Mandates',
                 initialHTML: `
                     <div class="mandates-panel">
+                        <div id="mandate-certification" class="certification-panel"></div>
                         <div id="mandate-doctrine" class="doctrine-panel"></div>
 
                         <h3>Path of Creation</h3>

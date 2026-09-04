@@ -2,59 +2,59 @@
  "hours": 8,
  "clicksPerMin": 40,
  "resources": {
-  "praise": 7000,
+  "praise": 7850,
   "offerings": 350,
   "souls": 4000
  },
  "caps": {
-  "praise": 7000,
+  "praise": 7850,
   "offerings": 350,
   "souls": 4000
  },
- "lifetimeSouls": 774154.1027730944,
+ "lifetimeSouls": 960628.923256754,
  "rates": {
-  "praise": 6229.463236683221,
-  "praiseGross": 6271.963236683221,
-  "offerings": 22.10706731860498,
-  "souls": 61.79575523412405,
-  "darkness": 101.3966588757741,
-  "shadows": 4.138522461674117,
+  "praise": 5405.726148307984,
+  "praiseGross": 5437.226148307984,
+  "offerings": 23.791268631997813,
+  "souls": 35.59173787346874,
+  "darkness": 103.38706032624987,
+  "shadows": 4.2063770565767005,
   "echoes": 0
  },
  "automatons": {
-  "seraphCount": 50,
+  "seraphCount": 51,
   "seraphCostMultiplier": 0.6885,
   "seraphProduction": 2,
-  "throneCount": 17,
+  "throneCount": 18,
   "throneCostMultiplier": 1,
   "throneProduction": 2,
   "cherubCount": 22,
   "cherubCostMultiplier": 0.9,
-  "cherubProduction": 0.6000000000000001,
+  "cherubProduction": 0.4,
   "dominionCount": 0,
   "dominionCostMultiplier": 1,
   "dominionProduction": 1
  },
  "repeatables": {
-  "praise_vault": 10,
+  "praise_vault": 11,
   "offering_vault": 6,
   "soul_vault": 13,
-  "praise_refinement": 4,
+  "praise_refinement": 5,
   "automaton_drill": 2,
   "offline_capacitor": 4
  },
  "multipliers": {
-  "praise": 22.620662705798672,
-  "offering": 1.3600687052548506,
-  "soul": 3.264164892611641,
-  "divinityPoint": 1.3600687052548506,
-  "throneDraw": 1,
+  "praise": 17.089388489751492,
+  "offering": 1.3823681881957786,
+  "soul": 2.8200311039193884,
+  "divinityPoint": 1.3823681881957786,
+  "throneDraw": 0.7,
   "offlineEfficiency": 0.6
  },
  "bonuses": {
   "drill": 1.3,
   "dominion": 1,
-  "refinement": 2,
+  "refinement": 2.25,
   "doctrine": 1,
   "nemesis": 1,
   "nullDoctrine": 1,
@@ -62,8 +62,8 @@
   "voidRefinement": 1
  },
  "prestige": {
-  "level": 7,
-  "totalDivinityPoints": 7,
+  "level": 8,
+  "totalDivinityPoints": 8,
   "spent": 7,
   "standingDoctrine": 0,
   "nullDoctrine": 0
@@ -105,13 +105,24 @@
  "reality": {
   "seed": 20260726,
   "channel": "stable",
-  "shipped": 7,
-  "version": "4.8.0",
+  "shipped": 8,
+  "version": "4.9.0",
   "entries": [
-   "improvement:imp_anomaly_sensitivity",
-   "improvement:imp_praise_throughput",
-   "improvement:imp_cherub_parallel",
-   "issue:iss_dedup_overeager"
+   "improvement:imp_conduits_resealed",
+   "improvement:imp_vault_partitions",
+   "issue:iss_conduit_leak:patched"
+  ],
+  "instability": 0,
+  "cascadeTier": 0,
+  "scars": [
+   "iss_sector_7g"
+  ]
+ },
+ "certification": {
+  "path": "maintenance",
+  "everCertified": [
+   "creation",
+   "maintenance"
   ]
  },
  "upgradesOwned": [
@@ -140,42 +151,71 @@
   "entropy_root",
   "maintenance_root"
  ],
- "lastPurchaseSecond": 28746,
+ "lastPurchaseSecond": 28370,
  "prestigeLog": [
   {
    "t": 1871,
    "gain": 1,
-   "total": 1
+   "total": 1,
+   "certified": "creation",
+   "tier": 0,
+   "scars": 1
   },
   {
-   "t": 5792,
+   "t": 4364,
    "gain": 1,
-   "total": 2
+   "total": 2,
+   "certified": "maintenance",
+   "tier": 0,
+   "scars": 1
   },
   {
-   "t": 8831,
+   "t": 7419,
    "gain": 1,
-   "total": 3
+   "total": 3,
+   "certified": "creation",
+   "tier": 0,
+   "scars": 1
   },
   {
-   "t": 11344,
+   "t": 9943,
    "gain": 1,
-   "total": 4
+   "total": 4,
+   "certified": "maintenance",
+   "tier": 0,
+   "scars": 1
   },
   {
-   "t": 18166,
+   "t": 14212,
    "gain": 1,
-   "total": 5
+   "total": 5,
+   "certified": "creation",
+   "tier": 0,
+   "scars": 1
   },
   {
-   "t": 22806,
+   "t": 18862,
    "gain": 1,
-   "total": 6
+   "total": 6,
+   "certified": "maintenance",
+   "tier": 0,
+   "scars": 1
   },
   {
-   "t": 27799,
+   "t": 23890,
    "gain": 1,
-   "total": 7
+   "total": 7,
+   "certified": "creation",
+   "tier": 0,
+   "scars": 1
+  },
+  {
+   "t": 27120,
+   "gain": 1,
+   "total": 8,
+   "certified": "maintenance",
+   "tier": 0,
+   "scars": 1
   }
  ]
 }

@@ -71,6 +71,12 @@ const ui = {
         this.updateLoopPanels();
         this.updateDimensionDisplay();
         this.updateOperatorStatus();
+        /* The Divine Settings readout was only ever rendered by that window's
+           onOpen, so the award and the stability line sat frozen at whatever
+           they were when it was opened — for a panel whose entire job is
+           showing a decision that moves. Cheap: it returns immediately when
+           the elements are not in the document. */
+        this.updatePrestigeInfo();
     },
 
     /* Synchronous full redraw, for callers that change how everything is
@@ -346,6 +352,164 @@ const ui = {
     closeReleaseNotes() {
         this.dismissSystemModal();
         this.renderRealityPanel();
+    },
+
+    /* ── Shipping ─────────────────────────────────────────────────────────
+       The reboot used to be a browser confirm() listing what it would reset.
+       It is a release now, and a release has terms: what it pays, what it
+       costs, which known issues go on the permanent record, and which Mandate
+       path the next run runs on.
+
+       The path is the load-bearing half and it has NO DEFAULT. Shipping stays
+       disabled until one is picked, because the alternative is a player
+       clicking through a dialog they have seen twenty times and discovering
+       three hours later that their tree is dormant. That is the same reasoning
+       as the Adversary scene's arming guard, arrived at by a cheaper route:
+       there, the choice was hidden inside a click-to-continue rhythm and had
+       to be defended against the rhythm; here the choice IS the button's
+       precondition, so a reflex click cannot resolve it. */
+    shipSelection: null,
+
+    openShipDialog() {
+        const layer = document.getElementById('system-modal-layer');
+        if (!layer) return;
+        if (!game.canPrestige()) {
+            this.log('This build has not earned a release yet. More Souls this run.');
+            return;
+        }
+        this.shipSelection = game.certification().path;
+        this.renderShipDialog();
+        layer.classList.add('active');
+    },
+
+    renderShipDialog() {
+        const layer = document.getElementById('system-modal-layer');
+        if (!layer) return;
+
+        const build = State.reality?.build;
+        const cascade = game.cascadeState();
+        const award = game.getPrestigeAward();
+        const residue = Math.round(Economy.certificationResidue * 100);
+        const dirty = Reality.unpatchedIssues(build);
+        const scars = State.reality?.scars || [];
+        const fresh = dirty.filter((e) => !scars.includes(e.id));
+
+        const paths = game.CERT_BRANCHES.map((branch) => {
+            const s = game.branchStanding(branch);
+            const selected = this.shipSelection === branch;
+            const note = s.owned === 0
+                ? 'nothing enacted yet'
+                : `${s.owned} enacted &middot; ${s.spent} DP invested`;
+            return `<button type="button"
+                        class="ship-path${selected ? ' is-selected' : ''}"
+                        aria-pressed="${selected ? 'true' : 'false'}"
+                        onclick="ui.selectShipPath('${branch}')">
+                    <span class="ship-path-name">Path of ${branch}</span>
+                    <span class="ship-path-note">${note}</span>
+                    <span class="ship-path-status">${s.status === 'certified' ? 'current' : s.status === 'residue' ? `lapsed — ${residue}%` : 'never certified'}</span>
+                </button>`;
+        }).join('');
+
+        const scarBlock = fresh.length
+            ? `<div class="ship-scars">
+                   <span class="code-stamp is-alarm">${fresh.length} known issue${fresh.length === 1 ? '' : 's'} unpatched</span>
+                   <p>Shipping files ${fresh.length === 1 ? 'it' : 'them'} permanently. Each keeps
+                      ${Math.round(Economy.scarResidue * 100)}% of its bite, on every run from now on.</p>
+                   <ul>${fresh.map((e) => `<li>SEV-${e.severity || 3} — ${e.note.split('.')[0]}.</li>`).join('')}</ul>
+               </div>`
+            : '<p class="ship-clean">No unpatched known issues. This release goes out clean.</p>';
+
+        const cascadeBlock = cascade.tier > 0
+            ? `<div class="ship-cascade tier-${cascade.tier}">
+                   <span class="code-stamp is-alarm">${cascade.label}</span>
+                   <p>${cascade.award > 0
+                        ? `The award is reduced to ${Math.round(cascade.award * 100)}% while the build is degraded.`
+                        : 'A collapsed build pays nothing. You can still ship it — patch the outstanding issues first if you want to be paid for this run.'}</p>
+               </div>`
+            : '';
+
+        layer.innerHTML = `
+            <section class="system-dialog ship-dialog" role="dialog" aria-modal="true" aria-labelledby="ship-title">
+                <div class="system-dialog-titlebar">
+                    <span>SHIP BUILD</span>
+                    <button type="button" onclick="ui.closeShipDialog()" aria-label="Cancel release">X</button>
+                </div>
+                <div class="ship-head">
+                    <h2 id="ship-title">Release v${build?.version || '?'}</h2>
+                    <p class="rn-meta">${RealityChannels[build?.channel]?.label || 'Stable'} channel &middot;
+                        pays <strong>${this.formatNumber(award)}</strong> Divinity</p>
+                </div>
+                ${cascadeBlock}
+                ${scarBlock}
+                <div class="ship-cert">
+                    <span class="briefing-eyebrow">Certify the next run on</span>
+                    <div class="ship-paths">${paths}</div>
+                </div>
+                <div class="system-dialog-actions">
+                    <button class="win-btn" type="button" onclick="ui.closeShipDialog()">Keep running</button>
+                    <button class="dialog-primary" type="button" id="ship-confirm"
+                            ${this.shipSelection ? '' : 'disabled'}
+                            onclick="ui.confirmShip()">
+                        ${this.shipSelection ? `Ship on ${this.shipSelection}` : 'Choose a path'}
+                    </button>
+                </div>
+            </section>
+        `;
+    },
+
+    selectShipPath(branch) {
+        if (!game.CERT_BRANCHES.includes(branch)) return;
+        this.shipSelection = branch;
+        this.renderShipDialog();
+    },
+
+    closeShipDialog() {
+        this.shipSelection = null;
+        this.dismissSystemModal();
+    },
+
+    /* The only path from the dialog into the reboot. performPrestige remains
+       callable without options — the simulator and four test harnesses do
+       exactly that — but everything a player can click routes through here,
+       so the certification choice cannot be skipped by a UI that forgot it. */
+    confirmShip() {
+        const path = this.shipSelection;
+        if (!game.CERT_BRANCHES.includes(path)) return;
+        this.dismissSystemModal();
+        this.shipSelection = null;
+        game.performPrestige({ confirmed: true, certifyOn: path });
+    },
+
+    /* The OS opening a window you did not ask for. DESIGN_DIRECTION §5.3 —
+       a cursed operating system that notices a cascade and says nothing is
+       just a number going down. Suppressed while another modal is up so it
+       cannot paint over the release notes it would otherwise interrupt. */
+    showCascadeAlert(cascade) {
+        const layer = document.getElementById('system-modal-layer');
+        if (!layer || layer.classList.contains('active')) return;
+
+        layer.innerHTML = `
+            <section class="system-dialog cascade-alert tier-${cascade.tier}" role="alertdialog" aria-modal="true" aria-labelledby="cascade-title">
+                <div class="system-dialog-titlebar">
+                    <span>SYSTEM &mdash; UNSOLICITED</span>
+                    <button type="button" onclick="ui.dismissSystemModal()" aria-label="Acknowledge">X</button>
+                </div>
+                <div class="cascade-body">
+                    <span class="code-stamp is-alarm">${cascade.label}</span>
+                    <h2 id="cascade-title">Reality is degrading.</h2>
+                    <p>Unpatched known issues have been accruing since this build shipped.
+                       Output is throttled to ${Math.round(cascade.output * 100)}% and the release
+                       ${cascade.award > 0 ? `now pays ${Math.round(cascade.award * 100)}% of its award` : 'now pays nothing'}.</p>
+                    <p class="cascade-advice">${cascade.tier >= Economy.cascadeTiers.length
+                        ? 'Patch the outstanding issues from the Universal Engine. A build with nothing left on file settles on its own.'
+                        : 'Patch them from the Universal Engine, or ship now and take what this run is still worth.'}</p>
+                </div>
+                <div class="system-dialog-actions">
+                    <button class="dialog-primary" type="button" onclick="ui.dismissSystemModal()">Acknowledged</button>
+                </div>
+            </section>
+        `;
+        layer.classList.add('active');
     },
 
     /* ════════════════════════════════════════════════════════════════════
@@ -860,11 +1024,35 @@ const ui = {
                </label>`
             : '';
 
+        /* The stability meter. Instability is invisible without it, and an
+           invisible timer that throttles your output and your award is a
+           betrayal rather than a decision — the whole mechanic depends on the
+           player being able to watch it climb and decide what to do. */
+        const cascade = game.cascadeState();
+        const pct = Math.min(100, Math.round((cascade.instability / cascade.ceiling) * 100));
+        const trend = cascade.ratePerHour > 0
+            ? `+${cascade.ratePerHour.toFixed(2)}/h from ${issues.length} unpatched`
+            : cascade.recovering
+                ? `settling &minus;${cascade.recoveryPerHour.toFixed(2)}/h &mdash; nothing left on file`
+                : 'holding';
+        const stability = `
+            <div class="reality-stability tier-${cascade.tier}">
+                <div class="stability-line">
+                    <span class="code-stamp${cascade.tier > 0 ? ' is-alarm' : ''}">${cascade.label}</span>
+                    <span class="stability-trend">${trend}</span>
+                </div>
+                <div class="stability-track"><div class="stability-fill" style="width:${pct}%"></div></div>
+                ${cascade.tier > 0
+                    ? `<p class="stability-note">Output &times;${cascade.output} &middot; release pays ${Math.round(cascade.award * 100)}%</p>`
+                    : ''}
+            </div>`;
+
         host.innerHTML = `
             <div class="reality-head">
                 <span class="reality-version">REALITY v${build.version}</span>
                 <span class="reality-channel">${channel}</span>
             </div>
+            ${stability}
             ${selector}
             ${issues.length
                 ? `<div class="reality-issues">${issueRows}</div>`
@@ -2018,8 +2206,52 @@ const ui = {
             `${this.formatNumber(Math.floor(held))} Divinity available`);
     },
 
+    /* The certification header. Certification is chosen at ship time, so this
+       is not a control — it is the statement of what is live, what is lapsed,
+       and what each path is worth if you switch to it. That last part is the
+       decision, and it is unanswerable without seeing all three at once. */
+    renderCertification() {
+        const host = document.getElementById('mandate-certification');
+        if (!host) return;
+
+        const cert = game.certification();
+        const residue = Math.round(Economy.certificationResidue * 100);
+
+        if (!cert.path && !cert.everCertified.length) {
+            host.innerHTML = `<p class="cert-none">Uncertified. A Mandate does nothing until you certify on its path,
+                and you certify when you ship a build. Buy freely — a node you own is yours permanently.</p>`;
+            return;
+        }
+
+        const rows = game.CERT_BRANCHES.map((branch) => {
+            const s = game.branchStanding(branch);
+            const status = s.status === 'certified' ? 'CERTIFIED'
+                : s.status === 'residue' ? `LAPSED — ${residue}%`
+                : 'DORMANT';
+            return `<li class="cert-row is-${s.status}">
+                <span class="cert-branch">${branch}</span>
+                <span class="code-stamp${s.status === 'certified' ? ' is-live' : ''}">${status}</span>
+                <span class="cert-owned">${s.owned}/${s.total} enacted &middot; ${s.spent} DP</span>
+            </li>`;
+        }).join('');
+
+        host.innerHTML = `
+            <div class="cert-head">
+                <span class="briefing-eyebrow">Certification</span>
+                <span class="cert-current">${cert.path ? `Path of ${cert.path}` : 'none'}</span>
+            </div>
+            <ul class="cert-list">${rows}</ul>
+            <p class="cert-foot">Only the certified path pays in full. A path you have certified on before pays
+                ${residue}% of what you bought. Change it when you ship.</p>
+        `;
+    },
+
     updateMandates() {
+        this.renderCertification();
         this.renderDoctrine();
+
+        const certPath = game.certification().path;
+        const everCertified = game.certification().everCertified;
 
         // Update each branch
         ['creation', 'maintenance', 'entropy'].forEach(branch => {
@@ -2028,7 +2260,21 @@ const ui = {
 
             container.innerHTML = '';
 
-            const branchMandates = MandateList.filter(m => m.branch === branch);
+            /* Sorted by cost rather than left in table order. entropy_ultimate
+               is declared last in MandateList despite being entropy_t4's
+               prerequisite, so the raw order draws a tier-5 node beneath its
+               own dependents. Cost is monotonic along every branch, so it is
+               the progression. Display only — the array order is load-bearing
+               for the modifier fold and is not touched. */
+            const branchMandates = MandateList
+                .filter(m => m.branch === branch)
+                .slice()
+                .sort((a, b) => a.cost - b.cost);
+            const live = branch === certPath;
+            const lapsed = !live && everCertified.includes(branch);
+            container.classList.toggle('is-certified', live);
+            container.classList.toggle('is-lapsed', lapsed);
+            container.classList.toggle('is-dormant', !live && !lapsed);
             branchMandates.forEach(mandate => {
                 const isPurchased = State.purchasedMandates[mandate.id];
 
@@ -2054,10 +2300,18 @@ const ui = {
                 if (!prereqsMet && !isPurchased) node.classList.add('locked');
                 if (!canAfford && !isPurchased && prereqsMet) node.classList.add('unaffordable');
 
+                /* An enacted node on a path you are not certified on is not
+                   "ENACTED" in any sense the player can spend, and saying so
+                   is the whole point of the mechanic being legible. */
+                const standing = !isPurchased ? ''
+                    : live ? 'ENACTED'
+                    : lapsed ? `LAPSED — ${Math.round(Economy.certificationResidue * 100)}%`
+                    : 'DORMANT';
+
                 node.innerHTML = `
                     <div class="mandate-name">${mandate.name}</div>
                     <div class="mandate-desc">${mandate.description}</div>
-                    <div class="mandate-cost">${isPurchased ? 'ENACTED' : (prereqsMet ? `${effectiveCost} DP${effectiveCost < mandate.cost ? ` (Base ${mandate.cost})` : ''}` : 'Prerequisites not met')}</div>
+                    <div class="mandate-cost">${isPurchased ? standing : (prereqsMet ? `${effectiveCost} DP${effectiveCost < mandate.cost ? ` (Base ${mandate.cost})` : ''}` : 'Prerequisites not met')}</div>
                 `;
 
                 if (!isPurchased && prereqsMet) {
@@ -2568,12 +2822,30 @@ const ui = {
             const remaining = game.getSoulsUntilNextPoint();
             const runSouls = game.getRunSouls();
             const payout = game.getPrestigeChannelPayout();
-            const nextAward = Math.floor((game.calculateDivinityPoints() + 1) * payout);
+            // Cascade penalty included, or the panel promises an award the
+            // reboot will not pay — the same drift getPrestigeAward() was
+            // introduced to close between the panel and the channel multiplier.
+            const nextAward = Math.floor(
+                (game.calculateDivinityPoints() + 1) * payout * game.getCascadePenalty(),
+            );
             // "banked" would be wrong here: these Souls are earned but not yet
             // cashed in, and cashing in is the decision being described.
             nextEl.innerText = divinityGain > 0
                 ? `+${this.formatNumber(nextAward)} after ${this.formatNumber(remaining)} more Souls this run`
                 : `first point after ${this.formatNumber(remaining)} more Souls (${this.formatNumber(runSouls)} earned this run)`;
+        }
+
+        /* Shipping is a decision under rising pressure, so the panel that
+           hosts the button has to show the pressure. */
+        const stabilityEl = document.getElementById('prestige-stability');
+        if (stabilityEl) {
+            const cascade = game.cascadeState();
+            stabilityEl.innerText = cascade.tier > 0
+                ? `${cascade.label} — output ×${cascade.output}, award ${Math.round(cascade.award * 100)}%`
+                : cascade.ratePerHour > 0
+                    ? `nominal, degrading +${cascade.ratePerHour.toFixed(2)}/h`
+                    : cascade.recovering ? 'settling' : 'nominal';
+            stabilityEl.className = cascade.tier > 0 ? 'is-alarm' : '';
         }
 
         if (buttonEl) {

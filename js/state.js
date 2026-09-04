@@ -208,6 +208,41 @@ const State = {
         channel: 'stable',
         build: null,
         shipped: 0,          // builds released, for the version history
+
+        /* Instability is what makes SHIPPING a decision rather than a button.
+
+           It accrues while known issues sit unpatched, so a run that ignores
+           its changelog degrades — first into a SEV-2, then a SEV-1, then a
+           collapse that pays nothing. Patching relieves it, which is the only
+           reason patching has ever been worth doing.
+
+           Accrues in tick() only. It deliberately does NOT accrue offline:
+           this is an idle game, and a player cannot triage a cascade they
+           were not present for. The fiction covers it — degradation is only
+           observed under supervision. */
+        instability: 0,
+        cascadeTier: 0,      // 0 nominal, 1 degraded, 2 outage, 3 collapse
+        alertedTier: 0,      // highest tier already announced this run
+
+        /* Issue ids shipped unpatched. Permanent, one entry per id ever —
+           a known issue is filed once. Each carries a residual penalty, so
+           shipping a dirty build is cheap now and expensive forever. */
+        scars: [],
+    },
+
+    /* ── Certification ────────────────────────────────────────────────────
+       The Mandate tree used to be "buy all 21", which is a checklist rather
+       than a decision. A branch's bonuses now apply only while you are
+       CERTIFIED on it, chosen once per reboot; branches you have certified
+       on before pay a residue forever. Buying a node still unlocks it
+       permanently — certification decides which unlocked nodes are live.
+
+       `path` is null until the first reboot, which is also the first moment
+       Divinity exists to spend on a mandate. */
+    certification: {
+        path: null,          // 'creation' | 'maintenance' | 'entropy' | null
+        everCertified: [],   // branches certified at least once
+        history: [],         // path per reboot, newest last — for the UI and the lore
     },
 
     // System Settings
@@ -491,7 +526,7 @@ const State = {
        Migrations are pure data transforms on `parsed`. */
     SAVE_KEY: 'cosmos_save',
     BACKUP_KEY: 'cosmos_save_backup',
-    SAVE_VERSION: 5,
+    SAVE_VERSION: 6,
 
     /* Keys that are CODE, not save data.
 
@@ -593,6 +628,64 @@ const State = {
                are banked, not owed. The next run starts clean. */
             const earned = Number(parsed.totalStats?.soulsGained) || 0;
             parsed.runSoulsBaseline = earned;
+        },
+
+        6(parsed) {
+            /* Certification. Mandate bonuses used to be unconditional
+               `scope: 'permanent'` records; they are now owned by the
+               certified path and rebuilt under `scope: 'cert'` at boot.
+
+               The stale records have to go, or certification is a no-op:
+               Modifiers.add refuses a duplicate id SILENTLY, and a rebuilt
+               mandate record carries the same
+               `mandate:<id>:<target>` id as the permanent one already in the
+               log. Every branch would stay at full strength forever and
+               nothing would report it.
+
+               Migration 4's trick — `parsed.modifierLog = null`, let the
+               rebuild path regenerate everything — is no longer safe. The
+               adversary patch adds two `scope: 'permanent'` records from a
+               click; they are in no ownership ledger, rebuildModifierLog
+               cannot regenerate them, and executeAdversaryPatch refuses to
+               re-run once patchExecuted is set. Nulling the log destroys
+               them unrecoverably. So this removes ONLY what it has to.
+
+               `source.kind` is on the record, so no content table is needed
+               — which matters, because migrations run above the tables (see
+               the NOTE on the persistence block) and touching MandateList
+               here would throw a TDZ ReferenceError that load() swallows
+               into "starting from defaults". */
+            const log = parsed.modifierLog;
+            if (log && Array.isArray(log.records)) {
+                log.records = log.records.filter((r) => r && r.source?.kind !== 'mandate');
+            }
+
+            /* Every branch they have already bought into counts as
+               previously certified, so the residue is available immediately
+               rather than being earned a second time. Derived from the id
+               prefix, which is the only branch information reachable from
+               here — MandateList ids are `<branch>_<tier>` by construction.
+               bootstrapCertification re-derives the same set from the real
+               table and wins any disagreement. */
+            const owned = parsed.purchasedMandates || {};
+            const branches = [];
+            for (const id of Object.keys(owned)) {
+                if (!owned[id]) continue;
+                const branch = String(id).split('_')[0];
+                if (['creation', 'maintenance', 'entropy'].includes(branch) && !branches.includes(branch)) {
+                    branches.push(branch);
+                }
+            }
+            parsed.certification = { path: null, everCertified: branches, history: [] };
+
+            // Instability starts a returning run clean rather than back-dating
+            // a cascade onto Souls that were earned before it existed.
+            if (parsed.reality && typeof parsed.reality === 'object') {
+                parsed.reality.instability = 0;
+                parsed.reality.cascadeTier = 0;
+                parsed.reality.alertedTier = 0;
+                if (!Array.isArray(parsed.reality.scars)) parsed.reality.scars = [];
+            }
         },
 
         4(parsed) {
@@ -787,6 +880,68 @@ const Economy = {
     doctrineBaseCost: 6,
     doctrineGrowth: 1.3,
     doctrineBonusEach: 0.1,
+
+    /* ── Certification ─────────────────────────────────────────────────
+       What an uncertified branch still pays. Load-bearing in both
+       directions: at 0 the tree becomes three separate games and switching
+       paths throws away everything you bought, which punishes the rotation
+       the mechanic exists to create; at 1 there is no opportunity cost and
+       we are back to a checklist. A tenth is enough to make an old path
+       feel like something you kept and not enough to make holding all three
+       a strategy. */
+    certificationResidue: 0.1,
+
+    /* ── Instability and the cascade ───────────────────────────────────
+       Per hour of ONLINE play, per unit of unpatched severity weight, where
+       weight is (4 - severity) so a SEV-1 counts triple a SEV-3.
+
+       Sized against the reboot period the economy actually produces, which
+       tools/balance_sim.mjs measures at 80-140 minutes. The first cascade
+       tier has to land WELL PAST a normal reboot, or it stops being the
+       price of pushing a run deeper and becomes a tax on playing at all:
+
+         Stable, one SEV-3 (weight 1)   degraded at 6h40
+         Stable, one SEV-2 (weight 2)   degraded at 3h20
+         Stable, one SEV-1 (weight 3)   degraded at 2h13, collapsed at 4h27
+         Nightly, two or three (w ~6)   degraded at 1h07, collapsed at 2h13
+
+       So a Stable run has to be deliberately pushed to feel this, and a
+       Nightly run is racing it. That gap is where the channel's 2.2x payout
+       stops being free. An earlier value of 0.35 degraded a SEV-1 Stable
+       build in 57 minutes — inside the normal reboot period, which made the
+       cascade something that happened TO the player rather than something
+       they chose. */
+    instabilityPerWeightHour: 0.15,
+    /* What patching an issue gives back immediately, per unit of its weight.
+       Deliberately less than an hour of what it was accruing: patching is a
+       repair, not a reset, and a run that has ignored its changelog for
+       hours should not be restored by one click. The way back to nominal is
+       the recovery rate below. */
+    instabilityReliefPerWeight: 0.08,
+    /* Instability BLEEDS OFF once there is nothing left unpatched.
+
+       Without this, patching is a trap: clear every issue on a collapsed
+       Nightly build and the accrual stops at 1.5-something, which is still
+       an outage, with no unpatched issue left to patch your way out of. The
+       player did the thing the mechanic asked for and stayed punished. A
+       clean build recovering — from collapse in four hours, from degraded in
+       two — is what makes patching worth the resources, and it is the more
+       honest fiction besides: the tickets are closed, so the system settles. */
+    instabilityRecoveryPerHour: 0.5,
+    /* Tier thresholds. Below the first the build is nominal. */
+    cascadeTiers: [
+        { at: 1.0, label: 'SEV-2 DEGRADED', output: 0.6, award: 0.75 },
+        { at: 1.5, label: 'SEV-1 OUTAGE', output: 0.3, award: 0.4 },
+        { at: 2.0, label: 'CASCADE FAILURE', output: 0.1, award: 0 },
+    ],
+
+    /* ── Scars ─────────────────────────────────────────────────────────
+       A known issue shipped unpatched stays on the record at this fraction
+       of its strength, forever. Slightly heavier than the certification
+       residue because it is a consequence rather than a consolation — and
+       bounded regardless: there are eleven distinct issues in the pool and
+       each files exactly once. */
+    scarResidue: 0.15,
 
     /* ── Void ──────────────────────────────────────────────────────────
        Revenants are the Void's Throne: a conversion, not a second tap. */

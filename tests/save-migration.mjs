@@ -231,15 +231,18 @@ check('a fresh save starts with an open run, not a closed one', () => {
    this: a hand-written fixture is not the shape save() produces. */
 
 check("a save cannot overwrite the running build's SAVE_VERSION", () => {
+    // Read the constant from a save-less boot rather than restating it, so
+    // this keeps testing the property and not the number of the day.
+    const current = bootWith({}).State.SAVE_VERSION;
     const { State } = bootWith({
         cosmos_save: JSON.stringify({
             SAVE_VERSION: 3, saveVersion: 3,
             resources: { praise: 5 },
         }),
     });
-    assert.equal(State.SAVE_VERSION, 5,
+    assert.equal(State.SAVE_VERSION, current,
         'the save dictated the version constant — every later migration is now unreachable');
-    assert.equal(State.saveVersion, 5, 'the stamp did not move forward');
+    assert.equal(State.saveVersion, current, 'the stamp did not move forward');
 });
 
 check('a stale save cannot pin the game to its own version', () => {

@@ -4430,3 +4430,214 @@ body.start-menu-open .adversary-bark-layer { z-index: 9000; }
     .adv-line, .adv-welcome-line, .adv-error-line { animation: none; }
     .adversary-bark { transition: none; }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   CERTIFICATION, STABILITY AND SHIPPING
+
+   Three surfaces for one decision: which Mandate path is live, how close the
+   build is to a cascade, and the release dialog where both are settled.
+   Everything here reuses the existing token layer and .code-stamp / bevel
+   vocabulary — a certified path is brass, a lapsed one is vellum going grey,
+   and anything degrading is alarm.
+   ════════════════════════════════════════════════════════════════════════ */
+
+.code-stamp.is-live {
+    border-color: var(--cos-verd-500);
+    background: rgba(66, 144, 125, 0.16);
+    color: var(--cos-verd-600);
+}
+
+/* ── The certification header in the Mandates window ── */
+.certification-panel {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--cos-iron-600);
+    border-radius: 2px;
+    background: rgba(18, 24, 35, 0.5);
+}
+
+.cert-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.cert-current {
+    color: var(--cos-brass-300);
+    font: bold 12px var(--cos-font-display);
+    text-transform: capitalize;
+}
+
+.cert-list { margin: 0; padding: 0; list-style: none; }
+
+.cert-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(76, 92, 115, 0.28);
+}
+
+.cert-row:last-child { border-bottom: 0; }
+.cert-branch { color: var(--cos-ink-inv); font-size: 11px; text-transform: capitalize; }
+.cert-owned { color: var(--cos-ink-inv-dim); font: 10px var(--cos-font-machine); white-space: nowrap; }
+.cert-row.is-dormant .cert-branch { color: var(--cos-ink-inv-dim); }
+
+.cert-foot,
+.cert-none {
+    margin: 8px 0 0;
+    color: var(--cos-ink-inv-dim);
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+.cert-none { margin: 0; }
+
+/* A dormant branch is legible but visibly switched off. Opacity rather than
+   a colour override so the purchased/locked/unaffordable states underneath
+   keep reading as themselves. */
+.mandate-branch.is-lapsed { opacity: 0.78; }
+.mandate-branch.is-dormant { opacity: 0.55; }
+
+.mandate-branch.is-certified {
+    border-left: 2px solid var(--cos-brass-500);
+    padding-left: 8px;
+}
+
+/* ── Stability meter in the Universal Engine ── */
+.reality-stability { margin: 8px 0 10px; }
+
+.stability-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 5px;
+}
+
+.stability-trend {
+    color: var(--cos-ink-inv-dim);
+    font: 10px var(--cos-font-machine);
+    text-align: right;
+}
+
+.stability-track {
+    height: 5px;
+    border: 1px solid var(--cos-iron-600);
+    border-radius: 1px;
+    background: var(--cos-abyss);
+    overflow: hidden;
+}
+
+.stability-fill {
+    height: 100%;
+    background: var(--cos-verd-500);
+    transition: width 240ms linear, background-color 400ms ease;
+}
+
+.reality-stability.tier-1 .stability-fill { background: var(--cos-brass-500); }
+.reality-stability.tier-2 .stability-fill,
+.reality-stability.tier-3 .stability-fill { background: var(--cos-alarm); }
+
+.stability-note {
+    margin: 5px 0 0;
+    color: var(--cos-alarm);
+    font: 10px var(--cos-font-machine);
+}
+
+#prestige-stability.is-alarm { color: var(--cos-alarm); }
+
+/* ── The ship dialog ──
+
+   .system-dialog is a LIGHT surface (color #111 on --win-bg), so everything
+   here reads against vellum and uses --cos-ink / --cos-ink-dim. The first
+   draft inherited the dark-panel inks used elsewhere in this file and shipped
+   light-on-light; caught by looking at it. */
+.ship-dialog { max-width: 560px; }
+
+.ship-head { padding: 16px 18px 10px; }
+.ship-head h2 { margin: 0 0 5px; font: 700 20px/1.2 var(--cos-font-display); color: var(--cos-ink); }
+
+.ship-cascade,
+.ship-scars,
+.ship-clean {
+    margin: 0 18px 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--cos-vellum-400);
+    border-left: 3px solid var(--cos-brass-500);
+    background: rgba(180, 145, 74, 0.08);
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--cos-ink);
+}
+
+.ship-cascade {
+    border-left-color: var(--cos-alarm);
+    background: rgba(212, 85, 58, 0.09);
+}
+
+.ship-scars p,
+.ship-cascade p { margin: 6px 0 0; color: var(--cos-ink-dim); }
+.ship-scars ul { margin: 8px 0 0; padding-left: 17px; color: var(--cos-ink); }
+.ship-scars li { margin-bottom: 3px; }
+
+.ship-clean {
+    border-left-color: var(--cos-verd-500);
+    background: rgba(66, 144, 125, 0.09);
+    color: var(--cos-verd-700);
+    font: 11px var(--cos-font-machine);
+}
+
+.ship-cert { padding: 0 18px 6px; }
+.ship-cert .briefing-eyebrow { color: var(--cos-brass-700); }
+.ship-paths { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+
+/* No default selection — the button that ships stays disabled until one of
+   these is pressed. See ui.openShipDialog. */
+.ship-path {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas: 'name status' 'note status';
+    align-items: center;
+    gap: 2px 12px;
+    padding: 8px 11px;
+    border: 1px solid var(--cos-vellum-400);
+    background: rgba(255, 255, 255, 0.35);
+    color: var(--cos-ink);
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+}
+
+.ship-path:hover { border-color: var(--cos-brass-500); background: rgba(180, 145, 74, 0.1); }
+
+.ship-path.is-selected {
+    border-color: var(--cos-brass-700);
+    background: rgba(180, 145, 74, 0.22);
+    box-shadow: inset 0 0 0 1px var(--cos-brass-500);
+}
+
+.ship-path-name { grid-area: name; font: 600 13px var(--cos-font-display); text-transform: capitalize; }
+.ship-path-note { grid-area: note; color: var(--cos-ink-dim); font: 10px var(--cos-font-machine); }
+.ship-path-status {
+    grid-area: status;
+    color: var(--cos-brass-700);
+    font: 10px var(--cos-font-machine);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+}
+
+.ship-dialog .system-dialog-actions button[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* ── The unsolicited cascade alert ── */
+.cascade-alert { max-width: 480px; }
+.cascade-body { padding: 16px 18px; }
+.cascade-body h2 { margin: 9px 0 8px; font: 700 18px/1.25 var(--cos-font-display); color: var(--cos-ink); }
+.cascade-body p { margin: 0 0 8px; font-size: 12px; line-height: 1.6; color: var(--cos-ink); }
+.cascade-advice { color: var(--cos-ink-dim) !important; }

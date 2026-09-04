@@ -86,7 +86,39 @@ const { State, game, UpgradeList, MandateList, RepeatableList, AutomatonSpecs, E
    sample a different sequence of universes. */
 const SEED = Number((args.find((a) => a.startsWith('--seed')) || '').split('=')[1]) || 20260726;
 const CHANNEL = (args.find((a) => a.startsWith('--channel')) || '').split('=')[1] || 'stable';
-State.reality = { runSeed: SEED, channel: CHANNEL, build: null, shipped: 0 };
+/* Whole-object, so every field the schema declares has to be restated here.
+   A per-run field added under State.reality and forgotten in this literal is
+   `undefined` for the entire simulation, which looks like a balance change
+   rather than a missing pin. */
+State.reality = {
+    runSeed: SEED, channel: CHANNEL, build: null, shipped: 0,
+    instability: 0, cascadeTier: 0, alertedTier: 0, scars: [],
+};
+
+/* Which Mandate path the simulated player certifies on at each reboot.
+
+   `--certify=creation` pins one path. The default ROTATES, taking the branch
+   with the most owned nodes that is not the current one, because a player who
+   never rotates never sees the residue and a player who rotates every time
+   never keeps a bonus — and the mechanic is supposed to make both of those
+   legitimate. Rotation is the harsher of the two on the economy, so it is the
+   right default for a balance measurement. */
+const CERTIFY = (args.find((a) => a.startsWith('--certify')) || '').split('=')[1] || null;
+
+/* How deep the simulated player pushes a run before shipping it.
+
+   1 is the impatient player: bank the moment there is a point to bank. That
+   is the loop the reboot curve was tuned against and it stays the default.
+   Higher values model the player the cascade exists for — someone holding a
+   run open for a fatter award while unpatched issues degrade the build. The
+   whole ship-or-push decision is invisible at --push=1, because a run that
+   short never reaches a cascade tier. */
+const PUSH = Number((args.find((a) => a.startsWith('--push')) || '').split('=')[1]) || 1;
+
+/* --no-patch models the player who never opens the Universal Engine panel.
+   It is the only policy under which the cascade is currently reachable, and
+   it exists so that is measurable rather than assumed. */
+const NO_PATCH = args.includes('--no-patch');
 
 // The registry has to be seeded before any rate is read, exactly as
 // game.initializeSession() does it in the browser.
@@ -128,6 +160,40 @@ function buyMandates(log, t) {
         game.purchaseMandate(mandate.id);
         if (State.purchasedMandates[mandate.id]) log(t, `mandate: ${mandate.name} (${mandate.cost} DP)`);
     }
+}
+
+/* The path to certify on at the next reboot. See CERTIFY above. */
+function nextCertification() {
+    if (CERTIFY) return CERTIFY;
+    const current = game.certification().path;
+    const ranked = game.CERT_BRANCHES
+        .map((b) => game.branchStanding(b))
+        .sort((a, b) => b.spent - a.spent);
+    return (ranked.find((s) => s.branch !== current) || ranked[0]).branch;
+}
+
+/* Known issues: patch when it is affordable without starving the run.
+
+   The policy exists because instability makes ignoring the changelog a real
+   cost, and a simulator that never patches would measure a game nobody
+   plays. The 1.6x reserve is the same shape as the repeatable policy's —
+   spend on repairs only out of genuine surplus, so patching does not simply
+   out-compete buying automatons. */
+function patchIssues(log, t) {
+    if (NO_PATCH) return false;
+    const build = State.reality?.build;
+    if (!build) return false;
+    let patched = false;
+    for (const entry of Reality.unpatchedIssues(build)) {
+        const cost = Reality.patchCostOf(build, entry.id);
+        if (!cost) continue;
+        if ((cost.bag[cost.resource] || 0) < cost.amount * 1.6) continue;
+        if (game.patchKnownIssue(entry.id)) {
+            patched = true;
+            log(t, `patched: ${entry.id} (${Math.ceil(cost.amount)} ${cost.resource})`);
+        }
+    }
+    return patched;
 }
 
 /* Repeatables: buy whenever affordable, but keep a reserve so the policy does
@@ -248,6 +314,7 @@ function run() {
         if (buyRepeatables(log, t)) lastPurchaseSecond = t;
         if (buyAutomatons(log, t)) lastPurchaseSecond = t;
         if (playVoid(log, t)) lastPurchaseSecond = t;
+        if (patchIssues(log, t)) lastPurchaseSecond = t;
 
         /* Prestige like a player would.
 
@@ -265,12 +332,22 @@ function run() {
            patient player still lands within ~20%, which is what keeps it a
            decision rather than a solved one. Five minutes of spacing stands in
            for a player who is not staring at the button. */
-        const gain = game.calculateDivinityPoints();
-        if (gain >= 1 && t - lastPrestigeSecond > 300) {
-            game.performPrestige();
+        /* Ships on the AWARD, not the raw score. Under a cascade those two
+           diverge — the award is what the reboot actually pays — and a policy
+           that shipped on the score would happily bank a collapsed build for
+           nothing and call it progress. */
+        const gain = game.getPrestigeAward();
+        if (gain >= PUSH && t - lastPrestigeSecond > 300) {
+            const cascade = game.cascadeState();
+            game.performPrestige({ confirmed: true, certifyOn: nextCertification() });
             lastPrestigeSecond = t;
-            prestigeLog.push({ t, gain, total: State.totalDivinityPoints });
-            log(t, `PRESTIGE #${State.prestigeLevel} -> +${gain} DP (total ${State.totalDivinityPoints})`);
+            prestigeLog.push({
+                t, gain, total: State.totalDivinityPoints,
+                certified: game.certification().path,
+                tier: cascade.tier,
+                scars: State.reality.scars.length,
+            });
+            log(t, `PRESTIGE #${State.prestigeLevel} -> +${gain} DP (total ${State.totalDivinityPoints}), certified ${game.certification().path}`);
             lastPurchaseSecond = t;
         }
 
@@ -353,6 +430,13 @@ if (JSON_OUT) {
             shipped: State.reality.shipped,
             version: State.reality.build?.version,
             entries: (State.reality.build?.entries || []).map((e) => `${e.kind}:${e.id}${e.patched ? ':patched' : ''}`),
+            instability: State.reality.instability,
+            cascadeTier: State.reality.cascadeTier,
+            scars: [...State.reality.scars].sort(),
+        },
+        certification: {
+            path: State.certification.path,
+            everCertified: [...State.certification.everCertified].sort(),
         },
         upgradesOwned: Object.keys(State.upgrades).filter((k) => State.upgrades[k]).sort(),
         mandatesOwned: Object.keys(State.purchasedMandates).filter((k) => State.purchasedMandates[k]).sort(),

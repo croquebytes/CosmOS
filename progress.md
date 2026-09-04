@@ -799,3 +799,127 @@ the harness rather than what the name claims.
 - `archived` remains unoffered — it is byte-identical to stable and pays no
   Divinity, so reaching reboot 12 unlocks nothing yet. That is a separate
   unimplemented feature, not a curve problem.
+
+---
+
+## 2026-09-03 — Session 5: certification, and shipping as a decision
+
+Two of `DESIGN_DIRECTION.md`'s Phase 2 items, which are really one decision
+seen from both ends: **§4.2 certification** (the Mandate tree stops being a
+checklist) and **§4.4 the ship-the-build run exit** (a run acquires a shape and
+a way to end badly).
+
+### What the reboot is now
+
+You do not press Divine Reboot. You **ship a build**, and the dialog asks for
+terms: what it pays, which known issues go on the permanent record, and which
+Mandate path the next run is certified on. That last one has **no default** and
+the button stays disabled until you answer it — the Adversary scene's arming
+problem solved by a cheaper route, since a choice that is the button's
+precondition cannot be resolved by a reflex click.
+
+**Certification.** A branch's bonuses apply only while you are certified on it.
+A branch you have certified on before pays a 10% residue forever; one you never
+have pays nothing. Buying a node still unlocks it permanently — certification
+decides which unlocked nodes are switched on. Everything mandate-derived lives
+under a new `scope: 'cert'` so the whole set can be dropped and rebuilt in one
+call, which keeps the residue arithmetic in exactly one place.
+
+The residue scales a modifier's **distance from 1**, not its value. A tenth of
+`mul 1.4` is `mul 1.04`. A tenth of the *value* is `mul 0.14` — an 86%
+production cut dressed as a consolation prize, and indistinguishable from the
+correct answer to any test that only asserts "less than full". There is a test
+that names this.
+
+**Instability and the cascade.** Unpatched known issues accrue instability by
+severity weight, `(4 - severity)` per hour. Three tiers: SEV-2 DEGRADED at 1.0
+(output ×0.6, award 75%), SEV-1 OUTAGE at 1.5 (×0.3, 40%), CASCADE FAILURE at
+2.0 (×0.1, **award 0**). Fully deterministic — no roll — because randomness
+would have cost the golden master and let a player reload-shop a better
+outcome, the same reasoning that made Reality Builds seeded.
+
+**Scars.** Ship with an issue unpatched and it is filed permanently, keeping
+15% of its bite. One entry per id ever, so the ledger is bounded by the eleven
+issues in the pool and a hundred runs cannot compound into an unplayable game.
+
+### Three decisions that were not obvious
+
+- **The opening build does not degrade.** Instability is gated on
+  `prestigeLevel > 0`. Sector 7G's failed integrity check is the tutorial; a new
+  player idling two hours before their first reboot would otherwise return to a
+  collapsed universe having never been told the mechanic exists.
+- **A clean build settles.** Without recovery, clearing every issue on a
+  degraded build strands you at whatever you had accrued with nothing left to
+  patch — punished for doing exactly what the mechanic asked. Instability now
+  bleeds off at 0.5/h once nothing is on file.
+- **A collapsed build can still be shipped.** Shipping is gated on the run's
+  *score*, not its *award*. Gating on the award would trap the player inside
+  the cascade, since the only other exit is a patch a collapsed run may not be
+  able to fund. Shipping for zero is a bad outcome you chose; being unable to
+  ship is a soft-lock, and this project has already shipped two.
+
+### Measured
+
+`tools/balance_sim.mjs` gained a certification policy (rotating by default,
+which is the harsher case), a patch policy, `--push=N` for a patient player and
+`--no-patch` for one who never opens the panel.
+
+Convergence holds — 31 reboots by 48h against 36 before, gaps lengthening
+65→145 min. The certification nerf is visible and modest: `multipliers.praise`
+15.90 → 14.60 at 2h. Lifetime Souls actually rise (129k → 173k at 2h) because
+the simulator now patches.
+
+The cascade only bites the player it is for:
+
+| policy (24h) | reboots | Divinity | shipped degraded |
+|---|---|---|---|
+| patches, ships early | 18 | 18 | never |
+| never patches, ships early | 16 | 16 | never |
+| never patches, pushes to +3 | 3 | **9** | collapsed |
+| never patches, nightly, +3 | 5 | 17 | twice |
+| never patches, pushes to +6 (48h) | 1 | 6 | collapsed |
+
+Pushing a run while ignoring its changelog halves your Divinity. Ignoring the
+changelog while shipping promptly costs nothing but scars. Both are legitimate,
+which is the §4.1 rule that ignoring must sometimes be viable.
+
+### On the tests, a fifth time — and the first that worked
+
+23 new tests, and every one **mutation-verified**: 14 deliberate breaks, 14
+caught. Two survived the first pass and both were the familiar failure:
+
+- *"a grant mandate is not issued on an uncertified path"* only asserted the
+  positive half, so it passed a build that issued every grant regardless of path.
+- *"the same issue is only ever filed once"* poked the scar ledger directly and
+  never exercised the filing dedupe in `performPrestige`.
+
+Also caught by the harness itself: `game_()` handed every test 5000 Divinity to
+shop with, which **raises the reboot bar**, so five tests were asserting against
+a `performPrestige` that had refused and returned. They passed anyway.
+
+### And one bug only the browser could find
+
+`bootstrapCertification` re-derived `everCertified` from the purchase ledger on
+every boot, so buying a single node on a dormant path silently promoted it to
+the residue on the next reload — free value, and it collapses *dormant* and
+*lapsed* into each other, which is the distinction the mechanic is made of.
+Found by reloading the page and watching Entropy relabel itself.
+
+The ship dialog also shipped light-on-light in its first draft: `.system-dialog`
+is a **light** vellum surface and the CSS inherited the dark-panel inks used
+elsewhere in the file. No test can see that.
+
+### Carried forward
+
+- The storage repeatables are broken and **the economy needs them broken** —
+  see `38ea619`. Rank 2+ of every vault is silently discarded, so praise sits
+  capped at 7,000 for an entire 8h run. Fixing it diverges the reboot loop at
+  every grant curve tried. It needs the id fix, the storage curve and the
+  prestige curve re-measured together at 48h and 72h.
+- **That is also why patching is currently free**, and therefore why an
+  attentive player never sees a cascade: every resource sits pinned at its cap,
+  so a cost denominated in resources costs nothing. The cascade is correct and
+  measurable today only under `--no-patch`. Its pressure arrives on its own
+  when storage is fixed.
+- `Modifiers.explain()` still renders nowhere. It is now the obvious home for
+  showing a cascade throttle and a lapsed-path residue in the same stack.
