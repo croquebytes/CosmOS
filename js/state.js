@@ -493,6 +493,29 @@ const State = {
     BACKUP_KEY: 'cosmos_save_backup',
     SAVE_VERSION: 5,
 
+    /* Keys that are CODE, not save data.
+
+       save() serialises `this`, so these three are written into every save
+       file — and mergeInto used to copy them straight back out again, over
+       the constants the running build declares. The result was a save that
+       pinned the game to the version that wrote it:
+
+         a save stamped 4 loads under a build at 5 -> migration 5 runs ->
+         mergeInto sets State.SAVE_VERSION = 4 -> the next save() stamps
+         saveVersion = 4 again -> migration 5 runs again, on every load,
+         forever.
+
+       Migration 5 sets `runSoulsBaseline = totalStats.soulsGained`, so
+       re-running it every load closed the run every load: runSouls pinned at
+       0 and the player could never reboot again. Measured on the real loader
+       before this guard existed — three reloads, baseline tracking
+       soulsGained each time.
+
+       Keeping the fix in mergeInto rather than in save() means it also
+       repairs saves that are ALREADY pinned: their stale stamp is ignored,
+       the pending migrations run once, and the next save stamps correctly. */
+    CODE_CONSTANTS: ['SAVE_KEY', 'BACKUP_KEY', 'SAVE_VERSION', 'CODE_CONSTANTS'],
+
     save() {
         this.runtime.lastUpdateTime = Date.now();
         this.saveVersion = State.SAVE_VERSION;
@@ -628,6 +651,12 @@ const State = {
             if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
             // Never let a save name a key that reaches the prototype chain.
             if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+            /* Nor a key that IS the code. These three live on State so the
+               persistence block reads as one unit, which means save() writes
+               them into every save — and merging them back overwrites the
+               running build's constants with a previous build's. See
+               CODE_CONSTANTS. */
+            if (State.CODE_CONSTANTS.includes(key)) continue;
 
             const incoming = source[key];
             const existing = target[key];
