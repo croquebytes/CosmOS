@@ -311,6 +311,30 @@ const ui = {
        fiction are the same object here. */
     releaseMarks: { improvement: '+', issue: '\u2715', regression: '!', deprecation: '\u2298' },
 
+    /* Content goes into innerHTML in a dozen places here, and one changelog
+       note is written the way a person writes:
+
+           'Anomaly detection muted by a previous Operator. Note left: "too
+            noisy".'
+
+       Interpolated raw into `title="${entry.note}"`, those quotes closed the
+       attribute early. The tooltip was truncated at 'Note left: ' \u2014 the
+       punchline cut off \u2014 and the parser turned the remainder into two stray
+       attributes on the button, `too` and `noisy".`.
+
+       Nothing here is player-authored, so this is a correctness and
+       typography problem rather than an injection one. It becomes an
+       injection problem the moment any content string is, so escaping is the
+       cheaper habit. */
+    escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    },
+
     showReleaseNotes(build) {
         const layer = document.getElementById('system-modal-layer');
         if (!layer || !build) return;
@@ -320,7 +344,7 @@ const ui = {
             const sev = entry.severity ? ` <span class="rn-sev">SEV-${entry.severity}</span>` : '';
             return `<li class="rn-line rn-${entry.kind}">
                 <span class="rn-mark">${mark}</span>
-                <span class="rn-note">${entry.note}${sev}</span>
+                <span class="rn-note">${this.escapeHtml(entry.note)}${sev}</span>
             </li>`;
         }).join('');
 
@@ -415,7 +439,7 @@ const ui = {
                    <span class="code-stamp is-alarm">${fresh.length} known issue${fresh.length === 1 ? '' : 's'} unpatched</span>
                    <p>Shipping files ${fresh.length === 1 ? 'it' : 'them'} permanently. Each keeps
                       ${Math.round(Economy.scarResidue * 100)}% of its bite, on every run from now on.</p>
-                   <ul>${fresh.map((e) => `<li>SEV-${e.severity || 3} — ${e.note.split('.')[0]}.</li>`).join('')}</ul>
+                   <ul>${fresh.map((e) => `<li>SEV-${e.severity || 3} — ${this.escapeHtml(e.note.split('.')[0])}.</li>`).join('')}</ul>
                </div>`
             : '<p class="ship-clean">No unpatched known issues. This release goes out clean.</p>';
 
@@ -1006,10 +1030,10 @@ const ui = {
             const affordable = cost && (cost.bag[cost.resource] || 0) >= cost.amount;
             return `<button class="win-btn reality-issue ${affordable ? '' : 'unaffordable'}"
                         onclick="game.patchKnownIssue('${entry.id}')"
-                        title="${entry.note}">
+                        title="${this.escapeHtml(entry.note)}">
                     <span class="reality-issue-note">
                         <span class="code-stamp is-alarm">SEV-${entry.severity || 3}</span>
-                        ${entry.note.split('.')[0]}.
+                        ${this.escapeHtml(entry.note.split('.')[0])}.
                     </span>
                     <span class="reality-issue-cost">${cost ? `Patch — ${this.formatNumber(cost.amount)} ${cost.resource}` : 'will not fix'}</span>
                 </button>`;
@@ -1066,7 +1090,7 @@ const ui = {
                 <ul class="rn-list">${(build.entries || []).map((entry) => `
                     <li class="rn-line rn-${entry.kind}${entry.patched ? ' rn-patched' : ''}">
                         <span class="rn-mark">${this.releaseMarks[entry.kind] || '-'}</span>
-                        <span class="rn-note">${entry.patched ? '<s>' : ''}${entry.note}${entry.patched ? '</s> <em>patched</em>' : ''}</span>
+                        <span class="rn-note">${entry.patched ? '<s>' : ''}${this.escapeHtml(entry.note)}${entry.patched ? '</s> <em>patched</em>' : ''}</span>
                     </li>`).join('')}</ul>
             </details>
         `;
@@ -2313,8 +2337,8 @@ const ui = {
                     : 'DORMANT';
 
                 node.innerHTML = `
-                    <div class="mandate-name">${mandate.name}</div>
-                    <div class="mandate-desc">${mandate.description}</div>
+                    <div class="mandate-name">${this.escapeHtml(mandate.name)}</div>
+                    <div class="mandate-desc">${this.escapeHtml(mandate.description)}</div>
                     <div class="mandate-cost">${isPurchased ? standing : (prereqsMet ? `${effectiveCost} DP${effectiveCost < mandate.cost ? ` (Base ${mandate.cost})` : ''}` : 'Prerequisites not met')}</div>
                 `;
 
