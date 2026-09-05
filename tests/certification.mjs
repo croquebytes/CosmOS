@@ -66,6 +66,12 @@ function boot(store = {}) {
         '({ State, Modifiers, Reality, game, Economy, MandateList, RealityPool })', ctx,
     );
     env.store = store;
+    /* Lets a test swap the ui global. vm.createContext returns the
+       contextified sandbox itself, so assigning to it sets the real global —
+       which matters because the default stub is a Proxy of noops that answer
+       `undefined` to everything, and some of this code now reads a ui
+       function's RETURN value. */
+    env.setUi = (replacement) => { ctx.ui = replacement; };
     return env;
 }
 
@@ -560,6 +566,46 @@ check('offline progress does NOT degrade the build', () => {
     assert.ok(report && report.simulatedSeconds > 3600, 'fixture check: offline progress really ran');
     assert.equal(env.State.reality.instability, 0,
         'the build degraded while nobody was watching — a player cannot triage that');
+});
+
+check('a cascade warning suppressed by a modal is retried, not lost', () => {
+    /* showCascadeAlert refuses to paint over an open modal, and modals are
+       common exactly when a tier turns over: release notes on every reboot,
+       the offline report on every load, the Adversary scene at its
+       thresholds. alertedTier used to be bumped BEFORE the render, so a
+       collision dropped the warning permanently — output throttled and award
+       cut with nothing ever saying so — and syncCascade early-returns on an
+       unchanged tier, so there was no second chance.
+
+       The default headless `ui` is a Proxy returning noop functions, whose
+       return is undefined. That is a FALSY answer, i.e. "did not render", so
+       this test needs a ui that answers honestly in both directions. */
+    const env = game_();
+    env.State.prestigeLevel = 3;
+    env.State.reality.build = env.Reality.generate(20260726, 3, 'stable');
+
+    let rendered = 0;
+    let modalUp = true;
+    const stub = new Proxy({
+        showCascadeAlert: () => { if (modalUp) return false; rendered++; return true; },
+    }, { get: (t, k) => (k in t ? t[k] : () => {}) });
+    env.setUi(stub);
+
+    env.State.reality.instability = env.Economy.cascadeTiers[0].at;
+    env.game.syncCascade();
+    assert.equal(rendered, 0, 'fixture check: the alert was suppressed');
+    assert.equal(env.State.reality.alertedTier, 0,
+        'a suppressed warning was marked as announced — the player never sees it');
+
+    // The modal closes; the next tick must deliver it.
+    modalUp = false;
+    env.game.accrueInstability(1, Date.now());
+    assert.equal(rendered, 1, 'the suppressed warning was never retried');
+    assert.equal(env.State.reality.alertedTier, 1, 'a delivered warning was not recorded');
+
+    // And it does not nag once delivered.
+    env.game.accrueInstability(1, Date.now());
+    assert.equal(rendered, 1, 'the same tier announced itself twice');
 });
 
 check('a reboot clears the cascade throttle, not just the counter', () => {

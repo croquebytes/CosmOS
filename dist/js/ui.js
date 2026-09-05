@@ -486,7 +486,10 @@ const ui = {
        cannot paint over the release notes it would otherwise interrupt. */
     showCascadeAlert(cascade) {
         const layer = document.getElementById('system-modal-layer');
-        if (!layer || layer.classList.contains('active')) return;
+        // Returns whether it actually rendered. game.announceCascade only
+        // marks the tier as announced on a true, and retries otherwise — a
+        // warning suppressed by a modal collision must not be lost.
+        if (!layer || layer.classList.contains('active')) return false;
 
         layer.innerHTML = `
             <section class="system-dialog cascade-alert tier-${cascade.tier}" role="alertdialog" aria-modal="true" aria-labelledby="cascade-title">
@@ -510,6 +513,7 @@ const ui = {
             </section>
         `;
         layer.classList.add('active');
+        return true;
     },
 
     /* ════════════════════════════════════════════════════════════════════

@@ -1182,6 +1182,9 @@ const game = {
             }
         }
         this.syncCascade(now);
+        // Retry an announcement a modal collision suppressed. Cheap: it
+        // returns immediately unless a tier is genuinely unannounced.
+        this.announceCascade();
     },
 
     syncCascade(now = Date.now()) {
@@ -1207,16 +1210,37 @@ const game = {
         }
         Modifiers.commit(now);
 
-        /* The OS interrupts you. A cursed operating system that notices a
-           cascade and says nothing is just a number going down. Announced
-           once per tier per run — `alertedTier` never falls, so patching back
-           down and drifting up again does not re-open the same dialog. */
-        if (tier > (reality.alertedTier || 0)) {
-            reality.alertedTier = tier;
-            ui.showCascadeAlert?.(this.cascadeState());
-        }
+        this.announceCascade();
         ui.renderRealityPanel?.();
         return tier;
+    },
+
+    /* The OS interrupts you. A cursed operating system that notices a cascade
+       and says nothing is just a number going down.
+
+       Announced once per tier per run — `alertedTier` never falls, so
+       patching back down and drifting up again does not re-open the same
+       dialog. But it only advances when the dialog ACTUALLY RENDERED.
+
+       showCascadeAlert refuses to paint over an open modal, and modals are
+       common exactly when a tier is likely to turn over: the release notes on
+       every reboot, the offline report on every load, the Adversary scene at
+       its thresholds. Marking the tier as announced before the render meant a
+       collision dropped the warning permanently — the player's output was
+       throttled and their award cut with nothing ever saying so. And
+       syncCascade early-returns when the tier is unchanged, so there was no
+       second chance.
+
+       Called from the tick as well as from syncCascade, so a suppressed
+       announcement is retried until it lands. */
+    announceCascade() {
+        const reality = State.reality;
+        if (!reality) return false;
+        const tier = this.cascadeTierFor(this.instabilityOf(reality));
+        if (tier <= (reality.alertedTier || 0)) return false;
+        if (ui.showCascadeAlert?.(this.cascadeState()) !== true) return false;
+        reality.alertedTier = tier;
+        return true;
     },
 
     /* Rebuilds the log from the ownership ledgers, in content-table order.
