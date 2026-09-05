@@ -670,7 +670,10 @@ const game = {
         };
     },
 
-    tick(deltaSeconds, now = Date.now()) {
+    /* `attended` is false when the delta is a wall-clock catch-up rather than
+       play — see loop(). It gates instability only; production is linear and
+       accrues either way, which is the whole point of the catch-up. */
+    tick(deltaSeconds, now = Date.now(), { attended = true } = {}) {
         try {
             this.ensureLoopState();
 
@@ -684,7 +687,7 @@ const game = {
 
             /* Before production is read, so a tier change throttles the tick
                that crossed into it rather than the one after. */
-            this.accrueInstability(deltaSeconds, now);
+            if (attended) this.accrueInstability(deltaSeconds, now);
 
             const rates = this.getProductionRates(now, true);
             const praiseGain = rates.praise * deltaSeconds;
@@ -777,6 +780,12 @@ const game = {
         }
     },
 
+    /* The longest gap between animation frames that still counts as someone
+       watching. Generous — a busy main thread or a background tab throttled
+       to 1Hz stays "attended" — because the cost of guessing wrong is only
+       that a few seconds of degradation are forgiven. */
+    ATTENDED_GAP_SECONDS: 5,
+
     loop() {
         const now = Date.now();
         const previousTime = Number.isFinite(this.lastWallClockTime) ? this.lastWallClockTime : now - (1000 / 60);
@@ -784,7 +793,16 @@ const game = {
         // both safe and necessary when a tab or desktop window is suspended.
         const deltaSeconds = Math.max(0, Math.min(8 * 60 * 60, (now - previousTime) / 1000));
         this.lastWallClockTime = now;
-        this.tick(deltaSeconds, now);
+        /* A gap this size is a suspended tab or a slept machine, not play.
+           Production replays across it — that is what the clamp above is for
+           — but instability must not, or leaving the game OPEN would be
+           strictly worse than closing it: initializeSession's offline path is
+           exempt, so the same eight hours would cost nothing if the player
+           quit and up to a full cascade if they did not. A sleeping laptop is
+           an absence, and the rule is that a player cannot triage a cascade
+           they were not present for. */
+        const attended = deltaSeconds <= this.ATTENDED_GAP_SECONDS;
+        this.tick(deltaSeconds, now, { attended });
         requestAnimationFrame(() => this.loop());
     },
 
@@ -957,10 +975,12 @@ const game = {
        would compound the grant on every reload — the exact double-apply
        applyContentItem's routing rule exists to prevent. Grants are re-issued
        once, by performPrestige, after the reset that clears them. */
-    applyCertification(now = Date.now()) {
+    /* The mandate records the current certification implies. Pure — it reads
+       state and returns records, so the reconcile below is the only thing
+       that touches the log. */
+    certificationMods() {
         const cert = this.certification();
-        Modifiers.dropScope('cert');
-
+        const mods = [];
         for (const mandate of MandateList) {
             if (!State.purchasedMandates[mandate.id] || !mandate.mods) continue;
             const live = mandate.branch === cert.path;
@@ -970,17 +990,26 @@ const game = {
             for (const mod of mandate.mods) {
                 const value = live ? mod.value : this.residueValue(mod, Economy.certificationResidue);
                 if (value === null || value === undefined) continue;
-                Modifiers.add({
+                mods.push({
                     ...mod,
                     value,
-                    scope: 'cert',
                     source: { kind: 'mandate', id: mandate.id },
                     label: live ? mandate.name : `${mandate.name} (lapsed)`,
                 });
             }
         }
+        return mods;
+    },
+
+    applyCertification(now = Date.now()) {
+        /* Reconciled in place rather than dropped and re-added. These records
+           are derived and are rebuilt on every boot, so re-adding them moved
+           them behind everything bought since the last boot — which on
+           `caps.*` reordered a `mulfloor` past an `add` and inflated storage
+           by pressing reload. See Modifiers.reconcileScope. */
+        const count = Modifiers.reconcileScope('cert', this.certificationMods());
         Modifiers.commit(now);
-        return Modifiers.records.filter((r) => r.scope === 'cert').length;
+        return count;
     },
 
     /* Certifies on a path. Called by the ship dialog, and by
@@ -1046,27 +1075,35 @@ const game = {
        fraction of its bite. Rebuilt from the ledger under `scope: 'scar'`
        for the same reason certification is: one arithmetic site, idempotent
        on every load. */
-    applyScars(now = Date.now()) {
+    scarMods() {
         const scars = Array.isArray(State.reality?.scars) ? State.reality.scars : [];
-        Modifiers.dropScope('scar');
-
+        const mods = [];
+        const filed = new Set();
         for (const id of scars) {
+            // A duplicated id in the ledger must not fold twice.
+            if (filed.has(id)) continue;
+            filed.add(id);
             const entry = this.scarSource(id);
             if (!entry) continue;
             for (const mod of entry.mods || []) {
                 const value = this.residueValue(mod, Economy.scarResidue);
                 if (value === null || value === undefined) continue;
-                Modifiers.add({
+                mods.push({
                     ...mod,
                     value,
-                    scope: 'scar',
                     source: { kind: 'scar', id },
                     label: `Known issue on file — ${entry.note.split('.')[0]}`,
                 });
             }
         }
+        return mods;
+    },
+
+    applyScars(now = Date.now()) {
+        // Reconciled in place, for the same reason as applyCertification.
+        const count = Modifiers.reconcileScope('scar', this.scarMods());
         Modifiers.commit(now);
-        return Modifiers.records.filter((r) => r.scope === 'scar').length;
+        return count;
     },
 
     /* Scars are stored as bare ids, so the pool is the source of truth for
@@ -1860,6 +1897,17 @@ const game = {
            weaker in relative terms with every multiplier the player bought.
            Worse, its Offerings term multiplied State.mps, which nothing has
            ever produced: Temporal Rift granted exactly zero Offerings. */
+        /* Degrade BEFORE reading the rates, exactly as tick() does — see the
+           note at the accrueInstability call there. In a tick that ordering
+           is worth 16ms; here it is worth a full hour, and getting it
+           backwards let the hour that CAUSES a tier crossing be paid in full
+           at the old tier. Measured on an identical build one tick below
+           SEV-1: rifting banked 8,640 Souls against 4,507 for living the same
+           hour, a 1.92x discount on the degradation the Rift itself created.
+           That is the dominance 0a7040f was written to remove, still standing
+           because the accrual was in the wrong place. */
+        this.accrueInstability(3600, now);
+
         const rates = this.getProductionRates(now, true);
         const praiseGain = rates.praise * 3600;
         const offeringGain = rates.offerings * 3600;
@@ -1874,21 +1922,14 @@ const game = {
         State.totalStats.offeringsGained = (State.totalStats.offeringsGained || 0) + offeringGain;
         State.totalStats.soulsGained = (State.totalStats.soulsGained || 0) + soulGain;
 
-        /* The hour DEGRADES too.
-
-           The Rift bypasses tick(), so instability had to be accrued by hand
-           or not at all — and not at all makes it a free way to push a run
-           deeper, which is the exact decision the cascade exists to price.
-           Rifted Souls raise the prestige award like any others, so an hour
-           of them for no degradation is strictly dominant: rift, bank a
-           bigger award, never see a cascade.
+        /* The hour degrades too, and it is accrued above, before the rates
+           are read. The Rift bypasses tick(), so without it an hour of Souls
+           came free — and rifted Souls raise the prestige award like any
+           others, so that was strictly dominant: rift, bank a bigger award,
+           never see a cascade.
 
            It is also the more honest fiction. The hour happened. Sector 7G
-           does not get to skip it because you were the one who asked for it.
-           Note that the rates above already carry the cascade throttle — a
-           degraded build rifts for less, which is the same trade as playing
-           it in real time. */
-        this.accrueInstability(3600, now);
+           does not get to skip it because you were the one who asked for it. */
 
         // Track for achievements
         State.achievementProgress.use_temporal_rift = (State.achievementProgress.use_temporal_rift || 0) + 1;

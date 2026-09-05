@@ -192,6 +192,32 @@ check('applyCertification is idempotent', () => {
         'repeated application compounded — a reload would inflate the tree');
 });
 
+check('a bonus with no residue form is DROPPED when its path lapses', () => {
+    /* maintenance_apex is `{target: 'offline.efficiency', op: 'set', value: 1}`
+       and residueValue returns null for 'set' — half of "offline efficiency is
+       1" is not a smaller guarantee, it is a different one. So a lapsed apex
+       has no record at all, which means the reconcile has to REMOVE it rather
+       than leave it at its old value.
+
+       Left in place, a single certification on maintenance would pin offline
+       efficiency at 1 forever, for free, on every subsequent run. The
+       mutation harness found this branch untested. */
+    const env = game_({}, SHOPPING);
+    env.State.purchasedMandates = { maintenance_apex: true };
+    const base = env.State.offlineEfficiency;
+
+    env.game.certifyOn('maintenance');
+    env.game.applyCertification();
+    assert.equal(env.State.offlineEfficiency, 1, 'fixture check: the apex sets it to 1');
+
+    env.game.certifyOn('creation');
+    env.game.applyCertification();
+    assert.equal(env.State.offlineEfficiency, base,
+        'a set-op bonus survived its path lapsing — kept in full, for free, forever');
+    assert.equal(env.Modifiers.records.filter((r) => r.scope === 'cert').length, 0,
+        'the stale record is still in the log');
+});
+
 check('a grant mandate is not issued on an uncertified path', () => {
     /* entropy_ultimate has no mods at all: its whole value is
        State.manualClickScaling. A grant has no residue form, so an
@@ -606,6 +632,118 @@ check('a cascade warning suppressed by a modal is retried, not lost', () => {
     // And it does not nag once delivered.
     env.game.accrueInstability(1, Date.now());
     assert.equal(rendered, 1, 'the same tier announced itself twice');
+});
+
+check('reloading does not change storage caps', () => {
+    /* applyCertification and applyScars rebuild derived records on every
+       boot. Dropping and re-adding them appended them at the END of the fold,
+       behind everything bought since the last boot — and `caps.*` mixes
+       `mulfloor` (mandates) with `add` (storage repeatables), so the order is
+       not float noise: floor(base * 1.5 * 3) + 2500 became
+       floor((base + 2500) * 1.5 * 3).
+
+       Measured before the fix: certify on maintenance, buy one Divine Vault
+       rank, press reload — caps.praise went 4,750 -> 13,500 with no player
+       action, and again on the next purchase-and-reload. */
+    const store = {};
+    const env = game_(store, SHOPPING);
+    for (const id of ['maintenance_root', 'maintenance_t2_left', 'maintenance_t2_right',
+        'maintenance_t3', 'maintenance_ultimate', 'maintenance_t4']) {
+        env.game.purchaseMandate(id);
+    }
+    env.game.certifyOn('maintenance');
+    env.game.applyCertification();
+
+    /* A scar on a cap target too, so BOTH derived scopes are exercised —
+       'cert' folds mulfloor here and 'scar' folds mul, and a storage
+       repeatable folds add between them. */
+    env.State.reality.scars = ['iss_soul_partition'];
+    env.game.applyScars();
+
+    env.State.resources.praise = 1e9;
+    env.State.resources.souls = 1e9;
+    env.game.purchaseRepeatable('praise_vault');
+    env.game.purchaseRepeatable('soul_vault');
+    const live = { praise: env.State.resourceCaps.praise, souls: env.State.resourceCaps.souls };
+    assert.ok(live.praise > 0 && live.souls > 0, 'fixture check: caps were raised');
+    env.State.save();
+
+    const reloaded = boot(store);
+    reloaded.game.bootstrapModifiers(Date.now());
+    assert.equal(reloaded.State.resourceCaps.praise, live.praise,
+        'a reload changed Praise capacity — the certified records moved in the fold');
+    assert.equal(reloaded.State.resourceCaps.souls, live.souls,
+        'a reload changed Soul capacity — the scar records moved in the fold');
+
+    // And again, so a second cycle cannot drift either.
+    reloaded.State.save();
+    const twice = boot(store);
+    twice.game.bootstrapModifiers(Date.now());
+    assert.equal(twice.State.resourceCaps.praise, live.praise, 'a second reload drifted');
+    assert.equal(twice.State.resourceCaps.souls, live.souls, 'a second reload drifted');
+});
+
+check('the Rift pays its hour at the tier that hour produces', () => {
+    /* tick() accrues instability BEFORE reading rates, so a crossing throttles
+       the tick that caused it. The Rift did the opposite — rates first, then
+       an hour of accrual — so the hour that CAUSES a tier crossing was paid in
+       full at the old tier, a discount on the degradation the Rift itself
+       created.
+
+       Asserted on the ORDER rather than on Souls banked. A first version
+       compared totals between rifting and living the hour, and both were
+       ZERO: the hand-built fixture had no working production chain, so the
+       comparison passed under either ordering. Watching which tier is in
+       force at the moment the rates are read tests the actual property and
+       cannot go vacuous. */
+    const env = game_();
+    env.State.prestigeLevel = 3;
+    env.State.reality.build = env.Reality.generate(20260726, 3, 'stable');
+    const rate = env.game.instabilityRatePerHour();
+    assert.ok(rate > 0, 'fixture check: this build degrades');
+
+    // Half an hour short of the first tier, so the rifted hour must cross it.
+    env.State.reality.instability = env.Economy.cascadeTiers[0].at - rate / 2;
+    env.game.syncCascade();
+    assert.equal(env.game.cascadeState().tier, 0, 'fixture check: starts undegraded');
+
+    let tierWhenRatesRead = null;
+    const original = env.game.getProductionRates;
+    env.game.getProductionRates = function patched(...args) {
+        if (tierWhenRatesRead === null) tierWhenRatesRead = env.game.cascadeState().tier;
+        return original.apply(this, args);
+    };
+
+    env.State.skills.temporalRift.cooldownEndsAt = 0;
+    env.game.activateTemporalRift();
+    env.game.getProductionRates = original;
+
+    assert.equal(env.game.cascadeState().tier, 1,
+        'fixture check: the rifted hour did cross a tier');
+    assert.equal(tierWhenRatesRead, 1,
+        'the Rift read its rates before the hour degraded the build — it still ' +
+        'discounts the damage it causes');
+});
+
+check('a suspended tab does not degrade the build', () => {
+    /* loop() replays the whole wall-clock gap through ONE tick, clamped to 8
+       hours, for exactly the case where a tab or a laptop was suspended.
+       Since instability moved into tick(), that replay degraded the build for
+       time the player was absent — making leaving the game OPEN strictly
+       worse than closing it, because initializeSession's offline path is
+       exempt. Three bulk-time paths, not two. */
+    const env = game_();
+    env.State.prestigeLevel = 3;
+    env.State.reality.build = env.Reality.generate(20260726, 3, 'stable');
+    assert.ok(env.game.instabilityRatePerHour() > 0, 'fixture check: this build degrades');
+
+    env.game.tick(8 * 3600, Date.now(), { attended: false });
+    assert.equal(env.State.reality.instability, 0,
+        'an eight-hour suspend degraded the build — the player was not there to triage it');
+
+    // A real frame still degrades.
+    env.game.tick(3600, Date.now());
+    assert.ok(env.State.reality.instability > 0, 'attended time stopped degrading');
 });
 
 check('a reboot clears the cascade throttle, not just the counter', () => {

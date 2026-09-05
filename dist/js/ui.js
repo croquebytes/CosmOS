@@ -77,6 +77,9 @@ const ui = {
            showing a decision that moves. Cheap: it returns immediately when
            the elements are not in the document. */
         this.updatePrestigeInfo();
+        // The ship dialog quotes terms that move underneath it. See
+        // refreshShipDialog — it returns immediately when the dialog is closed.
+        this.refreshShipDialog();
     },
 
     /* Synchronous full redraw, for callers that change how everything is
@@ -443,14 +446,7 @@ const ui = {
                </div>`
             : '<p class="ship-clean">No unpatched known issues. This release goes out clean.</p>';
 
-        const cascadeBlock = cascade.tier > 0
-            ? `<div class="ship-cascade tier-${cascade.tier}">
-                   <span class="code-stamp is-alarm">${cascade.label}</span>
-                   <p>${cascade.award > 0
-                        ? `The award is reduced to ${Math.round(cascade.award * 100)}% while the build is degraded.`
-                        : 'A collapsed build pays nothing. You can still ship it — patch the outstanding issues first if you want to be paid for this run.'}</p>
-               </div>`
-            : '';
+        const cascadeBlock = this.shipCascadeBlock(cascade);
 
         layer.innerHTML = `
             <section class="system-dialog ship-dialog" role="dialog" aria-modal="true" aria-labelledby="ship-title">
@@ -461,9 +457,9 @@ const ui = {
                 <div class="ship-head">
                     <h2 id="ship-title">Release v${build?.version || '?'}</h2>
                     <p class="rn-meta">${RealityChannels[build?.channel]?.label || 'Stable'} channel &middot;
-                        pays <strong>${this.formatNumber(award)}</strong> Divinity</p>
+                        pays <strong id="ship-award">${this.formatNumber(award)}</strong> Divinity</p>
                 </div>
-                ${cascadeBlock}
+                <div id="ship-cascade-slot">${cascadeBlock}</div>
                 ${scarBlock}
                 <div class="ship-cert">
                     <span class="briefing-eyebrow">Certify the next run on</span>
@@ -479,6 +475,58 @@ const ui = {
                 </div>
             </section>
         `;
+    },
+
+    shipCascadeBlock(cascade) {
+        if (cascade.tier <= 0) return '';
+        return `<div class="ship-cascade tier-${cascade.tier}">
+                   <span class="code-stamp is-alarm">${cascade.label}</span>
+                   <p>${cascade.award > 0
+                        ? `The award is reduced to ${Math.round(cascade.award * 100)}% while the build is degraded.`
+                        : 'A collapsed build pays nothing. You can still ship it — patch the outstanding issues first if you want to be paid for this run.'}</p>
+               </div>`;
+    },
+
+    /* The dialog states the TERMS of a release, and the terms move while it is
+       open: instability keeps accruing in the tick underneath, and confirmShip
+       pays game.getPrestigeAward() evaluated fresh.
+
+       Rendered once at open, it could therefore quote a number it would not
+       pay. Reproduced: a run one tick below CASCADE FAILURE, dialog open,
+       reading "pays 6 Divinity — reduced to 40%"; twelve minutes of
+       deliberation later it still said exactly that and shipping banked ZERO.
+       It bites at every boundary and in both directions — a clean run's quote
+       goes stale LOW as Souls accrue.
+
+       Worse, this is the one place a tier change is guaranteed to be
+       invisible: showCascadeAlert refuses to paint over an open modal (it
+       must), and the scrim covers every live readout underneath. The dialog
+       has to tell the player itself.
+
+       Only the award and the cascade block are volatile — the unpatched-issue
+       list cannot change while the scrim covers the Universal Engine — so
+       this updates those two in place rather than re-rendering, which would
+       fight the player's path selection on every panel tick.
+
+       This is the same defect the Divine Settings readout had, one surface
+       over, and it is noted in ui.update()'s comment. Adding a panel that
+       shows a moving decision means adding it to the tick. */
+    refreshShipDialog() {
+        const layer = document.getElementById('system-modal-layer');
+        if (!layer || !layer.classList.contains('active')) return;
+        if (!document.querySelector('.ship-dialog')) return;
+
+        const awardEl = document.getElementById('ship-award');
+        if (awardEl) {
+            const award = this.formatNumber(game.getPrestigeAward());
+            if (awardEl.innerText !== award) awardEl.innerText = award;
+        }
+
+        const slot = document.getElementById('ship-cascade-slot');
+        if (slot) {
+            const block = this.shipCascadeBlock(game.cascadeState());
+            if (slot.innerHTML !== block) slot.innerHTML = block;
+        }
     },
 
     selectShipPath(branch) {
