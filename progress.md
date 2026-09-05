@@ -923,3 +923,52 @@ elsewhere in the file. No test can see that.
   when storage is fixed.
 - `Modifiers.explain()` still renders nowhere. It is now the obvious home for
   showing a cascade throttle and a lapsed-path residue in the same stack.
+
+### The review pass, and what it cost to actually look
+
+Four defects, all found after the feature commit was already green, and none
+of them findable by the suite that was passing.
+
+**Temporal Rift was a free hour.** (`0a7040f`) The Rift grants a simulated hour
+of production without going through `tick()`, so it accrued no instability.
+Rifted Souls raise the prestige award like any others, which makes an hour of
+them at no degradation strictly dominant: rift, bank a bigger award, never meet
+a cascade. It defeated the mechanic shipped one commit earlier. Found by reading
+the two code paths that simulate time in bulk — offline progress is the other,
+and its exemption is deliberate and now asserted as a pair with this one so the
+asymmetry is stated rather than inferred.
+
+**A crafted save could switch the whole tree off.** (`335f41f`) Found by
+feeding twenty hostile save shapes through the real loader. Nothing threw and
+no save was reported lost — but the normaliser read
+`cert.path = cert.path || null`, which is a no-op for every truthy value. A
+save carrying `path: "nonsense"` kept it, no branch ever matched, and every
+node the player had ever bought went dormant with no explanation and no way to
+fix it before the next ship. The same amputation `bootstrapCertification` was
+written to prevent, arriving through a different door. `Number(x) || 0` also
+let a *negative* instability through, which would make a player immune to the
+cascade for a hundred hours — reachable, since `importSave` decodes pasted text
+straight into `State`.
+
+**A cascade warning could be swallowed.** (`cc11f22`) `alertedTier` was marked
+before the dialog rendered, and `showCascadeAlert` correctly refuses to paint
+over an open modal. So a collision dropped the warning and recorded it as
+delivered — and `syncCascade` early-returns on an unchanged tier, so there was
+no second chance. Output throttled, award cut, nothing saying why. Not a corner
+case: modals are open exactly when a tier turns over — release notes on every
+reboot, the offline report on every load, the Adversary scene at its
+thresholds. The alert now reports whether it rendered and is retried until it
+lands. Reproduced and fixed against the real collision in a browser.
+
+**A note written with quotes broke the markup around it.** (`dd40134`)
+`'Note left: "too noisy".'` interpolated into `title="${entry.note}"` closed
+the attribute early: the tooltip truncated at `Note left: ` — the punchline
+cut, which is the actual damage here — and two stray attributes appeared on the
+button. Pre-existing, in a panel this session extended. `ui.escapeHtml` now
+covers the six sites where content reaches `innerHTML`.
+
+The mutation harness ended at **21 breaks, 21 caught**, and 28 tests in
+`tests/certification.mjs`. Worth noting what the harness could *not* have
+found: three of these four needed either a browser or a deliberately hostile
+input, and the fourth needed reading two functions side by side and asking why
+they disagreed.
