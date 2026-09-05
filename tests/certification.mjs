@@ -308,6 +308,46 @@ check('buying into a dormant path does not quietly make it lapsed', () => {
         'the ledger of certified paths grew from purchases rather than from certifying');
 });
 
+check('a save cannot certify the player onto a path that does not exist', () => {
+    /* State.mergeInto does NO type validation and importSave decodes
+       arbitrary pasted text straight into State, so `certification.path` can
+       arrive as any value at all.
+
+       The normaliser read `cert.path = cert.path || null`, which is a no-op
+       for every truthy value. A bogus path was therefore kept, no branch ever
+       matched it, and the player's ENTIRE Mandate tree went dormant — with no
+       explanation and no way to fix it before the next ship. */
+    const env = game_({}, SHOPPING);
+    for (const id of CREATION) env.game.purchaseMandate(id);
+    env.State.certification = { path: 'nonsense', everCertified: ['creation', 'sideways'], history: ['nonsense'] };
+
+    const cert = env.game.certification();
+    assert.equal(cert.path, null, 'an unrecognised path survived normalisation');
+    assert.deepEqual(cert.everCertified, ['creation'],
+        'an unrecognised branch survived in everCertified');
+});
+
+check('instability cannot be negative, however it arrives', () => {
+    /* `Number(x) || 0` turns a string or an object into 0 but lets a negative
+       through. A save carrying -99 — importSave again — would need a hundred
+       hours of decay before a cascade could reach that player. */
+    const env = game_();
+    env.State.prestigeLevel = 3;
+    env.State.reality.build = env.Reality.generate(20260726, 3, 'stable');
+    env.State.reality.instability = -99;
+
+    assert.equal(env.game.cascadeState().instability, 0, 'a negative read back as negative');
+    env.game.accrueInstability(1, Date.now());
+    assert.ok(env.State.reality.instability >= 0,
+        'a negative survived accrual — this player is immune to the cascade for a hundred hours');
+
+    // And the ceiling holds from the other side.
+    env.State.reality.instability = 1e308;
+    assert.equal(env.game.cascadeState().instability,
+        env.Economy.cascadeTiers[env.Economy.cascadeTiers.length - 1].at,
+        'instability read back above the last tier');
+});
+
 /* ── Shipping and scars ─────────────────────────────────────────────────── */
 
 check('shipping files every unpatched known issue as a permanent scar', () => {

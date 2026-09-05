@@ -917,7 +917,21 @@ const game = {
         const cert = State.certification;
         if (!Array.isArray(cert.everCertified)) cert.everCertified = [];
         if (!Array.isArray(cert.history)) cert.history = [];
-        if (!this.CERT_BRANCHES.includes(cert.path)) cert.path = cert.path || null;
+        /* An unrecognised path becomes null, not itself.
+
+           This read `cert.path = cert.path || null`, which is a no-op for
+           every truthy value — so a save carrying a bogus path kept it, no
+           branch ever matched, and the player's entire Mandate tree went
+           dormant with no explanation and no way to fix it before the next
+           ship. State.mergeInto does no type validation and importSave feeds
+           it arbitrary decoded text, so this is reachable.
+
+           Null is the honest value: it is what a player who has never
+           certified has, and the ship dialog already handles it by refusing
+           to arm until a path is chosen. */
+        if (!this.CERT_BRANCHES.includes(cert.path)) cert.path = null;
+        // Same reasoning for the branch list: only real branch names.
+        cert.everCertified = cert.everCertified.filter((b) => this.CERT_BRANCHES.includes(b));
         return cert;
     },
 
@@ -1098,9 +1112,20 @@ const game = {
         return tier;
     },
 
+    /* Instability, sanitised. `Number(x) || 0` already turns a string or an
+       object into 0, but it lets a NEGATIVE through — and a save carrying
+       -99 (importSave decodes arbitrary pasted text straight into State)
+       would need a hundred hours of decay before a cascade could touch that
+       player again. Clamped to the tier range at every read, so the stored
+       value can never mean something the tiers do not. */
+    instabilityOf(reality) {
+        const ceiling = Economy.cascadeTiers[Economy.cascadeTiers.length - 1].at;
+        return Math.max(0, Math.min(ceiling, Number(reality?.instability) || 0));
+    },
+
     cascadeState() {
         const reality = State.reality || {};
-        const instability = Number(reality.instability) || 0;
+        const instability = this.instabilityOf(reality);
         const tier = this.cascadeTierFor(instability);
         const step = tier > 0 ? Economy.cascadeTiers[tier - 1] : null;
         const ceiling = Economy.cascadeTiers[Economy.cascadeTiers.length - 1].at;
@@ -1136,7 +1161,8 @@ const game = {
     accrueInstability(deltaSeconds, now = Date.now()) {
         const reality = State.reality;
         if (!reality || !reality.build) return;
-        if (!Number.isFinite(reality.instability)) reality.instability = 0;
+        // Normalise before accruing: see instabilityOf.
+        reality.instability = this.instabilityOf(reality);
 
         const rate = this.instabilityRatePerHour();
         if (deltaSeconds > 0) {
@@ -1161,7 +1187,7 @@ const game = {
     syncCascade(now = Date.now()) {
         const reality = State.reality;
         if (!reality) return 0;
-        const tier = this.cascadeTierFor(Number(reality.instability) || 0);
+        const tier = this.cascadeTierFor(this.instabilityOf(reality));
         if (tier === reality.cascadeTier) return tier;
 
         reality.cascadeTier = tier;
@@ -1328,7 +1354,7 @@ const game = {
            and deliberately smaller than what it accrued: you can climb out of
            a cascade, but not in one click. */
         const relief = this.issueWeight(entry) * Economy.instabilityReliefPerWeight;
-        State.reality.instability = Math.max(0, (Number(State.reality.instability) || 0) - relief);
+        State.reality.instability = Math.max(0, this.instabilityOf(State.reality) - relief);
         this.syncCascade(now);
 
         ui.log(`Patched: ${entry.note.split('.')[0]}.`);
