@@ -972,3 +972,65 @@ The mutation harness ended at **21 breaks, 21 caught**, and 28 tests in
 found: three of these four needed either a browser or a deliberately hostile
 input, and the fourth needed reading two functions side by side and asking why
 they disagreed.
+
+### The adversarial sweep
+
+A three-lens review with two refuters per finding raised 13 and killed 9. The
+four that survived all reproduced, and three of them were holes in the fixes
+above.
+
+**The ship dialog quoted an award it would not pay.** `renderShipDialog` ran
+once, at open, while instability kept accruing underneath and `confirmShip`
+paid `getPrestigeAward()` evaluated fresh. Reproduced: opens at 86 Divinity on
+a SEV-1 build, the run tips into CASCADE FAILURE while the player deliberates,
+the dialog still says 86, shipping banks 0. And this was the *one* place a tier
+change was guaranteed to be invisible, because the cascade alert correctly
+refuses to paint over an open modal — the fix two entries up created the blind
+spot. The award and the cascade block now refresh from the panel tick. Same
+defect as the Divine Settings readout one surface over, which `ui.update()`'s
+own comment already describes: a panel that shows a moving decision has to be
+on the tick.
+
+**Reloading inflated storage caps.** `applyCertification` and `applyScars`
+rebuild derived records every boot, and `dropScope` + re-add *appends* — so
+those records jumped behind everything bought since. On `caps.*` that is not
+float noise, because mandates fold `mulfloor` and storage repeatables fold
+`add`: `floor(base × 1.5 × 3) + 2500` became `floor((base + 2500) × 1.5 × 3)`.
+Measured at **4,750 → 13,500 by pressing reload**, and the verifiers widened it
+— `purchaseMandate` calls `applyCertification` too, so buying any mandate did
+it mid-run with no reload. `Modifiers.reconcileScope` now updates in place,
+appends only what is new, and drops what is no longer wanted.
+
+> I had already dismissed this hazard as "float epsilon" earlier in the
+> session. That was wrong: I only considered `mul`, and never looked at the
+> `mulfloor`/`add` mix on the cap targets.
+
+**The Rift paid its hour at the pre-hour tier.** `tick()` accrues before
+reading rates so a crossing throttles the tick that caused it; the Rift did the
+opposite, and there the ordering is worth a full hour. The previous commit's
+claim that "the rates already carry the throttle" was true only of the tier in
+force *before* the rift.
+
+**A suspended tab degraded the build.** `loop()` replays the whole wall-clock
+gap through one tick, clamped to 8 hours, for exactly the suspended-tab case —
+so instability accrued for time the player was absent, making leaving the game
+*open* strictly worse than closing it. Three bulk-time paths, not the two the
+Rift commit claimed to have audited.
+
+And two lessons that were not findings:
+
+- **A surviving mutant found an untested branch that mattered.**
+  `maintenance_apex` sets `offline.efficiency` to 1, and `residueValue` returns
+  null for `set` — so a lapsing path must *drop* that record, not keep it at
+  its old value. The behaviour was already correct; nothing tested it until the
+  harness said so.
+- **One of my own new tests was vacuous.** The first Rift test compared Souls
+  banked between rifting and living the hour, and both were **zero** — the
+  hand-built fixture had no working production chain, so it passed under either
+  ordering. It now asserts which tier is in force at the moment the rates are
+  read, which is the real property and cannot go vacuous. Sixth time in this
+  project; the first one caught by a mutation harness rather than by a later
+  session.
+
+Final: 32 tests in `tests/certification.mjs`, **26 mutants, 26 caught**, full
+suite green, golden master unchanged.

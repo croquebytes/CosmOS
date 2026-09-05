@@ -681,6 +681,22 @@ check('reloading does not change storage caps', () => {
     twice.game.bootstrapModifiers(Date.now());
     assert.equal(twice.State.resourceCaps.praise, live.praise, 'a second reload drifted');
     assert.equal(twice.State.resourceCaps.souls, live.souls, 'a second reload drifted');
+
+    /* A reload is not the only trigger, and the review's verifiers widened
+       the finding here: purchaseMandate and performPrestige both call
+       applyCertification, so buying ANY mandate — even one with no storage
+       mods, on a branch that is not certified — used to re-seat the whole
+       cert set behind the run-scoped `add` records, mid-run, with no reload
+       at all. Filing a scar did the same through applyScars. */
+    env.State.totalDivinityPoints += 100;
+    env.game.purchaseMandate('creation_root');
+    assert.equal(env.State.resourceCaps.praise, live.praise,
+        'buying an unrelated mandate moved the certified records and changed capacity');
+
+    env.State.reality.scars = ['iss_soul_partition', 'iss_vault_corrupt'];
+    env.game.applyScars();
+    assert.equal(env.State.resourceCaps.praise, live.praise * (1 + (0.5 - 1) * env.Economy.scarResidue),
+        'filing a scar re-seated the existing records instead of appending the new one');
 });
 
 check('the Rift pays its hour at the tier that hour produces', () => {
