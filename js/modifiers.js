@@ -322,6 +322,22 @@ const Modifiers = {
         return typeof spec.base === 'function' ? spec.base() : pristineValue(spec.base);
     },
 
+    /* The deterministic id for a record that did not name its own.
+
+       Rank is part of the identity. It used not to be: the id interpolated
+       only kind and id, so every rank of a storage repeatable minted the same
+       id and rank 2 onwards was refused as a double-apply — silently, while
+       the escalating cost was still charged. For two sessions the whole
+       economy sat under a 7,000 Praise ceiling nobody chose.
+
+       Rank 1 keeps the historical id with no suffix, so every record already
+       sitting in a save still matches itself and game.reconcileRepeatableRanks
+       only has to restore the ranks that were discarded. */
+    autoId(source, target, seq) {
+        const rank = Number(source?.rank) > 1 ? `#r${Number(source.rank)}` : '';
+        return `${source?.kind || 'anon'}:${source?.id || seq}${rank}:${target}`;
+    },
+
     /* Appends a record. Returns it, or null if the target is unknown — an
        unknown target is a programming error, not a runtime condition, so it
        is loud rather than silent. */
@@ -337,7 +353,7 @@ const Modifiers = {
         }
 
         const record = {
-            id: id || `${source?.kind || 'anon'}:${source?.id || this._seq}:${target}`,
+            id: id || Modifiers.autoId(source, target, this._seq),
             target,
             op,
             value,
@@ -350,43 +366,8 @@ const Modifiers = {
         };
         if (this.records.some((existing) => existing.id === record.id)) {
             /* Ids are deterministic, so a repeat is a double-apply rather than
-               a legitimate second stack.
-
-               ── KNOWN DEFECT. Read this before "fixing" it. ──────────────
-
-               The next sentence used to read "purchases that DO stack
-               (repeatable ranks, shop tiers) carry their rank in the id".
-               They do not. purchaseRepeatable passes
-               `source: {kind, id, rank}` (js/game.js), but the auto-id above
-               interpolates only kind and id — so every rank of a storage
-               repeatable mints the SAME id and rank 2 onwards is refused
-               here, silently, while the escalating cost is still charged.
-               Measured: four ranks of praise_vault produce one record and
-               caps 1000 -> 3500 instead of 12250.
-
-               The one-line fix is to put `source.rank` in the id. Do not
-               make it a one-line commit. Measured with tools/balance_sim.mjs
-               at 8h / 24h / 48h:
-
-                 defect present   36 reboots by 48h, gaps 80-140 min,
-                                  caps.praise 9e3        <- converges
-                 rank in the id  553 reboots by 48h, gaps pinned at 5:00,
-                                  caps.praise 7.6e20     <- diverges
-
-               Five hundred reboots landing exactly on the simulator's own
-               policy gate is the same divergence signature the reboot curve
-               was retuned to remove (see the Economy header in js/state.js).
-               It reproduces at EVERY capacityGrowth tried — 1.38, 1.28,
-               1.25, 1.22, 1.18, 1.10 — because the problem is not the grant
-               curve. It is that a 7,000 Praise ceiling is currently the
-               binding constraint on the whole economy, and the prestige
-               constants were tuned underneath it.
-
-               So the storage curve is divergent on its own terms as well:
-               capacityGrowth 1.38 against cost growth 1.32 means each rank
-               grants more than it costs, forever. Both have to be fixed
-               together, with the prestige curve re-measured on top, at 48h
-               and 72h. That is a session, not a line. */
+               a legitimate second stack. Purchases that DO stack carry their
+               rank in the id — see autoId. */
             return null;
         }
 

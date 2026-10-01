@@ -855,22 +855,45 @@ const Economy = {
        Divinity and was actually divergent — 3,116 Divinity and prestige level
        194 by hour 48, which is the same runaway the bar exists to prevent,
        merely past the horizon that had been measured. Anything changed here
-       must be re-checked at 48h and 72h, not just 24h. */
-    prestigeSoulsPerPoint: 35000,
-    /* How much a DEEPER run pays. At 0.45 a run had to be 4.7x longer to pay
-       double, so banking immediately always won and the decision stayed
-       solved. */
-    prestigeExponent: 0.90,
+       must be re-checked at 48h and 72h, not just 24h.
+
+       ── Re-measured 2026-09-30, after storage started working ──────────
+       Everything below was first tuned while rank 2+ of every vault was
+       silently discarded, so Souls sat capped near 4,000 and the cap — not
+       this curve — was what spaced the reboots. With storage fixed, a fresh
+       run ramped past the old 35,000 bar in minutes and the simulated player
+       rebooted on its own five-minute gate: 547 reboots and 2,000,000
+       Divinity by hour 48. Raising the bar's growth did nothing (1.6 still
+       pinned to the gate); the constant had to move by orders of magnitude.
+
+       Measured with tools/balance_sim.mjs (rotating certification, Stable):
+
+                       24h    72h    240h   reboot gap    Beta / Nightly
+         push=1         25     74     324   53 -> 41 min   3h00 / 6h50
+         push=3         27     84     378   ~2-3h          8h40 / 19h35
+         Nightly        35    137     709   73 -> 38 min
+
+       Nothing collapses toward the gate at ten days, which is the
+       convergence check that matters. */
+    prestigeSoulsPerPoint: 1e8,
+    /* How much a DEEPER run pays. At 0.90 (tuned under the cap) pushing five
+       times deeper earned 60% more Divinity per hour, so patience simply
+       dominated. A run's Soul income saturates as automaton prices outrun it,
+       so at 0.75 a moderately deeper run pays ~15% more — and pays for it in
+       cascade exposure — while a very deep one wastes hours waiting for a
+       payout the run can barely reach. At 0.65 the 3x push fell to parity
+       and stopped being worth the risk. */
+    prestigeExponent: 0.75,
     /* How fast the bar rises with banked Divinity. Must outrun the bonus
        exponent below — run Souls grow superlinearly in the multiplier because
        income is reinvested into automatons inside the run, so matching the two
-       exponents is not enough on its own. */
-    prestigeThresholdGrowth: 0.80,
+       exponents is not enough on its own. 1.3 held the gap steadier but
+       walled the 3x push at ten reboots; 1.2 is the highest that does not. */
+    prestigeThresholdGrowth: 1.2,
     /* Sub-linear on purpose, and lower than it looks it should be. This is the
        exponent on the far side of the feedback loop: at 0.75 the bonus outgrew
-       every bar tested, up to and including 0.90 growth. At 0.45 total
-       Divinity grows about linearly with play time — 18 / 36 / 79 at 24h / 48h
-       / 72h — which is the shape an idle game wants. */
+       every bar tested, up to and including 0.90 growth. Unchanged by the
+       2026-09-30 re-tune, which moved the bar instead. */
     prestigeBonusExponent: 0.45,
     /* Linear, so it changes how strong a reboot FEELS without touching whether
        the loop converges. */
@@ -1072,7 +1095,13 @@ const AutomatonSpecs = {
     }
 };
 
-/* Repeatable upgrades: geometric cost, linear effect, no purchase ceiling. */
+/* Repeatable upgrades: geometric cost, linear effect, no purchase ceiling.
+
+   Storage ranks (the ones with a capacityStep) are the exception: each costs
+   `costFraction` of the vault it extends — see game.getRepeatableCost — and
+   grants capacityStep * capacityGrowth^(rank-1). Asymptotically a rank
+   returns (g-1)/g = 20% of the cap for 65% of it, so storage is a real sink
+   that competes with automatons for the same currency, at every scale. */
 const RepeatableList = [
     {
         id: 'praise_vault',
@@ -1081,10 +1110,10 @@ const RepeatableList = [
         description: 'Expand Praise storage. Essential before any long absence.',
         resource: 'praise',
         baseCost: 400,
-        growth: 1.32,
         capacityStep: 2500,
-        capacityGrowth: 1.38,
-        effectText: (level) => `+${Math.floor(2500 * Math.pow(1.38, level)).toLocaleString()} Praise capacity`,
+        capacityGrowth: 1.25,
+        costFraction: 0.65,
+        effectText(level) { return `+${game.storageGrant(this, level + 1).toLocaleString()} Praise capacity`; },
         visible: () => true
     },
     {
@@ -1094,10 +1123,10 @@ const RepeatableList = [
         description: 'Expand Offerings storage.',
         resource: 'offerings',
         baseCost: 60,
-        growth: 1.32,
         capacityStep: 150,
-        capacityGrowth: 1.38,
-        effectText: (level) => `+${Math.floor(150 * Math.pow(1.38, level)).toLocaleString()} Offerings capacity`,
+        capacityGrowth: 1.25,
+        costFraction: 0.65,
+        effectText(level) { return `+${game.storageGrant(this, level + 1).toLocaleString()} Offerings capacity`; },
         visible: () => State.unlockedOfferings
     },
     {
@@ -1107,10 +1136,10 @@ const RepeatableList = [
         description: 'Expand Soul storage.',
         resource: 'souls',
         baseCost: 120,
-        growth: 1.32,
         capacityStep: 2000,
-        capacityGrowth: 1.38,
-        effectText: (level) => `+${Math.floor(2000 * Math.pow(1.38, level)).toLocaleString()} Soul capacity`,
+        capacityGrowth: 1.25,
+        costFraction: 0.65,
+        effectText(level) { return `+${game.storageGrant(this, level + 1).toLocaleString()} Soul capacity`; },
         visible: () => State.automatons.cherubCount >= 1
     },
     {
@@ -1143,10 +1172,10 @@ const RepeatableList = [
         description: 'Expand Darkness storage.',
         resource: 'darkness',
         baseCost: 350,
-        growth: 1.32,
         capacityStep: 900,
-        capacityGrowth: 1.38,
-        effectText: (level) => `+${Math.floor(900 * Math.pow(1.38, level)).toLocaleString()} Darkness capacity`,
+        capacityGrowth: 1.25,
+        costFraction: 0.65,
+        effectText(level) { return `+${game.storageGrant(this, level + 1).toLocaleString()} Darkness capacity`; },
         visible: () => State.dimensions.void.unlocked
     },
     {
@@ -1156,10 +1185,10 @@ const RepeatableList = [
         description: 'Expand Shadow storage.',
         resource: 'shadows',
         baseCost: 40,
-        growth: 1.32,
         capacityStep: 90,
-        capacityGrowth: 1.38,
-        effectText: (level) => `+${Math.floor(90 * Math.pow(1.38, level)).toLocaleString()} Shadow capacity`,
+        capacityGrowth: 1.25,
+        costFraction: 0.65,
+        effectText(level) { return `+${game.storageGrant(this, level + 1).toLocaleString()} Shadow capacity`; },
         visible: () => State.dimensions.void.automatons.revenantCount >= 1
     },
     {
@@ -1169,10 +1198,10 @@ const RepeatableList = [
         description: 'Expand Echo storage.',
         resource: 'echoes',
         baseCost: 120,
-        growth: 1.32,
         capacityStep: 700,
-        capacityGrowth: 1.38,
-        effectText: (level) => `+${Math.floor(700 * Math.pow(1.38, level)).toLocaleString()} Echo capacity`,
+        capacityGrowth: 1.25,
+        costFraction: 0.65,
+        effectText(level) { return `+${game.storageGrant(this, level + 1).toLocaleString()} Echo capacity`; },
         visible: () => State.dimensions.void.automatons.phantomCount >= 1
     },
     {

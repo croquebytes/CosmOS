@@ -84,6 +84,15 @@ function boot(store = {}) {
    calculateDivinityPoints returned 0, performPrestige refused, and five tests
    silently asserted against a reboot that never happened. Tests that buy
    mandates ask for Divinity; tests that ship do not. */
+/* A run that clears the reboot bar comfortably, stated in bars rather than
+   Souls. These fixtures used to write a literal 5,000,000 — 143 bars on the
+   old curve — and after the 2026-09-30 re-tune moved the bar to 1e8 the same
+   literal was a run that had earned nothing, so every award-shape test
+   compared zero with zero. */
+function runOf(env, bars = 143) {
+    return (Number(env.State.runSoulsBaseline) || 0) + env.game.getPrestigeThreshold() * bars;
+}
+
 function game_(store = {}, { divinity = 0 } = {}) {
     const env = boot(store);
     env.State.reality = {
@@ -384,7 +393,7 @@ check('instability cannot be negative, however it arrives', () => {
 
 check('shipping files every unpatched known issue as a permanent scar', () => {
     const env = game_();
-    env.State.totalStats.soulsGained = 5_000_000;
+    env.State.totalStats.soulsGained = runOf(env);
     const unpatched = env.Reality.unpatchedIssues(env.State.reality.build).map((e) => e.id);
     assert.ok(unpatched.length, 'the opening build should ship with a known issue');
 
@@ -396,7 +405,7 @@ check('shipping files every unpatched known issue as a permanent scar', () => {
 
 check('a patched issue never becomes a scar', () => {
     const env = game_();
-    env.State.totalStats.soulsGained = 5_000_000;
+    env.State.totalStats.soulsGained = runOf(env);
     env.State.resources.praise = 1e9;
     const entry = env.Reality.unpatchedIssues(env.State.reality.build)[0];
     assert.ok(env.game.patchKnownIssue(entry.id), 'the patch should have been affordable');
@@ -417,7 +426,7 @@ check('the same issue is only ever filed once', () => {
        guard is silent, so the ledger would grow without bound while the
        symptom stayed invisible. The filing half is what actually pins it. */
     const env = game_();
-    env.State.totalStats.soulsGained = 5_000_000;
+    env.State.totalStats.soulsGained = runOf(env);
     const already = env.Reality.unpatchedIssues(env.State.reality.build).map((e) => e.id);
     assert.ok(already.length, 'fixture check: the opening build ships an issue');
     env.State.reality.scars = [...already];
@@ -492,7 +501,7 @@ check('a cascade reduces the award and a collapse zeroes it', () => {
     const env = game_();
     env.State.prestigeLevel = 3;
     env.State.reality.build = env.Reality.generate(20260726, 3, 'stable');
-    env.State.totalStats.soulsGained = 5_000_000;
+    env.State.totalStats.soulsGained = runOf(env);
     const full = env.game.getPrestigeAward();
     assert.ok(full > 0, 'fixture check: this run has earned something');
 
@@ -515,7 +524,7 @@ check('a collapsed build can still be shipped', () => {
     const env = game_();
     env.State.prestigeLevel = 3;
     env.State.reality.build = env.Reality.generate(20260726, 3, 'stable');
-    env.State.totalStats.soulsGained = 5_000_000;
+    env.State.totalStats.soulsGained = runOf(env);
     env.State.reality.instability = env.Economy.cascadeTiers[2].at;
     env.game.syncCascade();
 
@@ -766,7 +775,7 @@ check('a reboot clears the cascade throttle, not just the counter', () => {
     const env = game_();
     env.State.prestigeLevel = 3;
     env.State.reality.build = env.Reality.generate(20260726, 3, 'stable');
-    env.State.totalStats.soulsGained = 5_000_000;
+    env.State.totalStats.soulsGained = runOf(env);
     env.State.reality.instability = env.Economy.cascadeTiers[1].at;
     env.game.syncCascade();
     assert.ok(env.Modifiers.records.some((r) => r.source?.kind === 'cascade'),

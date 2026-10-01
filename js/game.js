@@ -1322,7 +1322,7 @@ const game = {
         return {
             target,
             op: 'add',
-            value: Math.floor(spec.capacityStep * Math.pow(spec.capacityGrowth, rank - 1)),
+            value: this.storageGrant(spec, rank),
         };
     },
 
@@ -1447,6 +1447,7 @@ const game = {
 
         if (persisted && Array.isArray(persisted.records) && persisted.records.length) {
             Modifiers.hydrate(persisted);
+            this.reconcileRepeatableRanks();
         } else {
             this.rebuildModifierLog();
         }
@@ -1686,20 +1687,80 @@ const game = {
         return this.repeatablesPool(spec)[id] || 0;
     },
 
+    /* A vault is priced against the vault.
+
+       Geometric cost against a geometric grant left storage either free (cost
+       growth below grant growth: each rank paid for itself forever, and caps
+       ran to 7.6e20 within two days) or walled (cost growth above it: a rank
+       eventually costs more than the cap can hold, and the ceiling is back).
+       Neither is a decision. Pricing a rank as a fraction of the capacity it
+       extends scales from the first hour to the thousandth: buying storage
+       always means emptying most of a full vault for a fraction of it back,
+       so it competes with automatons for the same Praise instead of being
+       the thing you buy because nothing else is affordable.
+
+       There is deliberately no geometric term underneath it. A first draft
+       kept one as a price floor and it walled the vault anyway: 1.32 per rank
+       outgrew the 1.25 grant, the floor crossed the cap at rank 57, and every
+       simulated run stalled at the identical 3.3e9 ceiling. baseCost is only
+       a fixed minimum for the first rank or two. */
     getRepeatableCost(id) {
         const spec = RepeatableList.find((r) => r.id === id);
         if (!spec) return Infinity;
+        if (spec.costFraction) {
+            const cap = Number(this.capsPool(spec)[spec.resource]) || 0;
+            return Math.max(spec.baseCost, Math.floor(cap * spec.costFraction));
+        }
         return Math.floor(spec.baseCost * Math.pow(spec.growth, this.getRepeatableLevel(id)));
     },
 
-    /* Capacity granted per rank grows faster than the rank's cost, so storage
-       always stays ahead of the price of more storage. */
-    applyRepeatableEffect(id, rank) {
-        const spec = RepeatableList.find((r) => r.id === id);
-        if (!spec?.capacityStep) return;
-        const grant = Math.floor(spec.capacityStep * Math.pow(spec.capacityGrowth, rank - 1));
-        const caps = this.capsPool(spec);
-        if (caps[spec.resource] !== undefined) caps[spec.resource] += grant;
+    /* Capacity a storage rank grants. One function, so the modifier, the
+       button text and the tests cannot disagree about it. */
+    storageGrant(spec, rank) {
+        return Math.floor(spec.capacityStep * Math.pow(spec.capacityGrowth, rank - 1));
+    },
+
+    /* Restores storage ranks a save paid for and never received.
+
+       Before the rank went into the modifier id, rank 2+ of every vault was
+       refused as a duplicate, so a hydrated log holds at most one record per
+       vault while the ledger holds the true rank. The player paid for every
+       one of those ranks; they are owed.
+
+       Each restored record is filed directly behind the vault's existing
+       records rather than appended. Fold order is load-bearing on caps.*:
+       mandates fold `mulfloor` and vaults fold `add`, and an add that jumps
+       behind a mulfloor stops being multiplied by it (14ae3d8 measured that
+       mistake at 4,750 -> 13,500 on a reload). Behind its own rank 1 is where
+       the rank would have been all along had the id carried it. Fractional
+       seq keeps hydrate()'s sort stable on the next load. */
+    reconcileRepeatableRanks() {
+        let restored = 0;
+        for (const spec of RepeatableList) {
+            if (!spec.capacityStep) continue;
+            const ranks = this.getRepeatableLevel(spec.id);
+            for (let rank = 1; rank <= ranks; rank++) {
+                const mod = this.repeatableMod(spec, rank);
+                if (!mod) continue;
+                const source = { kind: 'repeatable', id: spec.id, rank };
+                const id = Modifiers.autoId(source, mod.target, 0);
+                if (Modifiers.records.some((r) => r.id === id)) continue;
+
+                const siblings = Modifiers.records.filter((r) =>
+                    r.source?.kind === 'repeatable' && r.source?.id === spec.id && r.target === mod.target);
+                const anchor = siblings.length
+                    ? Math.max(...siblings.map((r) => Number(r.seq) || 0))
+                    : null;
+                const record = Modifiers.add({ ...mod, id, source, label: spec.name });
+                if (!record) continue;
+                if (anchor !== null) {
+                    record.seq = anchor + rank / 1024;
+                    Modifiers.records.sort((a, b) => a.seq - b.seq);
+                }
+                restored++;
+            }
+        }
+        return restored;
     },
 
     purchaseRepeatable(id) {
