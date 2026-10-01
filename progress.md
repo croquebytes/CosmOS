@@ -1162,3 +1162,81 @@ the Provenance sheet on Praise/s, Patience.exe bought and dealt.
 4. Still open from before: the Archived channel; the Void's thin Reality
    Build coverage; achievement rewards and shop items mutating `State`
    directly.
+
+## 2026-10-01 — Session 6, part 2: absence is safe, the archive opens, the tapes roll
+
+Current request: incidents and outages shouldn't punish AFK play — propose
+a better model, then keep building. Same branch, `session-6/sinks-and-loops`
+(18 more commits; still not merged to `main`).
+
+### Incidents now reward attention instead of taxing absence (d45d226, 0dbd9a7)
+- **Presence, not visibility.** Input in the last 2 minutes (`game.isPresent`;
+  `system.trackPresence` installs passive listeners). A visible tab with
+  nobody at the keyboard is idle play.
+- **Away means ON HOLD.** Penalties lifted from the registry, clocks frozen,
+  nothing filed, no dialogs. A save boots held, which keeps offline accrual
+  clean (it reads rates committed straight after `Incidents.bootstrap`); a
+  slept laptop's catch-up tick holds the queue before it reads rates.
+  Return grace: held tickets resume with ≥60s. Deferrals stay applied.
+- **Outages degrade to 25%** instead of zeroing a line, and an outage
+  untouched for 10 attended minutes is **contained by the on-call rota**:
+  closed and filed as a deferral at outage depth (cleared at ship).
+- **A hands-on fix pays Overclock charge** (12 / 20 / 35); paying and
+  deferring pay nothing.
+- Headless there is no presence tracking, so the simulator and every vm
+  suite behave as before. 10 new tests; 14/14 mutants caught.
+
+### The simulator can triage (`--incidents=off|ignore|labour|pay|mixed`)
+Default `off`, golden byte-identical. Labour costs the simulated player its
+clicks for 20–36s and lands through `Incidents.completeLabour`, the same
+path and reward as the ritual. Measured (Divinity, baseline 22 / 66 at
+24h / 72h):
+
+| policy | 24h / 72h | note |
+|---|---|---|
+| labour, pay, mixed | 22 / 66 | mixed ≈ 9 min of attention a day |
+| ignore, before containment | **10 / 10** | soft-locked: 3 permanent outages, no run reaches the bar |
+| ignore, after containment | 20 / 63 | a few percent for not reading the queue |
+| Nightly 48h: off / ignore / mixed | 73 / 57 / 73 | Nightly's teeth; mixed ≈ 30 min/day |
+
+### Archived channel (agent slice, merged c21fe86)
+From reboot 12 the ship dialog offers Archived with a release history
+(`State.reality.history`, validated and capped). A replay regenerates the
+exact build, pays 0 Divinity without moving the bar (it still has to clear
+the run-score bar), and files NULL.OPERATOR's annotations on what you
+shipped unpatched to Notepad › Archive — making ACH-030 reachable for the
+first time, plus ACH-036/037. 18 + 10 tests, 35/35 mutants.
+Open design questions: old saves start with empty history; scars are
+once-per-id-ever, so replaying a cursed build rarely adds a scar.
+
+### Media layer + Sacred Media Player (agent slice, merged 6339cf4)
+`js/media.js` plays cinematics (V1 boot, V2 ship, V5 Void, V6 first Seraph)
+only when the file exists — with `assets/video/` empty the game is exactly
+as before (Vite answers a missing file with index.html + 200, so only a
+media content type counts). Cinematics queue behind system modals on the
+cc11f22 render-or-retry contract. `js/mediaplayer.js`: six training tapes,
+filed at milestones (T1 at 10 Miracles), playable NOW as captioned
+fallback slides from shipped art, with a toggleable CSS VHS treatment.
+Every caption's mechanic was checked against code. Drop-in contract and
+the 33-reel Krea shot list: `docs/VISUAL_UPGRADE_PLAN.md` §7.
+Settings → Cinematics (first time / always / off). 43 + 17 tests, 41/41.
+
+### Smaller
+- Windows reopen where you left them (own localStorage key, clamped,
+  desktop only). 7 browser checks.
+- Achievement bursts: max 3 toasts, the rest queue under a "+N more"
+  plaque; toast text escaped.
+- The welcome-back report says held tickets waited for you.
+- The Notepad counts archive annotations.
+- Every browser suite defaults to `localhost` (Vite here binds IPv6 only).
+
+### Verification
+`npm test` green end to end: 389 node assertions over 12 suites, golden
+unchanged, 5 browser suites (e2e, Patience 9, Archived 10, media 17,
+layout 7); `test:audio` 14 separately. dist rebuilt.
+
+### Next
+1. PR `session-6/sinks-and-loops` → `main` (not pushed; ask first).
+2. Generate Krea reels per §7 and drop them in — V2 *Ship the Build* first.
+3. V3 / V4 / V7 cinematic hooks (cascade, mirror login, SEV-1).
+4. The two Archived design questions above.
