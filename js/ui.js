@@ -1115,6 +1115,9 @@ const ui = {
             <div class="reality-stability tier-${cascade.tier}">
                 <div class="stability-line">
                     <span class="code-stamp${cascade.tier > 0 ? ' is-alarm' : ''}">${cascade.label}</span>
+                    ${cascade.tier > 0
+                        ? '<button type="button" class="win-btn stability-why" data-breakdown="rate:praise:throttle" aria-label="Why is output throttled?">Why?</button>'
+                        : ''}
                     <span class="stability-trend">${trend}</span>
                 </div>
                 <div class="stability-track"><div class="stability-fill" style="width:${pct}%"></div></div>
@@ -1123,7 +1126,7 @@ const ui = {
                     : ''}
             </div>`;
 
-        host.innerHTML = `
+        const html = `
             <div class="reality-head">
                 <span class="reality-version">REALITY v${build.version}</span>
                 <span class="reality-channel">${channel}</span>
@@ -1142,6 +1145,15 @@ const ui = {
                     </li>`).join('')}</ul>
             </details>
         `;
+        /* Only touch the DOM when the markup changed. This runs on the panel
+           tick, and rewriting identical markup ten times a second replaced
+           every button under the pointer and the keyboard — focus on a patch
+           button or on "Why?" was gone a tenth of a second after it landed,
+           and an opened changelog snapped shut. */
+        if (html !== this.lastRealityPanelHtml || !host.firstElementChild) {
+            host.innerHTML = html;
+            this.lastRealityPanelHtml = html;
+        }
     },
 
     closeOfflineReport() {
@@ -1157,6 +1169,7 @@ const ui = {
         const s = document.getElementById('val-souls');
         const u = document.getElementById('val-uptime');
         const pRate = document.getElementById('val-praise-rate');
+        const oRate = document.getElementById('val-offering-rate');
         const sRate = document.getElementById('val-soul-rate');
 
         if (p) {
@@ -1234,6 +1247,7 @@ const ui = {
            the game the player could actually read, and it was wrong. */
         const rates = game.getProductionRates();
         if (pRate) pRate.innerText = this.formatNumber(rates.praise, 1);
+        if (oRate) oRate.innerText = this.formatNumber(rates.offerings, 1);
         if (sRate) sRate.innerText = this.formatNumber(rates.souls, 1);
     },
 
@@ -2433,17 +2447,18 @@ const ui = {
                 <div class="resource-panel">
                     <div class="stat-box">
                         <label>PRAISE</label>
-                        <div id="dim-val-praise" class="stat-value">0</div>
-                        <div class="stat-rate">+<span id="dim-val-praise-rate">0</span>/s</div>
+                        <div id="dim-val-praise" class="stat-value" data-breakdown="cap:praise" tabindex="0">0</div>
+                        <div class="stat-rate" data-breakdown="rate:praise" tabindex="0">+<span id="dim-val-praise-rate">0</span>/s</div>
                     </div>
                     <div class="stat-box">
                         <label>OFFERINGS</label>
-                        <div id="dim-val-offerings" class="stat-value">0</div>
+                        <div id="dim-val-offerings" class="stat-value" data-breakdown="cap:offerings" tabindex="0">0</div>
+                        <div class="stat-rate" data-breakdown="rate:offerings" tabindex="0">+<span id="dim-val-offering-rate">0</span>/s</div>
                     </div>
                     <div class="stat-box">
                         <label>SOULS</label>
-                        <div id="dim-val-souls" class="stat-value">0</div>
-                        <div class="stat-rate">+<span id="dim-val-soul-rate">0</span>/s</div>
+                        <div id="dim-val-souls" class="stat-value" data-breakdown="cap:souls" tabindex="0">0</div>
+                        <div class="stat-rate" data-breakdown="rate:souls" tabindex="0">+<span id="dim-val-soul-rate">0</span>/s</div>
                     </div>
                 </div>
 
@@ -2489,17 +2504,18 @@ const ui = {
                 <div class="resource-panel">
                     <div class="stat-box void-stat">
                         <label>DARKNESS</label>
-                        <div id="dim-val-darkness" class="stat-value">0</div>
-                        <div class="stat-rate">+<span id="dim-val-darkness-rate">0</span>/s</div>
+                        <div id="dim-val-darkness" class="stat-value" data-breakdown="cap:darkness" tabindex="0">0</div>
+                        <div class="stat-rate" data-breakdown="rate:darkness" tabindex="0">+<span id="dim-val-darkness-rate">0</span>/s</div>
                     </div>
                     <div class="stat-box void-stat">
                         <label>SHADOWS</label>
-                        <div id="dim-val-shadows" class="stat-value">0</div>
+                        <div id="dim-val-shadows" class="stat-value" data-breakdown="cap:shadows" tabindex="0">0</div>
+                        <div class="stat-rate" data-breakdown="rate:shadows" tabindex="0">+<span id="dim-val-shadow-rate">0</span>/s</div>
                     </div>
                     <div class="stat-box void-stat">
                         <label>ECHOES</label>
-                        <div id="dim-val-echoes" class="stat-value">0</div>
-                        <div class="stat-rate">+<span id="dim-val-echo-rate">0</span>/s</div>
+                        <div id="dim-val-echoes" class="stat-value" data-breakdown="cap:echoes" tabindex="0">0</div>
+                        <div class="stat-rate" data-breakdown="rate:echoes" tabindex="0">+<span id="dim-val-echo-rate">0</span>/s</div>
                     </div>
                 </div>
 
@@ -2558,6 +2574,8 @@ const ui = {
 
             if (praiseRateEl) praiseRateEl.innerText = this.formatNumber(praisePerSec, 1);
             if (soulRateEl) soulRateEl.innerText = this.formatNumber(soulPerSec, 1);
+            const offeringRateEl = document.getElementById('dim-val-offering-rate');
+            if (offeringRateEl) offeringRateEl.innerText = this.formatNumber(primordialRates.offerings, 1);
 
             // Update automaton counts
             const seraphCountEl = document.getElementById('dim-seraph-count');
@@ -2593,6 +2611,8 @@ const ui = {
 
             if (darknessRateEl) darknessRateEl.innerText = this.formatNumber(darknessPerSec, 1);
             if (echoRateEl) echoRateEl.innerText = this.formatNumber(echoPerSec, 1);
+            const shadowRateEl = document.getElementById('dim-val-shadow-rate');
+            if (shadowRateEl) shadowRateEl.innerText = this.formatNumber(voidRates.shadows, 1);
 
             this.renderAutomatons('void-automaton-list', 'void');
             this.renderRepeatables('void-repeatable-list', 'void');
