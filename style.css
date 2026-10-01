@@ -5866,3 +5866,137 @@ body.performance-mode .pt-flourish {
         display: none;
     }
 }
+
+/* ============================================================
+   CINEMATICS — js/media.js
+
+   A reel occupies the system modal slot while it plays, so it sits inside
+   #system-modal-layer and covers the scrim. overlay is full frame; blend
+   screen-blends a reel with no alpha so its black drops out; window frames
+   it in CosmOS chrome. The cold boot plays inside #boot-overlay instead
+   (.is-hosted). Captions are type, never baked into the reel.
+   ============================================================ */
+.cine-stage {
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    background: var(--cos-void);
+    cursor: pointer;
+    outline: none;
+}
+
+.cine-stage.is-hosted {
+    position: absolute;
+    z-index: 5;
+}
+
+.cine-screen {
+    position: relative;
+    width: min(100vw, calc(100vh * 16 / 9));
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background: #000;
+}
+
+.cine-video,
+.cine-still {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.cine--blend:not(.is-hosted) {
+    /* Over the layer's scrim: dark enough that screen-blended black reads
+       as black, light enough that the desktop is still there behind it. */
+    background: rgba(4, 6, 10, 0.6);
+}
+
+.cine--blend .cine-screen {
+    background: transparent;
+}
+
+.cine--blend .cine-video,
+.cine--blend .cine-still {
+    mix-blend-mode: screen;
+}
+
+.cine-caption {
+    position: absolute;
+    left: 50%;
+    bottom: max(28px, 7vh);
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: min(720px, calc(100vw - 32px));
+    padding: 6px 16px;
+    color: var(--cos-brass-100);
+    background: rgba(4, 6, 10, 0.74);
+    border-top: 1px solid var(--cos-brass-700);
+    border-bottom: 1px solid var(--cos-brass-700);
+    font: 14px/1.45 var(--cos-font-display);
+    letter-spacing: 0.02em;
+    text-align: center;
+    animation: cine-caption-in 900ms ease-out both;
+}
+
+@keyframes cine-caption-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.cine-skip {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    color: var(--cos-ink-inv-dim);
+    font: 10px var(--cos-font-machine);
+    letter-spacing: 0.16em;
+}
+
+.cine--window {
+    /* The modal layer's own scrim is already behind it. */
+    background: transparent;
+}
+
+.cine-window {
+    width: min(560px, calc(100vw - 28px));
+    cursor: pointer;
+}
+
+.cine-window .cine-screen {
+    width: auto;
+    margin: 10px 10px 0;
+    border: 2px solid;
+    border-color: var(--win-border-dark) var(--win-border-light) var(--win-border-light) var(--win-border-dark);
+}
+
+.cine-window .cine-caption {
+    position: static;
+    transform: none;
+    width: auto;
+    max-width: none;
+    margin: 8px 10px 12px;
+    padding: 0;
+    color: var(--cos-ink);
+    background: transparent;
+    border: 0;
+    font-size: 13px;
+}
+
+.cine-window-skip {
+    color: var(--cos-ink-inv-dim);
+    font-weight: normal;
+    letter-spacing: 0.12em;
+}
+
+.cine--window .cine-skip {
+    display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cine-caption {
+        animation: none;
+    }
+}

@@ -31,7 +31,16 @@ const system = {
         const testMode = new URLSearchParams(window.location.search).has('testMode');
         const bootDelay = testMode ? 0 : 3000;
 
-        setTimeout(() => {
+        /* V1 Cold Boot: a fresh save boots through the reel when one is
+           installed, inside the boot overlay. The overlay waits for it (it IS
+           the boot) or for a skip; with no reel the promise has settled long
+           before the 3s POST is up, so the boot is unchanged. */
+        const freshSave = State.totalClicks === 0 && !State.settings.briefingSeen;
+        const coldBoot = (!testMode && freshSave && typeof media !== 'undefined')
+            ? media.play('cold-boot', { mode: 'blend', host: document.getElementById('boot-overlay') })
+            : null;
+
+        setTimeout(() => Promise.resolve(coldBoot).then(() => {
             const boot = document.getElementById('boot-overlay');
             if (boot) boot.style.opacity = '0';
             game.sfx('desktop');
@@ -46,7 +55,7 @@ const system = {
                     ui.showOperatorBriefing();
                 }
             }, testMode ? 0 : 900);
-        }, bootDelay);
+        }), bootDelay);
 
         this.updateClock();
         setInterval(() => this.updateClock(), 1000);
@@ -842,6 +851,24 @@ const system = {
                                 <label for="audio-muted">Mute All:</label>
                                 <input type="checkbox" id="audio-muted" class="setting-checkbox" onchange="audio.setMuted(this.checked)">
                                 <span class="setting-desc" id="audio-status">Standing by for your first action.</span>
+                            </div>
+                        </div>
+
+                        <h3>Cinematics</h3>
+                        <div class="media-settings">
+                            <div class="setting-row">
+                                <label for="media-cinematics">Cinematics:</label>
+                                <select id="media-cinematics" class="setting-select" onchange="media.setCinematics(this.value)">
+                                    <option value="first">First time only</option>
+                                    <option value="always">Always</option>
+                                    <option value="off">Off</option>
+                                </select>
+                                <span class="setting-desc" id="media-seen">0 of 4 reels seen</span>
+                            </div>
+                            <div class="setting-row">
+                                <label for="media-vhs">VHS Treatment:</label>
+                                <input type="checkbox" id="media-vhs" class="setting-checkbox" checked onchange="media.setVhs(this.checked)">
+                                <span class="setting-desc">Scanlines and tracking on training tapes. Reels not yet installed are skipped.</span>
                             </div>
                         </div>
 
