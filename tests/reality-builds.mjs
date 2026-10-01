@@ -138,13 +138,12 @@ check('channels unlock with reboot count', () => {
     assert.ok(Reality.channelsFor(3).includes('beta'));
     assert.ok(!Reality.channelsFor(3).includes('nightly'));
     assert.ok(Reality.channelsFor(8).includes('nightly'));
-    /* 'archived' is intentionally NOT offered. It is declared in
-       RealityChannels as the shape to implement, but generate() keys its rng
-       off the CURRENT prestige level rather than a chosen past one — so it was
-       byte-identical to stable in 3600/3600 sampled pairs — and it pays no
-       Divinity, which made selecting it block Divine Reboot outright. */
-    assert.ok(!Reality.channelsFor(50).includes('archived'),
-        'archived must not be selectable until it actually replays a past build');
+    /* 'archived' was held back until it replayed a past build (it used to
+       be byte-identical to stable) and until a 0-Divinity ship was allowed.
+       Both now hold — tests/archived.mjs — so it opens at reboot 12, and not
+       a reboot sooner. */
+    assert.ok(!Reality.channelsFor(11).includes('archived'), 'archived offered before reboot 12');
+    assert.ok(Reality.channelsFor(12).includes('archived'), 'archived not offered at reboot 12');
 });
 
 check('an entry never appears twice in one build', () => {
@@ -271,12 +270,16 @@ check('an improvement never raises a patch price in the same build', () => {
     assert.equal(withBuild, withoutBuild, 'the build moved the price of its own patch');
 });
 
-check('no channel offered to the player pays zero Divinity', () => {
+check('no channel offered to the player pays zero Divinity, except Archived', () => {
     // divinity: 0 makes the award floor to 0, which made Divine Reboot
     // impossible while the button stayed live and the choice autosaved.
+    // Archived pays zero ON PURPOSE and is shippable anyway — that exemption
+    // is explicit in performPrestige and tested in tests/archived.mjs. It is
+    // the ONLY one: a second zero-payout channel would hit the old trap.
     const { Reality, RealityChannels } = boot();
     for (const level of [0, 3, 8, 12, 20, 50]) {
         for (const key of Reality.channelsFor(level)) {
+            if (key === 'archived') continue;
             assert.ok(RealityChannels[key].divinity > 0,
                 `channel "${key}" is offered at level ${level} but pays ${RealityChannels[key].divinity}x`);
         }

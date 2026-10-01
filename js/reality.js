@@ -153,6 +153,87 @@ const RealityPool = {
     ],
 };
 
+/* ── NULL.OPERATOR's annotations ─────────────────────────────────────────
+
+   What the Archived channel pays instead of Divinity. Replaying a past build
+   files his postmortem on it: one line per known issue that build shipped
+   unpatched, and one per regression (those are won't-fix, so they always
+   shipped — and they are his, so he always has something to say).
+
+   Keyed to the pool ids above, so a new issue or regression without a line
+   here fails tests/archived.mjs rather than shipping silent. Ids with more
+   than one line pick by the build's seed, so the same build always reads the
+   same way and two builds carrying the same issue need not.
+
+   Voice: ADV-014 through ADV-026 and the barks. Short, first person, never
+   explaining the joke, and always about YOU — he is not confessing, he is
+   showing you the receipts ADV-BARK-02 promised. */
+const ArchiveAnnotations = {
+    lines: {
+        iss_sector_7g: [
+            "The first one. You found it on day one and blamed the hardware. The hardware sends its regards.",
+        ],
+        iss_soul_partition: [
+            "I halved it. You were keeping souls the way you keep screenshots: all of them, forever, never opened. Half was generous.",
+            "Migration notes, line one: halve it and see who notices. Line two: nobody noticed.",
+        ],
+        iss_conduit_leak: [
+            "Not a leak. A tap. Every Throne you built paid me a little, and you filed it under overhead.",
+            "Eighty percent. A round number, so you'd find it. You routed around it instead. You always route around it.",
+        ],
+        iss_cherub_warnings: [
+            "Forty warnings a compile. You read none of them. Neither did the Cherubs. They learned that from you.",
+        ],
+        iss_unattended_flaky: [
+            "You left the console running overnight and called it faith. I made unattended mean unattended.",
+        ],
+        iss_countersignature: [
+            "The second signature on every requisition was mine. You never asked whose it was. You just paid the fee.",
+        ],
+        iss_dedup_overeager: [
+            "A quarter of your Praise was the same prayer said twice. I only counted honestly.",
+            "Duplicates discarded. If they'd meant it, they would have prayed it differently.",
+        ],
+        iss_vault_corrupt: [
+            "The index wasn't corrupt. It was accurate. You didn't like what it listed.",
+        ],
+        iss_detection_muted: [
+            "'Too noisy.' My handwriting. You kept the note for an entire build and never asked who left it.",
+            "I muted the alarms and you slept better. That was the point. Mine, not yours.",
+        ],
+        iss_intervention_limited: [
+            "Rate-limited. Yours. Every click was a repair you didn't have to understand. I made you wait long enough to wonder.",
+        ],
+        iss_wraith_tarpit: [
+            "Filed them under a sector that doesn't exist. You paid the surcharge rather than go and look for it.",
+        ],
+        reg_clock_derated: [
+            "'Derated after an incident.' I was the incident. You were the clock.",
+        ],
+        reg_soul_shrinkage: [
+            "'Cause unknown.' Cause: me. That isn't shrinkage. That's their honest weight.",
+        ],
+        reg_streak_reset: [
+            "You were clicking for the streak, not for them. I capped the streak. They didn't notice the difference. You did.",
+        ],
+        reg_inverted_events: [
+            "Turn a miracle upside down and it's an invoice. The note said do not claim them. You claimed three.",
+            "Inverted, yes. You read 'do not claim' and heard 'limited time offer'.",
+        ],
+    },
+
+    /* A build that shipped clean and carried no regressions still gets a
+       file. He looked; that is the joke. */
+    clean: "Nothing shipped dirty. I went through this branch twice looking for what you missed. I'll find it.",
+
+    // The sign-off, picked by how much he had to say.
+    signoff: [
+        { atLeast: 4, text: 'Filed by void_mirror.service. Rollback: unavailable. You had every chance.' },
+        { atLeast: 2, text: 'Filed by void_mirror.service. I keep the receipts. You keep rebooting.' },
+        { atLeast: 0, text: 'Filed by void_mirror.service. Short file. Don’t get comfortable.' },
+    ],
+};
+
 /* Channel definitions. Volatility and payout, straight from the plan. */
 const RealityChannels = {
     stable: { label: 'Stable', improvements: [2, 3], issues: [1, 1], regressions: [0, 0], deprecations: 0, divinity: 1 },
@@ -188,16 +269,18 @@ const Reality = {
         ],
     },
 
+    /* Archived opens at reboot 12, per DESIGN_DIRECTION §2. It was held back
+       until a build could be replayed from a recorded identity rather than
+       re-rolled off the CURRENT prestige level (which made it byte-identical
+       to Stable), and until a 0-Divinity ship was something the reboot path
+       allows instead of refuses. See replayBuild() and performPrestige. */
+    ARCHIVE_UNLOCK: 12,
+
     channelsFor(prestigeLevel) {
         const unlocked = ['stable'];
         if (prestigeLevel >= 3) unlocked.push('beta');
         if (prestigeLevel >= 8) unlocked.push('nightly');
-        // 'archived' is deliberately NOT offered yet: it is byte-identical to
-        // stable (generate() keys the rng off the current prestige level, not a
-        // chosen past one) and pays no Divinity, so selecting it would block
-        // Divine Reboot outright. It stays in RealityChannels as the shape to
-        // implement, not as a choice.
-        void prestigeLevel;
+        if (prestigeLevel >= this.ARCHIVE_UNLOCK) unlocked.push('archived');
         return unlocked;
     },
 
@@ -294,15 +377,292 @@ const Reality = {
 
         // The channel a build was rolled on lives on the build. reality.channel
         // is only the selector for the NEXT one.
-        const channel = previous?.channel || reality.channel || 'stable';
-        const fresh = prestigeLevel > 0
-            ? this.generate(reality.runSeed, prestigeLevel, channel)
-            : JSON.parse(JSON.stringify(this.OPENING_BUILD));
+        let channel = previous?.channel || reality.channel || 'stable';
+
+        /* An archived replay is NOT a function of the current prestige level —
+           that was the whole defect that kept the channel closed. It re-derives
+           from the identity it was replayed from, carried on the build. A
+           replay whose identity does not validate (a hostile or truncated
+           save) degrades to an ordinary Stable build at the current level:
+           playable, honest about what it is, and paying normally. */
+        let fresh = null;
+        if (channel === 'archived') {
+            const source = this.sanitiseReplayOf(previous?.replayOf);
+            if (source) fresh = this.replayBuild(source);
+            else channel = 'stable';
+        }
+        if (!fresh) {
+            fresh = prestigeLevel > 0
+                ? this.generate(reality.runSeed, prestigeLevel, channel)
+                : JSON.parse(JSON.stringify(this.OPENING_BUILD));
+        }
 
         for (const entry of fresh.entries) {
             if (patched.has(entry.id)) entry.patched = true;
         }
         return fresh;
+    },
+
+    /* ── The release history ─────────────────────────────────────────────
+       Every shipped build is appended to `State.reality.history`. A record is
+       the build's IDENTITY plus what happened to it — never its entries'
+       mods, for the same reason rematerialise() exists: entries are derivable
+       from (runSeed, level, channel), and storing them would freeze a content
+       fix out of every replay.
+
+         reboot     the prestige level the run was PLAYED at (0 = opening)
+         level      the level it was GENERATED from — equal to reboot, except
+                    on an archived replay, where it is the original's
+         channel    as played: stable | beta | nightly | archived
+         source     as generated: equal to channel, except on a replay
+         runSeed    carried per record, so a record regenerates on its own
+         certified  the Mandate path the run was played on, or null
+         unpatched  issue ids it shipped with unpatched
+         entries    every entry id, in changelog order (drift detection, and
+                    the regressions the annotations key off)
+         award      Divinity it actually paid
+         shippedAt  wall-clock ms, for the picker
+
+       Capped, oldest out first. 48 runs is far more than the picker can
+       usefully show, and the history is a convenience — the scars ledger, not
+       this, is what makes a ship permanent. */
+    HISTORY_CAP: 48,
+    ANNOTATION_CAP: 64,
+    MAX_LEVEL: 1000000,
+    REPLAYABLE_CHANNELS: ['stable', 'beta', 'nightly'],
+    BRANCHES: ['creation', 'maintenance', 'entropy'],
+
+    versionOfLevel(level) {
+        return level > 0 ? this.versionFor(level) : this.OPENING_BUILD.version;
+    },
+
+    historyRecord(build, { reboot, runSeed, certified = null, award = 0, shippedAt = null } = {}) {
+        if (!build || !Array.isArray(build.entries)) return null;
+        const replay = build.channel === 'archived' ? this.sanitiseReplayOf(build.replayOf) : null;
+        const raw = {
+            reboot,
+            level: replay ? replay.level : reboot,
+            channel: replay ? 'archived' : (build.channel || 'stable'),
+            source: replay ? replay.source : (build.channel || 'stable'),
+            runSeed: replay ? replay.runSeed : runSeed,
+            certified,
+            unpatched: this.unpatchedIssues(build).map((e) => e.id),
+            entries: build.entries.map((e) => e.id),
+            award,
+            shippedAt,
+        };
+        return this.normaliseRecord(raw);
+    },
+
+    /* Validation, not defaulting. `x || default` passes every truthy
+       nonsense through (335f41f: a bogus cert path kept itself and switched
+       the whole tree off). importSave decodes pasted text straight into
+       State, so every field here can arrive as any type at all. A record
+       that does not validate is DROPPED rather than repaired: a repaired
+       record would replay a build that never shipped. */
+    normaliseRecord(raw) {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+        const int = (v, lo, hi) => (Number.isInteger(v) && v >= lo && v <= hi ? v : null);
+        const reboot = int(raw.reboot, 0, this.MAX_LEVEL);
+        const level = int(raw.level, 0, this.MAX_LEVEL);
+        const runSeed = int(raw.runSeed, 1, 0xFFFFFFFF);
+        const channel = typeof raw.channel === 'string' &&
+            Object.prototype.hasOwnProperty.call(RealityChannels, raw.channel) ? raw.channel : null;
+        const source = this.REPLAYABLE_CHANNELS.includes(raw.source) ? raw.source : null;
+        if (reboot === null || level === null || runSeed === null || !channel || !source) return null;
+
+        // The identity has to be internally consistent, or it names a build
+        // that never existed.
+        if (channel === 'archived') {
+            if (level >= reboot) return null;           // can only replay the past
+        } else if (source !== channel || level !== reboot) {
+            return null;
+        }
+        if (level === 0 && source !== 'stable') return null; // the opening build is Stable
+
+        const ids = (list, keep) => (Array.isArray(list)
+            ? [...new Set(list.filter((id) => typeof id === 'string' && keep(id)))]
+            : []);
+        const issueIds = this.issueIds();
+        const known = this.knownEntryIds();
+        return {
+            reboot,
+            level,
+            channel,
+            source,
+            runSeed,
+            certified: this.BRANCHES.includes(raw.certified) ? raw.certified : null,
+            unpatched: ids(raw.unpatched, (id) => issueIds.has(id)),
+            entries: ids(raw.entries, (id) => known.has(id)),
+            award: Number.isFinite(raw.award) && raw.award >= 0 ? Math.floor(raw.award) : 0,
+            shippedAt: Number.isFinite(raw.shippedAt) && raw.shippedAt >= 0 ? raw.shippedAt : null,
+        };
+    },
+
+    normaliseHistory(list) {
+        if (!Array.isArray(list)) return [];
+        const seen = new Set();
+        const out = [];
+        for (const raw of list) {
+            const record = this.normaliseRecord(raw);
+            // One ship per reboot index. A duplicate is a forged record.
+            if (!record || seen.has(record.reboot)) continue;
+            seen.add(record.reboot);
+            out.push(record);
+        }
+        out.sort((a, b) => a.reboot - b.reboot);
+        return out.slice(-this.HISTORY_CAP);
+    },
+
+    issueIds() {
+        const ids = new Set(RealityPool.issues.map((e) => e.id));
+        for (const e of this.OPENING_BUILD.entries) if (e.kind === 'issue') ids.add(e.id);
+        return ids;
+    },
+
+    knownEntryIds() {
+        const ids = this.issueIds();
+        for (const list of [RealityPool.improvements, RealityPool.regressions, RealityPool.deprecations]) {
+            for (const e of list) ids.add(e.id);
+        }
+        return ids;
+    },
+
+    /* The builds the picker offers: originals only, newest first. A replay
+       is not offered for replay — replaying it would replay its original,
+       which is already in the list. */
+    replayable(history) {
+        return (Array.isArray(history) ? history : [])
+            .filter((r) => r && r.channel !== 'archived')
+            .slice()
+            .sort((a, b) => b.reboot - a.reboot);
+    },
+
+    sanitiseReplayOf(raw) {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+        const level = Number.isInteger(raw.level) && raw.level >= 0 && raw.level <= this.MAX_LEVEL ? raw.level : null;
+        const runSeed = Number.isInteger(raw.runSeed) && raw.runSeed >= 1 && raw.runSeed <= 0xFFFFFFFF ? raw.runSeed : null;
+        const source = this.REPLAYABLE_CHANNELS.includes(raw.source) ? raw.source : null;
+        if (level === null || runSeed === null || !source) return null;
+        if (level === 0 && source !== 'stable') return null;
+        return { level, source, runSeed };
+    },
+
+    /* The replay. Generated from the ARCHIVED inputs, never the current
+       prestige level, so it is the same universe entry for entry — same
+       seed, same version string, same known issues — that the player shipped
+       before. Only the channel changes, and the channel is what prices it. */
+    replayBuild(source) {
+        const id = this.sanitiseReplayOf(source);
+        if (!id) return null;
+        const original = id.level > 0
+            ? this.generate(id.runSeed, id.level, id.source)
+            : JSON.parse(JSON.stringify(this.OPENING_BUILD));
+        return {
+            ...original,
+            channel: 'archived',
+            prestigeLevel: id.level,
+            replayOf: id,
+        };
+    },
+
+    /* ── Annotations ──────────────────────────────────────────────────── */
+
+    annotatableIds(record) {
+        const regressions = new Set(RealityPool.regressions.map((e) => e.id));
+        const ids = [...(record?.unpatched || [])];
+        for (const id of record?.entries || []) {
+            if (regressions.has(id) && !ids.includes(id)) ids.push(id);
+        }
+        return ids.filter((id) => ArchiveAnnotations.lines[id]);
+    },
+
+    annotationLine(id, seed) {
+        const lines = ArchiveAnnotations.lines[id];
+        if (!lines || !lines.length) return null;
+        let h = (Number(seed) >>> 0) || 1;
+        for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193) >>> 0;
+        return lines[h % lines.length];
+    },
+
+    /* A filed annotation is stored as identity + the ids it covers. The TEXT
+       is never stored: it is looked up at read time, so a rewritten line
+       reaches every save that already filed it. */
+    normaliseAnnotation(raw) {
+        const id = this.sanitiseReplayOf(raw);
+        if (!id) return null;
+        const keep = new Set(Object.keys(ArchiveAnnotations.lines));
+        const ids = Array.isArray(raw.ids)
+            ? [...new Set(raw.ids.filter((x) => typeof x === 'string' && keep.has(x)))]
+            : [];
+        const filedOn = Number.isInteger(raw.filedOn) && raw.filedOn > id.level && raw.filedOn <= this.MAX_LEVEL
+            ? raw.filedOn : null;
+        if (filedOn === null) return null;
+        return {
+            ...id,
+            ids,
+            filedOn,
+            certified: this.BRANCHES.includes(raw.certified) ? raw.certified : null,
+            filedAt: Number.isFinite(raw.filedAt) && raw.filedAt >= 0 ? raw.filedAt : null,
+        };
+    },
+
+    normaliseAnnotations(list) {
+        if (!Array.isArray(list)) return [];
+        const seen = new Set();
+        const out = [];
+        for (const raw of list) {
+            const a = this.normaliseAnnotation(raw);
+            // Filed once per original build: the level IS the build.
+            if (!a || seen.has(a.level)) continue;
+            seen.add(a.level);
+            out.push(a);
+        }
+        return out.slice(-this.ANNOTATION_CAP);
+    },
+
+    /* The document, as data. The UI typesets it; nothing here is HTML. */
+    annotationDocument(a) {
+        const version = this.versionOfLevel(a.level);
+        const seed = a.level > 0 ? seedFor(a.runSeed, a.level) : 0;
+        const notes = a.ids.map((id) => {
+            const entry = this.entryFromPool(id);
+            return {
+                id,
+                kind: entry?.kind || 'issue',
+                severity: entry?.severity || null,
+                // Regression notes carry their own "REGRESSION:" prefix; the
+                // document labels the kind itself.
+                note: entry ? entry.note.replace(/^REGRESSION:\s*/, '').split('.')[0] : id,
+                line: this.annotationLine(id, seed),
+            };
+        });
+        const signoff = ArchiveAnnotations.signoff.find((s) => notes.length >= s.atLeast)
+            || ArchiveAnnotations.signoff[ArchiveAnnotations.signoff.length - 1];
+        return {
+            id: `ARC-${String(a.level).padStart(4, '0')}`,
+            category: 'Archive',
+            generated: true,
+            title: `Archived Branch v${version} — Annotated`,
+            filename: `Archive/REALITY_v${version}_${a.source}.annotated.log`,
+            version,
+            source: a.source,
+            level: a.level,
+            filedOn: a.filedOn,
+            certified: a.certified,
+            notes,
+            clean: notes.length ? null : ArchiveAnnotations.clean,
+            signoff: signoff.text,
+        };
+    },
+
+    entryFromPool(id) {
+        for (const [kind, list] of [['issue', RealityPool.issues], ['regression', RealityPool.regressions]]) {
+            const e = list.find((x) => x.id === id);
+            if (e) return { ...e, kind };
+        }
+        const opening = this.OPENING_BUILD.entries.find((x) => x.id === id);
+        return opening ? { ...opening } : null;
     },
 
     entry(build, entryId) {
