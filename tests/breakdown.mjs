@@ -541,7 +541,10 @@ check('a run through reboots explains exactly at every stop', () => {
             env.game.tick(1, now);
         }
         holds(env, `run ${reboot}`, { now });
-        env.State.totalStats.soulsGained = Math.max(env.State.totalStats.soulsGained || 0, 5e6 * (reboot + 1) ** 3);
+        // In bars, not Souls: an absolute 5e6 stopped clearing the bar when the
+        // 2026-09-30 re-tune moved it to 1e8.
+        env.State.totalStats.soulsGained = (Number(env.State.runSoulsBaseline) || 0) +
+            env.game.getPrestigeThreshold() * 50 * (reboot + 1);
         const level = env.State.prestigeLevel;
         env.game.performPrestige({ confirmed: true, certifyOn: env.game.CERT_BRANCHES[reboot % 3] });
         // The harness trap this project keeps falling into: a refused reboot
