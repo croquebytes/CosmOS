@@ -3,6 +3,13 @@ const game = {
         return Math.floor(Math.random() * (max - min + 1)) + min;
     },
 
+    /* Every sound cue goes through here. js/audio.js is presentation, and
+       the simulator and every vm test load this file without it, so this is
+       inert wherever `audio` is undefined. A cue must never decide anything. */
+    sfx(name, opts) {
+        if (typeof audio !== 'undefined' && audio && typeof audio.play === 'function') audio.play(name, opts);
+    },
+
     ensureLoopState() {
         if (!State.loopSystems) {
             State.loopSystems = {};
@@ -94,9 +101,11 @@ const game = {
         const cost = this.getNullDoctrineCost();
         if ((vd.resources.echoes || 0) < cost) {
             ui.log(`Insufficient Echoes. Need ${this.formatCost(cost)}.`, 'void');
+            this.sfx('error');
             return;
         }
         vd.resources.echoes -= cost;
+        this.sfx('purchase');
         State.nullDoctrine = (State.nullDoctrine || 0) + 1;
         ui.log(`Null Doctrine inscribed to rank ${State.nullDoctrine}.`, 'void');
         ui.screenPulse('rgba(150, 88, 224, 0.3)');
@@ -152,6 +161,7 @@ const game = {
         loops.overclock.endsAt = now + loops.overclock.duration + (State.overclockDurationBonus || 0);
 
         ui.log('Celestial Overclock engaged! +50% production, stronger miracles for 30s.');
+        this.sfx('overclock');
         ui.screenPulse('rgba(255, 153, 0, 0.35)');
     },
 
@@ -399,6 +409,7 @@ const game = {
         }
 
         ui.log(`[Directive Claimed] ${directive.title}`);
+        this.sfx('directive');
         loops.directives.active = null;
         this.generateDirective(true);
         this.checkAchievements();
@@ -874,6 +885,7 @@ const game = {
             ui.spawnParticles(x, y, isFull ? 10 : 7, displayColor);
         }
 
+        this.sfx('miracle', { streak: loops.miracleStreak, overclock: overclockActive });
         ui.triggerCoreReaction(clickPower);
     },
 
@@ -1396,6 +1408,7 @@ const game = {
         }
         if ((cost.bag[cost.resource] || 0) < cost.amount) {
             ui.log(`Insufficient ${cost.resource} to patch. Need ${ui.formatNumber(cost.amount)}.`);
+            this.sfx('error');
             return false;
         }
 
@@ -1419,6 +1432,7 @@ const game = {
         this.syncCascade(now);
 
         ui.log(`Patched: ${entry.note.split('.')[0]}.`);
+        this.sfx('purchase');
         ui.screenPulse('rgba(66, 144, 125, 0.3)');
         ui.renderRealityPanel?.();
         return true;
@@ -1603,6 +1617,7 @@ const game = {
 
         if ((pool[spec.currency] || 0) < cost) {
             ui.log(`Insufficient ${spec.currency} for ${spec.label}. Need ${Math.ceil(cost)}.`);
+            this.sfx('error');
             return;
         }
 
@@ -1610,6 +1625,7 @@ const game = {
         this.applyAutomatonPurchase(type, 1);
         const total = this.getAutomatonCount(type);
         ui.log(`${spec.label} commissioned. (${total} total)`);
+        this.sfx('purchase');
 
         ui.updateUpgrades();
         this.checkAchievements();
@@ -1630,6 +1646,7 @@ const game = {
         const amount = quantity === 'max' ? this.getAutomatonMaxAffordable(type) : Number(quantity) || 0;
         if (amount <= 0) {
             ui.log(`Cannot afford any ${spec.label}.`);
+            this.sfx('error');
             return;
         }
 
@@ -1637,12 +1654,14 @@ const game = {
         const pool = this.resourcePool(spec);
         if ((pool[spec.currency] || 0) < cost) {
             ui.log(`Insufficient ${spec.currency}. Need ${Math.ceil(cost)}.`);
+            this.sfx('error');
             return;
         }
 
         pool[spec.currency] -= cost;
         this.applyAutomatonPurchase(type, amount);
         ui.log(`${amount}× ${spec.label} commissioned. (${this.getAutomatonCount(type)} total)`);
+        this.sfx('purchase');
 
         ui.updateUpgrades();
         this.checkAchievements();
@@ -1710,6 +1729,7 @@ const game = {
         const pool = this.resourcePool(spec);
         if ((pool[spec.resource] || 0) < cost) {
             ui.log(`Insufficient ${spec.resource}. Need ${Math.ceil(cost)}.`);
+            this.sfx('error');
             return;
         }
 
@@ -1724,6 +1744,7 @@ const game = {
         }
 
         ui.log(`${spec.name} rank ${ranks[id]} installed.`);
+        this.sfx('purchase');
         ui.screenPulse('rgba(66, 144, 125, 0.28)');
         ui.updateUpgrades();
         this.checkAchievements();
@@ -1748,6 +1769,7 @@ const game = {
 
         if (!canAfford) {
             ui.log("Insufficient resources for this upgrade.");
+            this.sfx('error');
             return;
         }
 
@@ -1761,6 +1783,7 @@ const game = {
         this.applyContentItem(upgrade, 'upgrade');
 
         ui.log(`Upgrade acquired: ${upgrade.name}`);
+        this.sfx('purchase');
         ui.updateUpgrades(); // Refresh upgrades display
         this.checkAchievements(); // Check for achievements
 
@@ -2012,6 +2035,7 @@ const game = {
         this.updateDirectiveProgress();
 
         ui.log(`Divine Event claimed! +${event.value} Praise. Chain x${loops.divineEventChain}.`);
+        this.sfx('eventClaim', { chain: loops.divineEventChain });
         ui.showFloatingNumber(`+${event.value} • x${loops.divineEventChain}`, event.x, event.y, '#ffd700');
         ui.spawnParticles(event.x, event.y, 12, '#ffd700');
 
@@ -2064,6 +2088,7 @@ const game = {
            quietly set back the prestige it was supposed to build toward. */
         if (this.getAvailableDivinityPoints() < effectiveCost) {
             ui.log(`Insufficient Divinity. Need ${effectiveCost} DP.`);
+            this.sfx('error');
             return;
         }
 
@@ -2091,6 +2116,7 @@ const game = {
             : ' — dormant until you certify on this path');
         ui.log(`Divine Mandate enacted: ${mandate.name}${effectiveCost < mandate.cost ? ` (Efficiency: ${mandate.cost}→${effectiveCost})` : ''}${dormant}`);
         ui.screenPulse('rgba(138, 43, 226, 0.3)');
+        this.sfx('purchase');
         ui.updateMandates();
     },
 
@@ -2132,6 +2158,7 @@ const game = {
             ui.spawnParticles(x, y, isFull ? 5 : 3, displayColor);
         }
 
+        this.sfx('miracle', { void: true });
         ui.triggerVoidCoreReaction(clickPower);
     },
 
@@ -2271,11 +2298,13 @@ const game = {
         const cost = this.getDoctrineCost();
         if (this.getAvailableDivinityPoints() < cost) {
             ui.log(`Insufficient Divinity. Need ${cost} DP.`);
+            this.sfx('error');
             return;
         }
         State.divinityPointsSpent = (State.divinityPointsSpent || 0) + cost;
         State.standingDoctrine = (State.standingDoctrine || 0) + 1;
         ui.log(`Standing Doctrine ratified to rank ${State.standingDoctrine}.`);
+        this.sfx('purchase');
         ui.screenPulse('rgba(180, 145, 74, 0.3)');
         ui.updateMandates();
     },
@@ -3099,6 +3128,7 @@ const game = {
 
         if (State.adoration < item.cost) {
             ui.log('Insufficient Adoration.');
+            this.sfx('error');
             return;
         }
 
@@ -3112,6 +3142,7 @@ const game = {
 
         item.effect();
         ui.log(`Purchased: ${item.name}`);
+        this.sfx('purchase');
         ui.renderShopContent(category);
     },
 

@@ -13,6 +13,7 @@ const system = {
         setTimeout(() => {
             const boot = document.getElementById('boot-overlay');
             if (boot) boot.style.opacity = '0';
+            game.sfx('desktop');
             setTimeout(() => boot?.remove(), testMode ? 0 : 1000);
 
             setTimeout(() => {
@@ -273,6 +274,7 @@ const system = {
 
         if (shouldOpen) {
             this.renderStartMenu();
+            game.sfx('startMenu');
         }
     },
 
@@ -401,6 +403,7 @@ const system = {
 
     setWindowMode(id, mode) {
         this.windowStates[id] = this.windowStates[id] || { mode: 'normal', normalBounds: null };
+        if (this.windowStates[id].mode !== mode) game.sfx('windowMode', { mode });
         this.windowStates[id].mode = mode;
 
         const win = this.windows[id];
@@ -582,6 +585,7 @@ const system = {
 
         if (appConfig.onOpen) appConfig.onOpen();
         this.updateTaskbar();
+        game.sfx('windowOpen');
 
         /* He has opinions about which windows you open. One table rather than
            five scattered calls, so AdversaryHookedTriggers stays honest. */
@@ -607,6 +611,7 @@ const system = {
     closeApp(id) {
         if (this.windows[id]) {
             this.windows[id].remove();
+            game.sfx('windowClose');
             delete this.windows[id];
             delete this.windowStates[id];
             this.updateTaskbar();
