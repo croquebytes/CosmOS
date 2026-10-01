@@ -445,7 +445,8 @@ const system = {
 
     setWindowMode(id, mode) {
         this.windowStates[id] = this.windowStates[id] || { mode: 'normal', normalBounds: null };
-        if (this.windowStates[id].mode !== mode) game.sfx('windowMode', { mode });
+        const changed = this.windowStates[id].mode !== mode;
+        if (changed && !this.restoringLayout) game.sfx('windowMode', { mode });
         this.windowStates[id].mode = mode;
 
         const win = this.windows[id];
@@ -458,6 +459,7 @@ const system = {
         }
 
         this.updateWindowControlState(id);
+        if (changed) this.rememberLayout(id);
     },
 
     updateWindowControlState(id) {
@@ -470,6 +472,48 @@ const system = {
             maximizeBtn.innerText = state.mode === 'maximized' ? 'N' : 'O';
             maximizeBtn.title = state.mode === 'maximized' ? 'Restore' : 'Maximize';
         }
+    },
+
+    /* ── Window layout memory ─────────────────────────────────────────────
+       A real desktop puts a window back where you left it. Stored under its
+       own key, not in the save: it is a preference about this screen, it
+       must survive a hard reset or an imported save, and a malformed save
+       must never be able to fling a window off-screen. Written only on a
+       deliberate act — drag, resize, snap, maximise — so a viewport
+       resize that clamps a window never overwrites where the player put it.
+       Read back through the same clamp every window already passes, which
+       is the real guarantee; the type checks in readLayout only keep junk
+       from ever reaching style.left. */
+    LAYOUT_KEY: 'cosmos_window_layout',
+    LAYOUT_MODES: ['normal', 'maximized', 'left', 'right'],
+
+    readLayout() {
+        let raw = null;
+        try { raw = JSON.parse(localStorage.getItem(this.LAYOUT_KEY) || 'null'); } catch { raw = null; }
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+        const out = {};
+        for (const [id, entry] of Object.entries(raw)) {
+            if (!entry || typeof entry !== 'object') continue;
+            const nums = ['left', 'top', 'width', 'height'].map((k) => entry[k]);
+            if (!nums.every((n) => Number.isFinite(n))) continue;
+            if (entry.width < 100 || entry.height < 100) continue;
+            out[id] = {
+                left: entry.left, top: entry.top, width: entry.width, height: entry.height,
+                mode: this.LAYOUT_MODES.includes(entry.mode) ? entry.mode : 'normal',
+            };
+        }
+        return out;
+    },
+
+    rememberLayout(id) {
+        if (window.innerWidth <= 900 || this.restoringLayout) return;
+        const win = this.windows[id];
+        const state = this.windowStates[id];
+        if (!win || !state) return;
+        const bounds = state.mode === 'normal' ? this.getWindowBounds(win) : (state.normalBounds || this.getWindowBounds(win));
+        const layout = this.readLayout();
+        layout[id] = { ...bounds, mode: state.mode };
+        try { localStorage.setItem(this.LAYOUT_KEY, JSON.stringify(layout)); } catch { /* storage full or blocked: forget quietly */ }
     },
 
     applyInitialWindowLayout(id, win) {
@@ -488,6 +532,24 @@ const system = {
                 mode: 'maximized',
                 normalBounds: { ...mobileBounds }
             };
+            return;
+        }
+
+        const saved = this.readLayout()[id];
+        if (saved) {
+            this.setWindowBounds(win, saved);
+            this.clampWindowToWorkspace(win);
+            this.windowStates[id] = { mode: 'normal', normalBounds: this.getWindowBounds(win) };
+            if (saved.mode !== 'normal') {
+                // Re-enter the saved mode without the sound a click would make.
+                this.restoringLayout = true;
+                try {
+                    if (saved.mode === 'maximized') this.toggleMaximize(id, true);
+                    else this.snapWindow(id, saved.mode);
+                } finally {
+                    this.restoringLayout = false;
+                }
+            }
             return;
         }
 
@@ -1247,6 +1309,7 @@ const system = {
             this.setWindowMode(id, 'normal');
             this.clampWindowToWorkspace(win);
             this.cacheNormalBounds(id);
+            this.rememberLayout(id);
         };
 
         document.addEventListener('mousemove', dragMove);
@@ -1288,6 +1351,7 @@ const system = {
             document.body.classList.remove('resizing-window');
             this.clampWindowToWorkspace(win);
             this.cacheNormalBounds(id);
+            this.rememberLayout(id);
             this.setWindowMode(id, 'normal');
         };
 
