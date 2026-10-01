@@ -6,7 +6,8 @@
  * plays the game with a simple greedy policy so progression can be measured
  * rather than guessed at.
  *
- *   node tools/balance_sim.mjs [hours] [--clicks-per-min N] [--quiet]
+ *   node tools/balance_sim.mjs [hours] [--clicks-per-min=N] [--push=N] [--no-patch]
+ *                              [--channel=stable] [--certify=path] [--tune=file.json] [--json] [--quiet]
  *
  * Reports when each milestone lands and when the player runs out of things to
  * buy, which is the number that actually matters for a game meant to be idled.
@@ -79,6 +80,25 @@ const { State, game, UpgradeList, MandateList, RepeatableList, AutomatonSpecs, E
         '({ State, game, UpgradeList, MandateList, RepeatableList, AutomatonSpecs, Economy, Modifiers, Reality })',
         ctx,
     );
+
+/* --tune=file.json overrides balance constants for one run without editing
+   the source, so a curve can be swept rather than hand-edited and reverted:
+
+     { "economy":     { "prestigeThresholdGrowth": 0.85 },
+       "vaults":      { "costFraction": 0.6, "capacityGrowth": 1.3 },
+       "repeatables": { "praise_vault": { "baseCost": 500 } } }
+
+   "vaults" applies to every storage repeatable (the ones with a
+   capacityStep); "repeatables" patches one spec by id and wins over it. */
+const TUNE_PATH = (args.find((a) => a.startsWith('--tune=')) || '').split('=')[1] || null;
+if (TUNE_PATH) {
+    const tune = JSON.parse(readFileSync(resolve(process.cwd(), TUNE_PATH), 'utf8'));
+    Object.assign(Economy, tune.economy || {});
+    for (const spec of RepeatableList) {
+        if (spec.capacityStep && tune.vaults) Object.assign(spec, tune.vaults);
+        if (tune.repeatables?.[spec.id]) Object.assign(spec, tune.repeatables[spec.id]);
+    }
+}
 
 /* Pin the Reality Build seed. Builds are a pure function of (runSeed,
    prestigeLevel, channel), so fixing the seed keeps the simulation
