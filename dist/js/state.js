@@ -245,6 +245,27 @@ const State = {
         history: [],         // path per reboot, newest last — for the UI and the lore
     },
 
+    /* ── Incidents ────────────────────────────────────────────────────────
+       The maintenance loop. See js/incidents.js. Open tickets and deferrals
+       name a template and a severity; their effects are DERIVED into the
+       modifier registry under scope 'incident', never stored here as values.
+       Timers are attended seconds remaining, so nothing escalates while the
+       console is closed. Normalised on every boot — mergeInto does no type
+       checking. No migration needed: mergeInto deep-merges these defaults
+       under any save that predates them. */
+    incidents: {
+        open: [],             // { id, template, severity, remaining, sector, falseAlarm, alerted, prophet, prophetRemaining }
+        debts: [],            // { id, template, severity } — run-scoped, cleared on reboot
+        nextNumber: 1,
+        attendedSeconds: 0,   // lifetime attended play; the onboarding quiet period reads it
+        spawnClock: 0,
+        quietUntil: 0,
+        stats: {
+            filed: 0, resolved: 0, labour: 0, resources: 0, debt: 0, sacrifice: 0,
+            prophet: 0, falseAlarmsCleared: 0, outages: 0, outagesSacrificed: 0,
+        },
+    },
+
     // System Settings
     epoch: 0,
     startTime: Date.now(),
@@ -255,6 +276,17 @@ const State = {
         autosaveInterval: 30000,      // milliseconds (default 30s)
         performanceMode: false,       // reduce animations if true
         briefingSeen: false,
+        /* Read and normalised by js/audio.js (keep DEFAULTS there in step).
+           Added without a SAVE_VERSION bump on purpose: mergeInto recurses
+           into plain objects, so an older save simply gains these defaults. */
+        audio: {
+            master: 0.7,
+            sfx: 0.8,
+            ambient: 0.35,            // a bed for hours of idle: below the cues
+            sfxEnabled: true,
+            ambientEnabled: true,
+            muted: false,
+        },
     },
 
     // Prestige System
@@ -320,6 +352,12 @@ const State = {
         cosmetics: {},
         utilities: {},
         prophetUpgrades: {},
+        /* Keyed by ShopItemList category, and the category is 'minigames'.
+           This said `miniGames`, so the Mini-Games tab threw on open and the
+           one item in it could never be bought. The old key is kept so a save
+           carrying it still merges cleanly; nothing reads it but
+           PatienceApp.reconcile. */
+        minigames: {},
         miniGames: {}
     },
 
@@ -855,22 +893,47 @@ const Economy = {
        Divinity and was actually divergent — 3,116 Divinity and prestige level
        194 by hour 48, which is the same runaway the bar exists to prevent,
        merely past the horizon that had been measured. Anything changed here
-       must be re-checked at 48h and 72h, not just 24h. */
-    prestigeSoulsPerPoint: 35000,
-    /* How much a DEEPER run pays. At 0.45 a run had to be 4.7x longer to pay
-       double, so banking immediately always won and the decision stayed
-       solved. */
-    prestigeExponent: 0.90,
+       must be re-checked at 48h and 72h, not just 24h.
+
+       ── Re-measured 2026-09-30, after storage started working ──────────
+       Everything below was first tuned while rank 2+ of every vault was
+       silently discarded, so Souls sat capped near 4,000 and the cap — not
+       this curve — was what spaced the reboots. With storage fixed, a fresh
+       run ramped past the old 35,000 bar in minutes and the simulated player
+       rebooted on its own five-minute gate: 547 reboots and 2,000,000
+       Divinity by hour 48. Raising the bar's growth did nothing (1.6 still
+       pinned to the gate); the constant had to move by orders of magnitude.
+
+       Measured with tools/balance_sim.mjs (rotating certification, Stable),
+       after the upgrade-price pass above UpgradeList:
+
+                       24h    72h    240h   reboot gap       Beta / Nightly
+         push=1         22     66     296   59 -> 45 -> 31   3h50 / 8h30
+         push=3         24     81     372   170 -> 124 min   9h20 / 20h50
+         Nightly        31    123     683   82 -> 38 min
+
+       Nothing collapses toward the five-minute gate at ten days, which is
+       the convergence check that matters; the gap does shorten slowly, so
+       re-measure at 240h after any change here. */
+    prestigeSoulsPerPoint: 1e8,
+    /* How much a DEEPER run pays. At 0.90 (tuned under the cap) pushing five
+       times deeper earned 60% more Divinity per hour, so patience simply
+       dominated. A run's Soul income saturates as automaton prices outrun it,
+       so at 0.75 a moderately deeper run pays ~15% more — and pays for it in
+       cascade exposure — while a very deep one wastes hours waiting for a
+       payout the run can barely reach. At 0.65 the 3x push fell to parity
+       and stopped being worth the risk. */
+    prestigeExponent: 0.75,
     /* How fast the bar rises with banked Divinity. Must outrun the bonus
        exponent below — run Souls grow superlinearly in the multiplier because
        income is reinvested into automatons inside the run, so matching the two
-       exponents is not enough on its own. */
-    prestigeThresholdGrowth: 0.80,
+       exponents is not enough on its own. 1.3 held the gap steadier but
+       walled the 3x push at ten reboots; 1.2 is the highest that does not. */
+    prestigeThresholdGrowth: 1.2,
     /* Sub-linear on purpose, and lower than it looks it should be. This is the
        exponent on the far side of the feedback loop: at 0.75 the bonus outgrew
-       every bar tested, up to and including 0.90 growth. At 0.45 total
-       Divinity grows about linearly with play time — 18 / 36 / 79 at 24h / 48h
-       / 72h — which is the shape an idle game wants. */
+       every bar tested, up to and including 0.90 growth. Unchanged by the
+       2026-09-30 re-tune, which moved the bar instead. */
     prestigeBonusExponent: 0.45,
     /* Linear, so it changes how strong a reboot FEELS without touching whether
        the loop converges. */
@@ -1072,45 +1135,51 @@ const AutomatonSpecs = {
     }
 };
 
-/* Repeatable upgrades: geometric cost, linear effect, no purchase ceiling. */
+/* Repeatable upgrades: geometric cost, linear effect, no purchase ceiling.
+
+   Storage ranks (the ones with a capacityStep) are the exception: each costs
+   `costFraction` of the vault it extends — see game.getRepeatableCost — and
+   grants capacityStep * capacityGrowth^(rank-1). Asymptotically a rank
+   returns (g-1)/g = 20% of the cap for 65% of it, so storage is a real sink
+   that competes with automatons for the same currency, at every scale. */
 const RepeatableList = [
     {
         id: 'praise_vault',
         pool: 'primordial',
         name: 'Divine Vault',
-        description: 'Expand Praise storage. Essential before any long absence.',
+        description: 'Expand Praise storage. Each rank is priced at 65% of the vault it extends — fill it, then decide.',
         resource: 'praise',
         baseCost: 400,
-        growth: 1.32,
         capacityStep: 2500,
-        capacityGrowth: 1.38,
-        effectText: (level) => `+${Math.floor(2500 * Math.pow(1.38, level)).toLocaleString()} Praise capacity`,
+        capacityGrowth: 1.25,
+        costFraction: 0.65,
+        effectText(level) { return `+${game.storageGrant(this, level + 1).toLocaleString()} Praise capacity`; },
         visible: () => true
     },
     {
         id: 'offering_vault',
         pool: 'primordial',
         name: 'Sacred Repository',
-        description: 'Expand Offerings storage.',
+        description: 'Expand Offerings storage. Priced at 65% of the current vault.',
         resource: 'offerings',
         baseCost: 60,
-        growth: 1.32,
         capacityStep: 150,
-        capacityGrowth: 1.38,
-        effectText: (level) => `+${Math.floor(150 * Math.pow(1.38, level)).toLocaleString()} Offerings capacity`,
+        capacityGrowth: 1.25,
+        costFraction: 0.65,
+        effectText(level) { return `+${game.storageGrant(this, level + 1).toLocaleString()} Offerings capacity`; },
         visible: () => State.unlockedOfferings
     },
     {
         id: 'soul_vault',
         pool: 'primordial',
         name: 'Soul Reliquary',
-        description: 'Expand Soul storage.',
+        description: 'Expand Soul storage. Priced at 65% of the current vault.',
         resource: 'souls',
         baseCost: 120,
-        growth: 1.32,
         capacityStep: 2000,
-        capacityGrowth: 1.38,
-        effectText: (level) => `+${Math.floor(2000 * Math.pow(1.38, level)).toLocaleString()} Soul capacity`,
+        capacityGrowth: 1.25,
+        costFraction: 0.65,
+        effectText(level) { return `+${game.storageGrant(this, level + 1).toLocaleString()} Soul capacity`; },
         visible: () => State.automatons.cherubCount >= 1
     },
     {
@@ -1140,39 +1209,39 @@ const RepeatableList = [
         id: 'darkness_vault',
         pool: 'void',
         name: 'Umbral Cistern',
-        description: 'Expand Darkness storage.',
+        description: 'Expand Darkness storage. Priced at 65% of the current cistern.',
         resource: 'darkness',
         baseCost: 350,
-        growth: 1.32,
         capacityStep: 900,
-        capacityGrowth: 1.38,
-        effectText: (level) => `+${Math.floor(900 * Math.pow(1.38, level)).toLocaleString()} Darkness capacity`,
+        capacityGrowth: 1.25,
+        costFraction: 0.65,
+        effectText(level) { return `+${game.storageGrant(this, level + 1).toLocaleString()} Darkness capacity`; },
         visible: () => State.dimensions.void.unlocked
     },
     {
         id: 'shadow_vault',
         pool: 'void',
         name: 'Penumbral Vault',
-        description: 'Expand Shadow storage.',
+        description: 'Expand Shadow storage. Priced at 65% of the current vault.',
         resource: 'shadows',
         baseCost: 40,
-        growth: 1.32,
         capacityStep: 90,
-        capacityGrowth: 1.38,
-        effectText: (level) => `+${Math.floor(90 * Math.pow(1.38, level)).toLocaleString()} Shadow capacity`,
+        capacityGrowth: 1.25,
+        costFraction: 0.65,
+        effectText(level) { return `+${game.storageGrant(this, level + 1).toLocaleString()} Shadow capacity`; },
         visible: () => State.dimensions.void.automatons.revenantCount >= 1
     },
     {
         id: 'echo_vault',
         pool: 'void',
         name: 'Resonance Chamber',
-        description: 'Expand Echo storage.',
+        description: 'Expand Echo storage. Priced at 65% of the current chamber.',
         resource: 'echoes',
         baseCost: 120,
-        growth: 1.32,
         capacityStep: 700,
-        capacityGrowth: 1.38,
-        effectText: (level) => `+${Math.floor(700 * Math.pow(1.38, level)).toLocaleString()} Echo capacity`,
+        capacityGrowth: 1.25,
+        costFraction: 0.65,
+        effectText(level) { return `+${game.storageGrant(this, level + 1).toLocaleString()} Echo capacity`; },
         visible: () => State.dimensions.void.automatons.phantomCount >= 1
     },
     {
@@ -1210,6 +1279,15 @@ const RepeatableList = [
     }
 ];
 
+/* Upgrade prices were authored for an economy that, as it turned out, sat
+   under a ~7,000 Praise ceiling (see Economy). With storage working, the
+   first run bought all 44 by minute 37 and coasted to a 65-minute reboot.
+   The Void-tier and dominion-tier prices were raised 3x and the capstones
+   5x (measured with tools/balance_sim.mjs --tune upgradeCostScale): the
+   Void now opens at ~17 minutes, the last capstone lands ~66 minutes in,
+   and the first reboot ~86 minutes for a player clicking steadily, with the
+   prestige curve still convergent at 240h (22 / 66 / 296 Divinity at
+   24h / 72h / 240h). */
 const UpgradeList = [
     {
         id: 'praise_multi_1',
@@ -1340,7 +1418,7 @@ const UpgradeList = [
         id: 'void_unlock',
         name: 'Breach the Veil',
         description: 'Unlock access to the Void Dimension. A darker reflection awaits.',
-        cost: { souls: 4000 },
+        cost: { souls: 12000 },
         effect: () => {
             State.dimensions.void.unlocked = true;
             if (!State.unlockedApps.includes('dimensions')) {
@@ -1354,7 +1432,7 @@ const UpgradeList = [
         id: 'globe_unlock',
         name: 'Divine Globe Access',
         description: 'Unlock the Divine Globe for managing Prophets and dimensions.',
-        cost: { souls: 30000, offerings: 4000 },
+        cost: { souls: 90000, offerings: 12000 },
         effect: () => {
             if (!State.unlockedApps.includes('divineglobe')) {
                 State.unlockedApps.push('divineglobe');
@@ -1400,7 +1478,7 @@ const UpgradeList = [
         id: 'throne_yield_2',
         name: 'Sacrificial Overdraft',
         description: 'Thrones return three times as many Offerings.',
-        cost: { offerings: 3000 },
+        cost: { offerings: 9000 },
         mods: [{ target: 'automaton.throne.output', op: 'mul', value: 3 }],
         effect: () => { State.automatons.throneProduction *= 3; },
         visible: () => State.upgrades.throne_yield_1 && State.automatons.throneCount >= 20
@@ -1409,7 +1487,7 @@ const UpgradeList = [
         id: 'throne_draw_2',
         name: 'Closed Circuit Rite',
         description: 'Thrones burn a further 35% less Praise.',
-        cost: { souls: 8000 },
+        cost: { souls: 24000 },
         mods: [{ target: 'throne.draw', op: 'mul', value: 0.65 }],
         effect: () => { State.throneDrawMultiplier = (State.throneDrawMultiplier || 1) * 0.65; },
         visible: () => State.upgrades.throne_draw_1 && State.automatons.throneCount >= 25
@@ -1420,7 +1498,7 @@ const UpgradeList = [
         id: 'dominion_boost_1',
         name: 'Regulatory Authority',
         description: 'Each Dominion contributes twice as much to total production.',
-        cost: { souls: 25000 },
+        cost: { souls: 75000 },
         mods: [{ target: 'automaton.dominion.bonusScale', op: 'mul', value: 2 }],
         effect: () => { State.automatons.dominionProduction *= 2; },
         visible: () => State.automatons.dominionCount >= 3
@@ -1429,7 +1507,7 @@ const UpgradeList = [
         id: 'dominion_cost_1',
         name: 'Delegated Jurisdiction',
         description: 'Dominions cost 20% fewer Souls.',
-        cost: { souls: 60000 },
+        cost: { souls: 180000 },
         mods: [{ target: 'automaton.dominion.cost', op: 'mul', value: 0.8 }],
         effect: () => { State.automatons.dominionCostMultiplier *= 0.8; },
         visible: () => State.automatons.dominionCount >= 8
@@ -1438,7 +1516,7 @@ const UpgradeList = [
         id: 'dominion_boost_2',
         name: 'Absolute Mandate',
         description: 'Each Dominion contributes three times as much again.',
-        cost: { souls: 400000 },
+        cost: { souls: 2000000 },
         mods: [{ target: 'automaton.dominion.bonusScale', op: 'mul', value: 3 }],
         effect: () => { State.automatons.dominionProduction *= 3; },
         visible: () => State.upgrades.dominion_boost_1 && State.automatons.dominionCount >= 15
@@ -1458,7 +1536,7 @@ const UpgradeList = [
         id: 'cherub_cost_2',
         name: 'Recycled Casings',
         description: 'Cherubs cost 20% fewer Offerings.',
-        cost: { offerings: 2500 },
+        cost: { offerings: 7500 },
         mods: [{ target: 'automaton.cherub.cost', op: 'mul', value: 0.8 }],
         effect: () => { State.automatons.cherubCostMultiplier *= 0.8; },
         visible: () => State.upgrades.cherub_cost_1 && State.automatons.cherubCount >= 20
@@ -1478,7 +1556,7 @@ const UpgradeList = [
         id: 'praise_multi_5',
         name: 'Doctrine of Excess',
         description: 'Restraint was never scripture. +400% Praise production.',
-        cost: { praise: 1500000 },
+        cost: { praise: 7500000 },
         mods: [{ target: 'praise.multiplier', op: 'mul', value: 5 }],
         effect: () => { State.praiseMultiplier *= 5; },
         visible: () => State.upgrades.praise_multi_4
@@ -1516,7 +1594,7 @@ const UpgradeList = [
         id: 'overclock_duration_1',
         name: 'Extended Duty Cycle',
         description: 'Celestial Overclock runs for 30 seconds longer.',
-        cost: { souls: 12000 },
+        cost: { souls: 36000 },
         mods: [{ target: 'overclock.duration', op: 'add', value: 30000 }],
         effect: () => { State.overclockDurationBonus = (State.overclockDurationBonus || 0) + 30000; },
         visible: () => State.upgrades.overclock_potency_1
@@ -1525,7 +1603,7 @@ const UpgradeList = [
         id: 'offline_efficiency_1',
         name: 'Custodial Routines',
         description: 'The universe runs at 85% while unattended, up from 60%.',
-        cost: { souls: 15000 },
+        cost: { souls: 45000 },
         mods: [{ target: 'offline.efficiency', op: 'max', value: 0.85 }],
         effect: () => { State.offlineEfficiency = Math.max(State.offlineEfficiency || 0.6, 0.85); },
         visible: () => State.automatons.cherubCount >= 10
@@ -1534,7 +1612,7 @@ const UpgradeList = [
         id: 'offline_efficiency_2',
         name: 'Autonomous Providence',
         description: 'The universe runs at full rate while unattended.',
-        cost: { souls: 250000 },
+        cost: { souls: 1250000 },
         mods: [{ target: 'offline.efficiency', op: 'max', value: 1 }],
         effect: () => { State.offlineEfficiency = Math.max(State.offlineEfficiency || 0.6, 1); },
         visible: () => State.upgrades.offline_efficiency_1
@@ -1545,7 +1623,7 @@ const UpgradeList = [
         id: 'reboot_yield_1',
         name: 'Retained Schematics',
         description: 'Divine Reboots preserve more of your work. +25% Praise, Offerings and Souls.',
-        cost: { praise: 250000 },
+        cost: { praise: 1250000 },
         mods: [
             { target: 'praise.multiplier', op: 'mul', value: 1.25 },
             { target: 'offerings.multiplier', op: 'mul', value: 1.25 },
@@ -1562,7 +1640,7 @@ const UpgradeList = [
         id: 'reboot_yield_2',
         name: 'Inherited Doctrine',
         description: 'Each reboot compounds. Double all production.',
-        cost: { souls: 800000 },
+        cost: { souls: 4000000 },
         mods: [
             { target: 'praise.multiplier', op: 'mul', value: 2 },
             { target: 'offerings.multiplier', op: 'mul', value: 2 },
@@ -1581,7 +1659,7 @@ const UpgradeList = [
         id: 'void_darkness_multi_1',
         name: 'Embrace Darkness',
         description: 'Channel the tear. +100% Darkness production.',
-        cost: { darkness: 900 },
+        cost: { darkness: 2700 },
         mods: [{ target: 'void.darkness.multiplier', op: 'mul', value: 2 }],
         effect: () => { State.dimensions.void.darknessMultiplier *= 2; },
         visible: () => State.dimensions.void.unlocked
@@ -1590,7 +1668,7 @@ const UpgradeList = [
         id: 'void_wraith_cost_1',
         name: 'Shadowy Bargains',
         description: 'Wraiths cost 15% less to summon.',
-        cost: { darkness: 2500 },
+        cost: { darkness: 7500 },
         mods: [{ target: 'void.automaton.wraith.cost', op: 'mul', value: 0.85 }],
         effect: () => { State.dimensions.void.automatons.wraithCostMultiplier *= 0.85; },
         visible: () => State.dimensions.void.automatons.wraithCount >= 5
@@ -1599,7 +1677,7 @@ const UpgradeList = [
         id: 'void_wraith_boost_1',
         name: 'Spectral Efficiency',
         description: 'Wraiths work twice as hard. +100% Wraith production.',
-        cost: { darkness: 9000 },
+        cost: { darkness: 27000 },
         mods: [{ target: 'void.automaton.wraith.output', op: 'mul', value: 2 }],
         effect: () => { State.dimensions.void.automatons.wraithProduction *= 2; },
         visible: () => State.dimensions.void.automatons.wraithCount >= 15
@@ -1608,7 +1686,7 @@ const UpgradeList = [
         id: 'void_revenant_yield_1',
         name: 'Condensation Rites',
         description: 'Revenants condense twice as many Shadows per burn.',
-        cost: { darkness: 40000 },
+        cost: { darkness: 120000 },
         mods: [{ target: 'void.automaton.revenant.output', op: 'mul', value: 2 }],
         effect: () => { State.dimensions.void.automatons.revenantProduction *= 2; },
         visible: () => State.dimensions.void.automatons.revenantCount >= 3
@@ -1617,7 +1695,7 @@ const UpgradeList = [
         id: 'void_revenant_draw_1',
         name: 'Sealed Conduits',
         description: 'Revenants burn 30% less Darkness for the same Shadows.',
-        cost: { shadows: 1200 },
+        cost: { shadows: 3600 },
         mods: [{ target: 'void.revenant.draw', op: 'mul', value: 0.7 }],
         effect: () => {
             const vd = State.dimensions.void;
@@ -1629,7 +1707,7 @@ const UpgradeList = [
         id: 'void_phantom_boost_1',
         name: 'Harmonic Folding',
         description: 'Phantoms fold Shadows three times as fast.',
-        cost: { shadows: 6000 },
+        cost: { shadows: 30000 },
         mods: [{ target: 'void.automaton.phantom.output', op: 'mul', value: 3 }],
         effect: () => { State.dimensions.void.automatons.phantomProduction *= 3; },
         visible: () => State.dimensions.void.automatons.phantomCount >= 10
@@ -1638,7 +1716,7 @@ const UpgradeList = [
         id: 'void_echo_multi_1',
         name: 'Standing Resonance',
         description: 'Echoes accumulate twice as fast.',
-        cost: { echoes: 15000 },
+        cost: { echoes: 75000 },
         mods: [{ target: 'void.echo.multiplier', op: 'mul', value: 2 }],
         effect: () => { State.dimensions.void.echoMultiplier *= 2; },
         visible: () => State.dimensions.void.automatons.phantomCount >= 20
@@ -1647,7 +1725,7 @@ const UpgradeList = [
         id: 'void_nemesis_boost_1',
         name: 'Adversarial Mandate',
         description: 'Each Nemesis contributes twice as much to total production.',
-        cost: { echoes: 120000 },
+        cost: { echoes: 600000 },
         mods: [{ target: 'void.automaton.nemesis.bonusScale', op: 'mul', value: 2 }],
         effect: () => { State.dimensions.void.automatons.nemesisProduction *= 2; },
         visible: () => State.dimensions.void.automatons.nemesisCount >= 5
@@ -1656,7 +1734,7 @@ const UpgradeList = [
         id: 'void_click_1',
         name: 'Hand in the Tear',
         description: 'Embracing the Void is ten times as productive.',
-        cost: { darkness: 15000 },
+        cost: { darkness: 45000 },
         mods: [{ target: 'void.click.power', op: 'mul', value: 10 }],
         effect: () => { State.dimensions.void.manualClickPower *= 10; },
         visible: () => State.dimensions.void.automatons.wraithCount >= 8
@@ -2316,7 +2394,7 @@ const ShopItemList = [
       effect: () => { for (const dim in State.followers) State.followers[dim].adorationRate *= 1.3; } },
 
     // MINI-GAMES
-    { id: 'minigame_solitaire', category: 'minigames', name: 'Unlock Solitaire', description: 'Classic card game with Adoration rewards.', cost: 500, upgradable: false,
+    { id: 'minigame_solitaire', category: 'minigames', name: 'Install Patience.exe', description: 'Golf solitaire dealt from the celestial arcana. Cleared cards pay Adoration and Overclock charge; the first three rounds each hour pay in full.', cost: 500, upgradable: false,
       effect: () => { if (!State.unlockedApps.includes('solitaire')) State.unlockedApps.push('solitaire'); } }
 ];
 
@@ -2707,6 +2785,17 @@ const AchievementList = [
       reward: () => { State.achievementBonuses.startingResources *= 1.10; }, flavor: 'Your signature is on every reboot.' },
     { id: 'ACH-032', name: 'Stability Engineer', tier: 'Platinum', condition: () => State.achievementProgress.stability_metric >= 0.95,
       reward: () => { State.achievementBonuses.globalGain *= 1.10; }, flavor: "You made a gentle universe. It's suspicious." },
+
+    // INCIDENTS (4 achievements) — js/incidents.js. No rewards: the loop is
+    // the reward, and a bonus here would be an economy change.
+    { id: 'ACH-033', name: 'First Responder', tier: 'Bronze', condition: () => (State.incidents?.stats?.resolved || 0) >= 1,
+      reward: null, flavor: 'Ticket closed. Root cause: the universe.' },
+    { id: 'ACH-034', name: 'No Fault Found', tier: 'Silver', condition: () => (State.incidents?.stats?.falseAlarmsCleared || 0) >= 3,
+      reward: null, flavor: 'You read the ticket. Nobody reads the ticket.' },
+    { id: 'ACH-035', name: 'Hands-On Divinity', tier: 'Gold', condition: () => (State.incidents?.stats?.labour || 0) >= 15,
+      reward: null, flavor: 'Fifteen faults, fifteen times the Operator came down to the floor.' },
+    { id: 'ACH-S-009', name: 'Burnt Offering', tier: 'Secret', condition: () => (State.incidents?.stats?.outagesSacrificed || 0) >= 1,
+      reward: null, flavor: 'You fed a deleted file to an outage. It accepted.' },
 
     // SECRET (8 achievements)
     { id: 'ACH-S-001', name: 'I Can Fix Her', tier: 'Secret', condition: () => State.achievementProgress.attempt_repair_sector7g >= 1,

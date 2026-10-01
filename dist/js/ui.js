@@ -58,6 +58,9 @@ const ui = {
     update(now = Date.now(), force = false) {
         this.animateCore();
         this.animateVoidCore();
+        // The stabilisation needle is the one other thing that must move at
+        // frame rate; it returns at once when no ritual is in progress.
+        this.animateIncidentLabour();
 
         if (!force && now - (this.lastPanelRefresh || 0) < this.PANEL_INTERVAL) return;
         this.lastPanelRefresh = now;
@@ -71,6 +74,7 @@ const ui = {
         this.updateLoopPanels();
         this.updateDimensionDisplay();
         this.updateOperatorStatus();
+        this.updateIncidentChrome();
         /* The Divine Settings readout was only ever rendered by that window's
            onOpen, so the award and the stability line sat frozen at whatever
            they were when it was opened — for a panel whose entire job is
@@ -549,6 +553,7 @@ const ui = {
         if (!game.CERT_BRANCHES.includes(path)) return;
         this.dismissSystemModal();
         this.shipSelection = null;
+        game.sfx('ship');
         game.performPrestige({ confirmed: true, certifyOn: path });
     },
 
@@ -585,6 +590,7 @@ const ui = {
             </section>
         `;
         layer.classList.add('active');
+        game.sfx('cascade', { tier: cascade.tier });
         return true;
     },
 
@@ -706,6 +712,7 @@ const ui = {
             </section>
         `;
         layer.classList.add('active');
+        game.sfx('adversary');
 
         this.advBeats = this.buildAdversaryBeats(null);
         this.advStep();
@@ -1052,6 +1059,7 @@ const ui = {
         el.className = 'adversary-bark';
         el.innerHTML = `<span class="adversary-bark-mark">◆</span><span>${bark.text}</span>`;
         host.appendChild(el);
+        game.sfx('adversaryBark');
         setTimeout(() => el.classList.add('is-visible'), 20);
         setTimeout(() => {
             el.classList.remove('is-visible');
@@ -1115,6 +1123,9 @@ const ui = {
             <div class="reality-stability tier-${cascade.tier}">
                 <div class="stability-line">
                     <span class="code-stamp${cascade.tier > 0 ? ' is-alarm' : ''}">${cascade.label}</span>
+                    ${cascade.tier > 0
+                        ? '<button type="button" class="win-btn stability-why" data-breakdown="rate:praise:throttle" aria-label="Why is output throttled?">Why?</button>'
+                        : ''}
                     <span class="stability-trend">${trend}</span>
                 </div>
                 <div class="stability-track"><div class="stability-fill" style="width:${pct}%"></div></div>
@@ -1123,7 +1134,7 @@ const ui = {
                     : ''}
             </div>`;
 
-        host.innerHTML = `
+        const html = `
             <div class="reality-head">
                 <span class="reality-version">REALITY v${build.version}</span>
                 <span class="reality-channel">${channel}</span>
@@ -1142,6 +1153,15 @@ const ui = {
                     </li>`).join('')}</ul>
             </details>
         `;
+        /* Only touch the DOM when the markup changed. This runs on the panel
+           tick, and rewriting identical markup ten times a second replaced
+           every button under the pointer and the keyboard — focus on a patch
+           button or on "Why?" was gone a tenth of a second after it landed,
+           and an opened changelog snapped shut. */
+        if (html !== this.lastRealityPanelHtml || !host.firstElementChild) {
+            host.innerHTML = html;
+            this.lastRealityPanelHtml = html;
+        }
     },
 
     closeOfflineReport() {
@@ -1157,6 +1177,7 @@ const ui = {
         const s = document.getElementById('val-souls');
         const u = document.getElementById('val-uptime');
         const pRate = document.getElementById('val-praise-rate');
+        const oRate = document.getElementById('val-offering-rate');
         const sRate = document.getElementById('val-soul-rate');
 
         if (p) {
@@ -1234,6 +1255,7 @@ const ui = {
            the game the player could actually read, and it was wrong. */
         const rates = game.getProductionRates();
         if (pRate) pRate.innerText = this.formatNumber(rates.praise, 1);
+        if (oRate) oRate.innerText = this.formatNumber(rates.offerings, 1);
         if (sRate) sRate.innerText = this.formatNumber(rates.souls, 1);
     },
 
@@ -1463,6 +1485,7 @@ const ui = {
 
         document.body.appendChild(toast);
         this.repositionAchievementToasts();
+        game.sfx('achievement', { tier: achievement.tier });
 
         // Slide in from right
         setTimeout(() => toast.classList.add('show'), 10);
@@ -1506,7 +1529,7 @@ const ui = {
 
     binCodes: {
         patch: 'PCH', achievement: 'ACH', resource: 'RES',
-        automaton: 'AUT', document: 'DOC', other: 'MSC'
+        automaton: 'AUT', document: 'DOC', backup: 'BAK', log: 'LOG', other: 'MSC'
     },
 
     codeStamp(code, alarm = false) {
@@ -2150,6 +2173,7 @@ const ui = {
         element.onclick = () => game.clickDivineEvent();
 
         document.body.appendChild(element);
+        game.sfx('eventAppear');
     },
 
     hideDivineEvent() {
@@ -2433,17 +2457,18 @@ const ui = {
                 <div class="resource-panel">
                     <div class="stat-box">
                         <label>PRAISE</label>
-                        <div id="dim-val-praise" class="stat-value">0</div>
-                        <div class="stat-rate">+<span id="dim-val-praise-rate">0</span>/s</div>
+                        <div id="dim-val-praise" class="stat-value" data-breakdown="cap:praise" tabindex="0">0</div>
+                        <div class="stat-rate" data-breakdown="rate:praise" tabindex="0">+<span id="dim-val-praise-rate">0</span>/s</div>
                     </div>
                     <div class="stat-box">
                         <label>OFFERINGS</label>
-                        <div id="dim-val-offerings" class="stat-value">0</div>
+                        <div id="dim-val-offerings" class="stat-value" data-breakdown="cap:offerings" tabindex="0">0</div>
+                        <div class="stat-rate" data-breakdown="rate:offerings" tabindex="0">+<span id="dim-val-offering-rate">0</span>/s</div>
                     </div>
                     <div class="stat-box">
                         <label>SOULS</label>
-                        <div id="dim-val-souls" class="stat-value">0</div>
-                        <div class="stat-rate">+<span id="dim-val-soul-rate">0</span>/s</div>
+                        <div id="dim-val-souls" class="stat-value" data-breakdown="cap:souls" tabindex="0">0</div>
+                        <div class="stat-rate" data-breakdown="rate:souls" tabindex="0">+<span id="dim-val-soul-rate">0</span>/s</div>
                     </div>
                 </div>
 
@@ -2489,17 +2514,18 @@ const ui = {
                 <div class="resource-panel">
                     <div class="stat-box void-stat">
                         <label>DARKNESS</label>
-                        <div id="dim-val-darkness" class="stat-value">0</div>
-                        <div class="stat-rate">+<span id="dim-val-darkness-rate">0</span>/s</div>
+                        <div id="dim-val-darkness" class="stat-value" data-breakdown="cap:darkness" tabindex="0">0</div>
+                        <div class="stat-rate" data-breakdown="rate:darkness" tabindex="0">+<span id="dim-val-darkness-rate">0</span>/s</div>
                     </div>
                     <div class="stat-box void-stat">
                         <label>SHADOWS</label>
-                        <div id="dim-val-shadows" class="stat-value">0</div>
+                        <div id="dim-val-shadows" class="stat-value" data-breakdown="cap:shadows" tabindex="0">0</div>
+                        <div class="stat-rate" data-breakdown="rate:shadows" tabindex="0">+<span id="dim-val-shadow-rate">0</span>/s</div>
                     </div>
                     <div class="stat-box void-stat">
                         <label>ECHOES</label>
-                        <div id="dim-val-echoes" class="stat-value">0</div>
-                        <div class="stat-rate">+<span id="dim-val-echo-rate">0</span>/s</div>
+                        <div id="dim-val-echoes" class="stat-value" data-breakdown="cap:echoes" tabindex="0">0</div>
+                        <div class="stat-rate" data-breakdown="rate:echoes" tabindex="0">+<span id="dim-val-echo-rate">0</span>/s</div>
                     </div>
                 </div>
 
@@ -2558,6 +2584,8 @@ const ui = {
 
             if (praiseRateEl) praiseRateEl.innerText = this.formatNumber(praisePerSec, 1);
             if (soulRateEl) soulRateEl.innerText = this.formatNumber(soulPerSec, 1);
+            const offeringRateEl = document.getElementById('dim-val-offering-rate');
+            if (offeringRateEl) offeringRateEl.innerText = this.formatNumber(primordialRates.offerings, 1);
 
             // Update automaton counts
             const seraphCountEl = document.getElementById('dim-seraph-count');
@@ -2593,6 +2621,8 @@ const ui = {
 
             if (darknessRateEl) darknessRateEl.innerText = this.formatNumber(darknessPerSec, 1);
             if (echoRateEl) echoRateEl.innerText = this.formatNumber(echoPerSec, 1);
+            const shadowRateEl = document.getElementById('dim-val-shadow-rate');
+            if (shadowRateEl) shadowRateEl.innerText = this.formatNumber(voidRates.shadows, 1);
 
             this.renderAutomatons('void-automaton-list', 'void');
             this.renderRepeatables('void-repeatable-list', 'void');
@@ -2657,6 +2687,11 @@ const ui = {
                 shopIcon.style.display = 'none';
             }
         }
+
+        const patienceIcon = document.getElementById('icon-solitaire');
+        if (patienceIcon) {
+            patienceIcon.style.display = State.unlockedApps.includes('solitaire') ? 'block' : 'none';
+        }
     },
 
     // === DOCUMENT SYSTEM UI ===
@@ -2674,6 +2709,7 @@ const ui = {
         `;
 
         document.body.appendChild(notification);
+        game.sfx('document');
 
         // Slide in from right
         setTimeout(() => notification.classList.add('show'), 10);
@@ -3248,6 +3284,293 @@ const ui = {
         if (countEl) countEl.innerText = runningCount;
         if (cpuEl) cpuEl.innerText = totalCPU.toFixed(1) + '%';
         if (memEl) memEl.innerText = totalMemory.toFixed(0) + ' MB';
+
+        this.incidentSignature = null;
+        this.renderIncidentTriage();
+    },
+
+    /* ════════════════════════════════════════════════════════════════════
+       INCIDENTS — Task Manager as the triage console.
+
+       The logic is js/incidents.js; this only draws what Incidents.view()
+       returns. Three surfaces:
+
+         - the triage queue at the top of Task Manager, where every ticket
+           shows as a process that is Not Responding, with its clock and its
+           three answers;
+         - an alarm lamp in the system tray and a line on the operator panel,
+           so a ticket is visible without opening anything;
+         - the SEV-1 dialog, which opens itself.
+
+       Every string from a template goes through escapeHtml. None of it is
+       player-authored, but `tell` lines are written the way people write —
+       quotes, apostrophes — and dd40134 is what happens when that reaches an
+       attribute raw.
+       ════════════════════════════════════════════════════════════════════ */
+
+    incidentsAvailable() {
+        return typeof Incidents !== 'undefined' && typeof game !== 'undefined' && game.incidentsLive();
+    },
+
+    formatClock(seconds) {
+        const s = Math.max(0, Math.ceil(seconds));
+        return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    },
+
+    resourceLabel(resource) {
+        return resource ? resource.charAt(0).toUpperCase() + resource.slice(1) : '';
+    },
+
+    /* Called by Incidents whenever the queue changes shape. */
+    onIncidentsChanged() {
+        this.incidentSignature = null;
+        this.updateIncidentChrome();
+    },
+
+    /* Panel tick (~10Hz). Cheap when nothing is open and Task Manager is shut. */
+    updateIncidentChrome() {
+        if (!this.incidentsAvailable()) return;
+        const summary = Incidents.summary();
+
+        const led = document.getElementById('tray-incident-led');
+        if (led) {
+            const lit = summary.open > 0;
+            led.hidden = !summary.everFiled;
+            led.classList.toggle('is-lit', lit);
+            led.classList.toggle('is-outage', lit && summary.worst === 1);
+            const label = lit
+                ? `${summary.open} open incident${summary.open === 1 ? '' : 's'} — worst SEV-${summary.worst}. Open Task Manager.`
+                : 'No open incidents.';
+            if (led.title !== label) {
+                led.title = label;
+                led.setAttribute('aria-label', label);
+            }
+        }
+
+        const line = document.getElementById('operator-incidents');
+        if (line) {
+            line.hidden = !summary.everFiled;
+            const text = summary.open > 0
+                ? `${summary.open} OPEN · WORST SEV-${summary.worst}`
+                : 'QUEUE CLEAR';
+            const valueEl = line.querySelector('[data-role="count"]');
+            if (valueEl && valueEl.innerText !== text) valueEl.innerText = text;
+            line.classList.toggle('is-alarm', summary.open > 0);
+        }
+
+        this.renderIncidentTriage();
+    },
+
+    renderIncidentTriage() {
+        const host = document.getElementById('taskmgr-incidents');
+        if (!host || !this.incidentsAvailable()) return;
+
+        const now = Date.now();
+        const open = Incidents.state().open;
+        const summary = Incidents.summary();
+        const views = open.map((inc) => Incidents.view(inc, now));
+
+        /* Structure re-renders only when the queue changes shape; clocks,
+           prices and affordability update in place. Re-rendering at 10Hz
+           would eat the click on any button the player was reaching for. */
+        const signature = JSON.stringify([summary.everFiled, views.map((v) => [
+            v.id, v.severity, !!v.prophet, v.labour ? [v.labour.band.at, v.labour.hits] : null,
+            v.artifact?.id || null, v.canProphet,
+        ])]);
+        if (signature !== this.incidentSignature) {
+            this.incidentSignature = signature;
+            host.hidden = !summary.everFiled;
+            host.innerHTML = this.incidentQueueHtml(views, summary);
+        }
+
+        for (const v of views) {
+            const row = host.querySelector(`[data-incident="${v.id}"]`);
+            if (!row) continue;
+            const clock = row.querySelector('[data-role="clock"]');
+            const clockText = v.prophet
+                ? `Prophet on site — closes in ${this.formatClock(v.prophet.remaining)}`
+                : v.severity === 1
+                    ? `OUTAGE — ${v.line} halted`
+                    : `Escalates to ${v.nextSeverity === 1 ? 'OUTAGE' : `SEV-${v.nextSeverity}`} in ${this.formatClock(v.remaining)}`;
+            if (clock && clock.innerText !== clockText) clock.innerText = clockText;
+
+            const pay = row.querySelector('[data-role="pay"]');
+            if (pay) {
+                const text = v.cost
+                    ? `Pay ${this.formatNumber(v.cost.amount)} ${this.resourceLabel(v.cost.resource)}`
+                    : 'Cannot be paid off';
+                if (pay.innerText !== text) pay.innerText = text;
+                const disabled = !v.cost || !v.cost.affordable;
+                if (pay.disabled !== disabled) pay.disabled = disabled;
+            }
+        }
+    },
+
+    incidentQueueHtml(views, summary) {
+        const esc = (v) => this.escapeHtml(v);
+        const head = `
+            <div class="incident-queue-head">
+                <span class="code-stamp${views.length ? ' is-alarm' : ''}">INCIDENT QUEUE</span>
+                <span class="incident-queue-count">${views.length
+                    ? `${views.length} open · worst SEV-${summary.worst}`
+                    : 'No open incidents. The universe is, for the moment, someone else’s problem.'}</span>
+            </div>`;
+        if (!views.length) return head;
+
+        const rows = views.map((v) => {
+            const id = esc(v.id);
+            const labour = v.labour ? `
+                <div class="incident-labour" data-role="labour-strip">
+                    <div class="labour-track" aria-hidden="true">
+                        <div class="labour-band" style="left:${(v.labour.band.at * 100).toFixed(2)}%;width:${(v.labour.band.width * 100).toFixed(2)}%"></div>
+                        <div class="labour-marker" data-role="marker"></div>
+                    </div>
+                    <div class="labour-readout">
+                        <span class="labour-pips" aria-label="${v.labour.hits} of ${v.labour.need} aligned">${
+                            Array.from({ length: v.labour.need }, (_, i) => `<i class="${i < v.labour.hits ? 'is-set' : ''}"></i>`).join('')
+                        }</span>
+                        <button type="button" class="incident-btn labour-align" onclick="ui.incidentAction('${id}', 'align')">Align</button>
+                    </div>
+                    <p class="labour-hint">Align when the needle crosses the lit band. A miss costs one.</p>
+                </div>` : '';
+
+            const extra = [
+                v.artifact ? `<button type="button" class="incident-btn is-sacrifice" onclick="ui.incidentAction('${id}', 'sacrifice')"
+                    title="Delete ${esc(v.artifact.name)} from the Recycle Bin to close this ticket">Sacrifice ${esc(v.artifact.name)}</button>` : '',
+                v.canProphet ? `<button type="button" class="incident-btn" onclick="ui.incidentAction('${id}', 'prophet')">Dispatch a Prophet</button>` : '',
+            ].join('');
+
+            return `
+                <article class="incident-row sev-${v.severity}${v.prophet ? ' has-prophet' : ''}" data-incident="${id}">
+                    <header class="incident-row-head">
+                        <span class="code-stamp is-alarm incident-sev">SEV-${v.severity}</span>
+                        <span class="incident-process">${esc(v.process)}</span>
+                        <span class="incident-status">Not Responding</span>
+                        <span class="incident-clock" data-role="clock"></span>
+                    </header>
+                    <div class="incident-title"><span class="incident-id">${id}</span> ${esc(v.title)}</div>
+                    <p class="incident-desc">${esc(v.desc)}</p>
+                    <p class="incident-effect">Reported impact: ${esc(v.effect)}</p>
+                    ${v.prophet ? '' : `<div class="incident-actions">
+                        <button type="button" class="incident-btn is-labour" onclick="ui.incidentAction('${id}', 'labour')"
+                            ${v.labour ? 'disabled' : ''}>${esc(v.labourVerb)}</button>
+                        <button type="button" class="incident-btn" data-role="pay" onclick="ui.incidentAction('${id}', 'resources')"></button>
+                        <button type="button" class="incident-btn is-debt" onclick="ui.incidentAction('${id}', 'debt')"
+                            title="Close the ticket now. The penalty stays until this build ships.">Defer — ${esc(v.debt)} this build</button>
+                        ${extra}
+                    </div>`}
+                    ${labour}
+                </article>`;
+        }).join('');
+
+        return `${head}
+            <p class="incident-queue-note">Unhandled tickets escalate. Tickets raised in error close themselves.
+                Telemetry is not always telling the truth.</p>
+            ${rows}`;
+    },
+
+    /* Per frame, and only while a ritual is in progress: the needle has to
+       move smoothly or the timing is a guess. One style write per strip. */
+    animateIncidentLabour() {
+        if (!this.incidentsAvailable()) return;
+        const open = Incidents.state().open;
+        if (!open.some((inc) => inc.labour)) return;
+        const now = Date.now();
+        for (const inc of open) {
+            if (!inc.labour) continue;
+            const marker = document.querySelector(`[data-incident="${inc.id}"] [data-role="marker"]`);
+            if (marker) marker.style.left = `${(Incidents.labourMarker(inc, now) * 100).toFixed(2)}%`;
+        }
+    },
+
+    /* Every incident button lands here, from the queue or from the SEV-1
+       dialog. `fromDialog` closes the dialog first; labour then needs the
+       console, so it opens Task Manager on the ticket. */
+    incidentAction(id, action, fromDialog = false) {
+        if (!this.incidentsAvailable()) return;
+        if (fromDialog) this.dismissSystemModal();
+        const now = Date.now();
+        let ok = false;
+        switch (action) {
+            case 'labour':
+                ok = !!Incidents.beginLabour(id, now);
+                if (fromDialog || !system.windows?.taskmgr) system.openApp('taskmgr');
+                break;
+            case 'align': {
+                const result = Incidents.labourPulse(id, now);
+                ok = !result.ignored;
+                const row = document.querySelector(`[data-incident="${id}"] .labour-track`);
+                if (row && !result.ignored && !result.done) {
+                    row.classList.remove('is-hit', 'is-miss');
+                    void row.offsetWidth;   // restart the flash
+                    row.classList.add(result.hit ? 'is-hit' : 'is-miss');
+                }
+                break;
+            }
+            case 'resources': ok = Incidents.payResources(id, now); break;
+            case 'debt': ok = Incidents.defer(id, now); break;
+            case 'sacrifice': ok = Incidents.sacrifice(id, null, now); break;
+            case 'prophet': ok = Incidents.dispatchProphet(id); break;
+            default: return;
+        }
+        if (ok) {
+            this.incidentSignature = null;
+            this.renderIncidentTriage();
+            this.updateIncidentChrome();
+            State.save();
+        }
+        // Keep the keyboard on the instrument: re-rendering replaced it.
+        if (action === 'labour' || action === 'align') {
+            document.querySelector(`[data-incident="${id}"] .labour-align`)?.focus({ preventScroll: true });
+        }
+    },
+
+    /* The OS opens a window you did not ask for. Same contract as
+       showCascadeAlert: refuses to paint over an open modal and SAYS so, so
+       Incidents.announce() can retry it on the next tick instead of
+       recording an outage nobody was told about. */
+    showIncidentAlert(view) {
+        const layer = document.getElementById('system-modal-layer');
+        if (!layer || layer.classList.contains('active') || !view) return false;
+        const esc = (v) => this.escapeHtml(v);
+        const id = esc(view.id);
+        const pay = view.cost
+            ? `<button class="dialog-secondary" type="button" onclick="ui.incidentAction('${id}', 'resources', true)"
+                   ${view.cost.affordable ? '' : 'disabled'}>Pay ${this.formatNumber(view.cost.amount)} ${this.resourceLabel(view.cost.resource)}</button>`
+            : '';
+        const sacrifice = view.artifact
+            ? `<button class="dialog-secondary" type="button" onclick="ui.incidentAction('${id}', 'sacrifice', true)">Sacrifice ${esc(view.artifact.name)}</button>`
+            : '';
+
+        layer.innerHTML = `
+            <section class="system-dialog incident-alert" role="alertdialog" aria-modal="true" aria-labelledby="incident-alert-title">
+                <div class="system-dialog-titlebar">
+                    <span>SYSTEM &mdash; UNSOLICITED</span>
+                    <button type="button" onclick="ui.dismissSystemModal()" aria-label="Acknowledge">X</button>
+                </div>
+                <div class="incident-alert-body">
+                    <div class="incident-alert-stamps">
+                        <span class="code-stamp is-alarm">SEV-1 OUTAGE</span>
+                        <span class="incident-alert-id">${id} &middot; ${esc(view.process)} &middot; Not Responding</span>
+                    </div>
+                    <h2 id="incident-alert-title">${esc(view.title)}</h2>
+                    <p>${esc(view.desc)}</p>
+                    <p class="incident-alert-impact">The <strong>${esc(view.line)}</strong> is halted until this is resolved.
+                        Reported impact: ${esc(view.effect)}.</p>
+                    <p class="incident-alert-advice">Stabilise it by hand, pay it off, or defer it and carry
+                        <strong>${esc(view.debt)}</strong> until this build ships.</p>
+                </div>
+                <div class="system-dialog-actions incident-alert-actions">
+                    <button class="dialog-secondary" type="button" onclick="ui.dismissSystemModal()">Later</button>
+                    <button class="dialog-secondary" type="button" onclick="ui.incidentAction('${id}', 'debt', true)">Defer</button>
+                    ${sacrifice}
+                    ${pay}
+                    <button class="dialog-primary" type="button" onclick="ui.incidentAction('${id}', 'labour', true)">${esc(view.labourVerb)}</button>
+                </div>
+            </section>
+        `;
+        layer.classList.add('active');
+        return true;
     },
 
     endProcess(processName) {
@@ -3327,24 +3650,26 @@ const ui = {
                 itemDiv.addEventListener('mouseenter', () => game.triggerAdversaryBark('hover_patch_file'));
             }
             if (item.type === 'achievement') itemDiv.classList.add('item-achievement');
+            if (item.incidentArtifact) itemDiv.classList.add('item-artifact');
 
             const icon = this.getRecycleBinItemIcon(item.type);
 
             itemDiv.innerHTML = `
                 <div class="item-icon">${icon}</div>
                 <div class="item-info">
-                    <div class="item-name">${item.name}</div>
-                    <div class="item-desc">${item.description || ''}</div>
+                    <div class="item-name">${this.escapeHtml(item.name)}</div>
+                    <div class="item-desc">${this.escapeHtml(item.description || '')}</div>
                     <div class="item-meta">
                         <span class="item-type">${item.type}</span>
                         ${item.sacrificeValue ? `<span class="item-value">Value: ${item.sacrificeValue}</span>` : ''}
                     </div>
                 </div>
                 <div class="item-actions">
-                    ${item.type === 'patch' ?
+                    ${item.incidentArtifact ? this.artifactActionsHtml(item) : ''}
+                    ${item.incidentArtifact ? '' : item.type === 'patch' ?
                         `<button class="btn-execute-patch" onclick="ui.executeAdversaryPatch('${item.id}')">Execute</button>` :
                         ''}
-                    ${item.deletable !== false ?
+                    ${item.incidentArtifact ? '' : item.deletable !== false ?
                         `<button class="btn-restore" onclick="ui.restoreItem('${item.id}')">Restore</button>
                          <button class="btn-delete-permanent" onclick="ui.deleteItemPermanently('${item.id}')">Delete</button>
                          ${item.sacrificeValue ? `<button class="btn-sacrifice" onclick="ui.sacrificeItem('${item.id}')">Sacrifice</button>` : ''}` :
@@ -3354,6 +3679,31 @@ const ui = {
 
             container.appendChild(itemDiv);
         });
+    },
+
+    /* An incident artifact cannot be restored — there is nowhere to restore
+       a superseded module or a quarantined false alarm TO — so it offers the
+       one thing it is for, and deletion. */
+    artifactActionsHtml(item) {
+        const id = this.escapeHtml(item.id);
+        const target = this.incidentsAvailable()
+            ? [...Incidents.state().open].sort((a, b) => a.severity - b.severity)[0]
+            : null;
+        const feed = target
+            ? `<button class="btn-sacrifice" onclick="ui.feedArtifact('${id}')">Sacrifice to ${this.escapeHtml(target.id)}</button>`
+            : '<span class="no-action">No open incident</span>';
+        return `${feed}<button class="btn-delete-permanent" onclick="ui.deleteItemPermanently('${id}')">Delete</button>`;
+    },
+
+    feedArtifact(itemId) {
+        if (!this.incidentsAvailable()) return;
+        const target = [...Incidents.state().open].sort((a, b) => a.severity - b.severity)[0];
+        if (!target) return;
+        if (Incidents.sacrifice(target.id, itemId)) {
+            this.updateRecycleBinList();
+            this.onIncidentsChanged();
+            State.save();
+        }
     },
 
     getRecycleBinItemIcon(type) {
@@ -3604,6 +3954,8 @@ const ui = {
         if (perfCheckbox) {
             perfCheckbox.checked = State.settings.performanceMode || false;
         }
+
+        if (typeof audio !== 'undefined') audio.syncSettingsUI();
     },
 
     updateNotationMode(mode) {

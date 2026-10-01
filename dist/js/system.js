@@ -13,6 +13,7 @@ const system = {
         setTimeout(() => {
             const boot = document.getElementById('boot-overlay');
             if (boot) boot.style.opacity = '0';
+            game.sfx('desktop');
             setTimeout(() => boot?.remove(), testMode ? 0 : 1000);
 
             setTimeout(() => {
@@ -57,12 +58,16 @@ const system = {
         divineglobe: { label: 'Divine Globe', art: 'globe', hint: 'Assign prophets' },
         divinecalls: { label: 'Divine Calls', art: 'calls', hint: 'Convert resources' },
         adorationshop: { label: 'Adoration Shop', art: 'shop', hint: 'Acquire persistent utilities' },
+        // No authored plaque yet: `glyph` names a CSS-drawn mark instead.
+        solitaire: { label: 'Patience.exe', glyph: 'patience', hint: 'Golf solitaire, dealt from the arcana' },
         settings: { label: 'Divine Settings', art: 'settings', hint: 'Save, prestige, and display' }
     },
 
     /* The taskbar and Genesis menu reuse the desktop plaques rather than a
        second, unrelated symbol set. */
     appGlyph(id) {
+        const glyph = this.appMeta[id]?.glyph;
+        if (glyph) return `<span class="app-glyph app-glyph--${glyph}" aria-hidden="true"></span>`;
         const art = this.appMeta[id]?.art;
         if (!art) return '';
         const label = this.appMeta[id]?.label || id;
@@ -151,6 +156,22 @@ const system = {
                     return; // never auto-advance past an unanswered choice
                 }
                 ui.advanceAdversaryScene();
+                return;
+            }
+
+            /* A stabilisation ritual owns Space and Enter while its Align
+               button has focus: the button is the instrument, and a Miracle
+               fired from the same key would be noise. Repeats are dropped so
+               holding the key cannot machine-gun the needle. */
+            const align = e.target && e.target.closest && e.target.closest('.labour-align');
+            if (align && (e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter')) {
+                e.preventDefault();
+                if (!e.repeat) align.click();
+                return;
+            }
+
+            // Patience.exe claims arrows, Enter and Space while it is on top.
+            if (typeof PatienceView !== 'undefined' && PatienceView.handleKey(e, this.getTopWindowId())) {
                 return;
             }
 
@@ -273,6 +294,7 @@ const system = {
 
         if (shouldOpen) {
             this.renderStartMenu();
+            game.sfx('startMenu');
         }
     },
 
@@ -350,7 +372,8 @@ const system = {
             divinecalls: { width: 620, height: 520 },
             adorationshop: { width: 650, height: 560 },
             taskmgr: { width: 860, height: 560 },
-            recyclebin: { width: 700, height: 560 }
+            recyclebin: { width: 700, height: 560 },
+            solitaire: { width: 660, height: 540 }
         };
 
         return appSizes[id] || { width: 620, height: 560 };
@@ -401,6 +424,7 @@ const system = {
 
     setWindowMode(id, mode) {
         this.windowStates[id] = this.windowStates[id] || { mode: 'normal', normalBounds: null };
+        if (this.windowStates[id].mode !== mode) game.sfx('windowMode', { mode });
         this.windowStates[id].mode = mode;
 
         const win = this.windows[id];
@@ -582,6 +606,7 @@ const system = {
 
         if (appConfig.onOpen) appConfig.onOpen();
         this.updateTaskbar();
+        game.sfx('windowOpen');
 
         /* He has opinions about which windows you open. One table rather than
            five scattered calls, so AdversaryHookedTriggers stays honest. */
@@ -607,6 +632,7 @@ const system = {
     closeApp(id) {
         if (this.windows[id]) {
             this.windows[id].remove();
+            game.sfx('windowClose');
             delete this.windows[id];
             delete this.windowStates[id];
             this.updateTaskbar();
@@ -636,17 +662,18 @@ const system = {
                         <div class="resource-panel">
                             <div class="stat-box">
                                 <label>PRAISE</label>
-                                <div id="val-praise" class="stat-value">0</div>
-                                <div class="stat-rate">+<span id="val-praise-rate">0</span>/s</div>
+                                <div id="val-praise" class="stat-value" data-breakdown="cap:praise" tabindex="0">0</div>
+                                <div class="stat-rate" data-breakdown="rate:praise" tabindex="0">+<span id="val-praise-rate">0</span>/s</div>
                             </div>
                             <div class="stat-box">
                                 <label>OFFERINGS</label>
-                                <div id="val-offerings" class="stat-value">0</div>
+                                <div id="val-offerings" class="stat-value" data-breakdown="cap:offerings" tabindex="0">0</div>
+                                <div class="stat-rate" data-breakdown="rate:offerings" tabindex="0">+<span id="val-offering-rate">0</span>/s</div>
                             </div>
                             <div class="stat-box">
                                 <label>SOULS</label>
-                                <div id="val-souls" class="stat-value">0</div>
-                                <div class="stat-rate">+<span id="val-soul-rate">0</span>/s</div>
+                                <div id="val-souls" class="stat-value" data-breakdown="cap:souls" tabindex="0">0</div>
+                                <div class="stat-rate" data-breakdown="rate:souls" tabindex="0">+<span id="val-soul-rate">0</span>/s</div>
                             </div>
                         </div>
                         <div class="actions">
@@ -767,6 +794,33 @@ const system = {
                                     <option value="suffix">Suffix (1.5M, 2.3B)</option>
                                     <option value="scientific">Scientific (1.50e6, 2.30e9)</option>
                                 </select>
+                            </div>
+                        </div>
+
+                        <h3>Sound Settings</h3>
+                        <div class="audio-settings">
+                            <div class="setting-row">
+                                <label for="audio-master">Master Volume:</label>
+                                <span class="setting-checkbox-spacer" aria-hidden="true"></span>
+                                <input type="range" id="audio-master" class="setting-range" min="0" max="100" step="1" value="70" oninput="audio.setVolume('master', this.value / 100)">
+                                <span class="setting-value" id="audio-master-value">70%</span>
+                            </div>
+                            <div class="setting-row">
+                                <label for="audio-sfx">System Sounds:</label>
+                                <input type="checkbox" id="audio-sfx-enabled" class="setting-checkbox" checked aria-label="System sounds enabled" onchange="audio.setEnabled('sfx', this.checked)">
+                                <input type="range" id="audio-sfx" class="setting-range" min="0" max="100" step="1" value="80" oninput="audio.setVolume('sfx', this.value / 100)">
+                                <span class="setting-value" id="audio-sfx-value">80%</span>
+                            </div>
+                            <div class="setting-row">
+                                <label for="audio-ambient">Ambient Hum:</label>
+                                <input type="checkbox" id="audio-ambient-enabled" class="setting-checkbox" checked aria-label="Ambient hum enabled" onchange="audio.setEnabled('ambient', this.checked)">
+                                <input type="range" id="audio-ambient" class="setting-range" min="0" max="100" step="1" value="35" oninput="audio.setVolume('ambient', this.value / 100)">
+                                <span class="setting-value" id="audio-ambient-value">35%</span>
+                            </div>
+                            <div class="setting-row">
+                                <label for="audio-muted">Mute All:</label>
+                                <input type="checkbox" id="audio-muted" class="setting-checkbox" onchange="audio.setMuted(this.checked)">
+                                <span class="setting-desc" id="audio-status">Standing by for your first action.</span>
                             </div>
                         </div>
 
@@ -1034,6 +1088,8 @@ const system = {
                             </div>
                         </div>
 
+                        <section id="taskmgr-incidents" class="taskmgr-incidents" aria-live="polite" hidden></section>
+
                         <div class="taskmgr-table-container">
                             <table class="taskmgr-table">
                                 <thead>
@@ -1098,6 +1154,12 @@ const system = {
                     State.achievementProgress.open_recyclebin = (State.achievementProgress.open_recyclebin || 0) + 1;
                     ui.updateRecycleBinList();
                 }
+            },
+
+            'solitaire': {
+                title: 'Patience.exe - Celestial Arcana',
+                initialHTML: `<div class="patience" id="patience-root"></div>`,
+                onOpen: () => PatienceView.open()
             }
         };
         return configs[id] || { title: 'Unknown App', initialHTML: 'ERROR' };

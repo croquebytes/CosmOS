@@ -3,6 +3,13 @@ const game = {
         return Math.floor(Math.random() * (max - min + 1)) + min;
     },
 
+    /* Every sound cue goes through here. js/audio.js is presentation, and
+       the simulator and every vm test load this file without it, so this is
+       inert wherever `audio` is undefined. A cue must never decide anything. */
+    sfx(name, opts) {
+        if (typeof audio !== 'undefined' && audio && typeof audio.play === 'function') audio.play(name, opts);
+    },
+
     ensureLoopState() {
         if (!State.loopSystems) {
             State.loopSystems = {};
@@ -94,9 +101,11 @@ const game = {
         const cost = this.getNullDoctrineCost();
         if ((vd.resources.echoes || 0) < cost) {
             ui.log(`Insufficient Echoes. Need ${this.formatCost(cost)}.`, 'void');
+            this.sfx('error');
             return;
         }
         vd.resources.echoes -= cost;
+        this.sfx('purchase');
         State.nullDoctrine = (State.nullDoctrine || 0) + 1;
         ui.log(`Null Doctrine inscribed to rank ${State.nullDoctrine}.`, 'void');
         ui.screenPulse('rgba(150, 88, 224, 0.3)');
@@ -152,6 +161,7 @@ const game = {
         loops.overclock.endsAt = now + loops.overclock.duration + (State.overclockDurationBonus || 0);
 
         ui.log('Celestial Overclock engaged! +50% production, stronger miracles for 30s.');
+        this.sfx('overclock');
         ui.screenPulse('rgba(255, 153, 0, 0.35)');
     },
 
@@ -399,6 +409,7 @@ const game = {
         }
 
         ui.log(`[Directive Claimed] ${directive.title}`);
+        this.sfx('directive');
         loops.directives.active = null;
         this.generateDirective(true);
         this.checkAchievements();
@@ -460,8 +471,52 @@ const game = {
         }
     },
 
+    /* A production line's output scale. See the note in getProductionRates. */
+    lineScale(value) {
+        return Number.isFinite(value) ? value : 1;
+    },
+
     getProductionRates(now = Date.now(), includeTransient = true) {
+        return this.computeProduction(now, includeTransient, null);
+    },
+
+    /* ── Production, as named folds ───────────────────────────────────────
+       Every rate is a left fold over named factors, and the production
+       breakdown panel is a recording of that same fold — not a second copy of
+       the formula. There used to be three hand-written copies of this
+       arithmetic on screen and all three had drifted (see syncResources), so
+       the panel is not allowed to be a fourth.
+
+       `[key, value]` folds as `acc * value`; `[key, value, 'sub']` as
+       `acc - value`. JS evaluates `a * b * c` as `(a * b) * c`, so a fold
+       seeded with the first factor produces the same double as the chained
+       expression it replaced, operand for operand. That is what lets
+       `npm run test:golden` stay byte-identical: the ORDER below is the order
+       the old expressions had, and it is load-bearing for the same reason it
+       is in Modifiers.fold — IEEE-754 multiplication is not associative.
+
+       Sub-products (`@line`) are folded first and enter their parent as one
+       operand, exactly as `hierarchyBonus` did as a const. Flattening them
+       into the parent would re-associate the product.
+
+       With no ledger this allocates a few small arrays and records nothing.
+       With one, every step's running total is the value the game itself
+       computed — there is nothing to drift. */
+    foldProduction(ledger, line, factors) {
+        let acc = factors[0][1];
+        const steps = ledger ? [{ key: factors[0][0], op: 'base', value: acc, running: acc }] : null;
+        for (let i = 1; i < factors.length; i++) {
+            const factor = factors[i];
+            acc = factor[2] === 'sub' ? acc - factor[1] : acc * factor[1];
+            if (steps) steps.push({ key: factor[0], op: factor[2] || 'mul', value: factor[1], running: acc });
+        }
+        if (ledger) ledger.lines[line] = { steps, value: acc };
+        return acc;
+    },
+
+    computeProduction(now, includeTransient, ledger) {
         this.ensureLoopState();
+        const fold = (line, factors) => this.foldProduction(ledger, line, factors);
         const achievementBonuses = State.achievementBonuses || {};
         const globalGainBonus = achievementBonuses.globalGain || 1;
         const automationSpeedBonus = achievementBonuses.automationSpeed || 1;
@@ -470,13 +525,13 @@ const game = {
             now < State.skills.divineIntervention.endsAt ? 2 : 1;
         const streakProductionBonus = includeTransient ? this.getStreakProductionMultiplier() : 1;
         const overclockProductionBonus = includeTransient ? this.getOverclockProductionMultiplier(now) : 1;
-        const totalProductionBonus = divineInterventionBonus * automationSpeedBonus *
-            streakProductionBonus * overclockProductionBonus;
+        const totalProductionBonus = fold('transient', [
+            ['skill.divineIntervention', divineInterventionBonus],
+            ['achievement.automationSpeed', automationSpeedBonus],
+            ['transient.streak', streakProductionBonus],
+            ['transient.overclock', overclockProductionBonus],
+        ]);
 
-        const seraphBaseProduction = State.automatons.seraphProduction || 1;
-        const cherubBaseProduction = State.automatons.cherubProduction || 1;
-        const drillBonus = this.getDrillBonus();
-        const dominionBonus = this.getDominionBonus();
         /* Two tiers of bonus, deliberately.
 
            `baseHierarchyBonus` is everything the primordial economy earns for
@@ -487,39 +542,77 @@ const game = {
            the Void's rewards fed the Void, Nemesis would raise Echo income,
            which buys more Null Doctrine, which raises Echo income again: a
            closed loop that ran production to 1e18/s in an 8h simulation. */
-        const baseHierarchyBonus = totalProductionBonus * drillBonus * dominionBonus *
-            this.getDoctrineBonus();
-        const hierarchyBonus = baseHierarchyBonus *
-            this.getNemesisBonus() * this.getNullDoctrineBonus();
+        const baseHierarchyBonus = fold('baseHierarchy', [
+            ['@transient', totalProductionBonus],
+            ['repeatable.automaton_drill', this.getDrillBonus()],
+            ['bonus.dominion', this.getDominionBonus()],
+            ['bonus.doctrine', this.getDoctrineBonus()],
+        ]);
+        const hierarchyBonus = fold('hierarchy', [
+            ['@baseHierarchy', baseHierarchyBonus],
+            ['bonus.nemesis', this.getNemesisBonus()],
+            ['bonus.nullDoctrine', this.getNullDoctrineBonus()],
+        ]);
 
-        const praiseGross = State.pps * seraphBaseProduction * State.praiseMultiplier *
-            this.getRefinementBonus() * hierarchyBonus *
-            (achievementBonuses.praiseGain || 1) * globalGainBonus;
+        const praiseGross = fold('praiseGross', [
+            ['base.pps', State.pps],
+            ['target:automaton.seraph.output', this.lineScale(State.automatons.seraphProduction)],
+            ['target:praise.multiplier', State.praiseMultiplier],
+            ['repeatable.praise_refinement', this.getRefinementBonus()],
+            ['@hierarchy', hierarchyBonus],
+            ['achievement.praiseGain', achievementBonuses.praiseGain || 1],
+            ['achievement.globalGain', globalGainBonus],
+        ]);
 
         /* Thrones are a conversion, not a tap: they draw Praise and return
            Offerings. While Praise is banked they run flat out and the stock
            drains; once it is empty they can only run on incoming Praise, which
            is what stops a Throne overbuild from deadlocking the economy. */
         const throneCount = State.automatons.throneCount || 0;
-        const throneDraw = throneCount * Economy.thronePraiseDraw * (State.throneDrawMultiplier ?? 1);
+        const throneDraw = fold('throneDraw', [
+            ['base.throneCount', throneCount],
+            ['const.thronePraiseDraw', Economy.thronePraiseDraw],
+            ['target:throne.draw', State.throneDrawMultiplier ?? 1],
+        ]);
         const hasBankedPraise = (State.resources.praise || 0) > 1;
         const throneActivity = throneDraw <= 0
             ? 0
             : (hasBankedPraise ? 1 : Math.min(1, praiseGross / throneDraw));
+        if (ledger) ledger.scalars.throneActivity = { value: throneActivity, banked: hasBankedPraise, idle: throneDraw <= 0 };
+        const throneDrawn = fold('throneDrawn', [
+            ['@throneDraw', throneDraw],
+            ['scalar.throneActivity', throneActivity],
+        ]);
 
-        const offeringsGross = throneCount * Economy.throneOfferingYield * throneActivity *
-            (State.automatons.throneProduction || 1) * State.offeringMultiplier * hierarchyBonus *
-            (achievementBonuses.offeringValue || 1) * globalGainBonus;
+        const offeringsGross = fold('offerings', [
+            ['base.throneCount', throneCount],
+            ['const.throneOfferingYield', Economy.throneOfferingYield],
+            ['scalar.throneActivity', throneActivity],
+            ['target:automaton.throne.output', this.lineScale(State.automatons.throneProduction)],
+            ['target:offerings.multiplier', State.offeringMultiplier],
+            ['@hierarchy', hierarchyBonus],
+            ['achievement.offeringValue', achievementBonuses.offeringValue || 1],
+            ['achievement.globalGain', globalGainBonus],
+        ]);
 
         const rates = {
             // Net of the Throne draw, so the readout shows what actually banks.
-            praise: praiseGross - (throneDraw * throneActivity),
+            praise: fold('praise', [
+                ['@praiseGross', praiseGross],
+                ['@throneDrawn', throneDrawn, 'sub'],
+            ]),
             praiseGross,
-            throneDraw: throneDraw * throneActivity,
+            throneDraw: throneDrawn,
             throneActivity,
             offerings: offeringsGross,
-            souls: State.sps * cherubBaseProduction * State.soulMultiplier * hierarchyBonus *
-                (achievementBonuses.soulGain || 1) * globalGainBonus,
+            souls: fold('souls', [
+                ['base.sps', State.sps],
+                ['target:automaton.cherub.output', this.lineScale(State.automatons.cherubProduction)],
+                ['target:souls.multiplier', State.soulMultiplier],
+                ['@hierarchy', hierarchyBonus],
+                ['achievement.soulGain', achievementBonuses.soulGain || 1],
+                ['achievement.globalGain', globalGainBonus],
+            ]),
             darkness: 0,
             shadows: 0,
             echoes: 0,
@@ -529,32 +622,62 @@ const game = {
 
         if (State.dimensions.void.unlocked) {
             const vd = State.dimensions.void;
-            const voidBonus = baseHierarchyBonus * this.getVoidDrillBonus() *
-                (achievementBonuses.voidGain || 1) *
-                (achievementBonuses.voidStability || 1) * globalGainBonus;
+            const voidBonus = fold('voidBonus', [
+                ['@baseHierarchy', baseHierarchyBonus],
+                ['repeatable.entropy_drill', this.getVoidDrillBonus()],
+                ['achievement.voidGain', achievementBonuses.voidGain || 1],
+                ['achievement.voidStability', achievementBonuses.voidStability || 1],
+                ['achievement.globalGain', globalGainBonus],
+            ]);
 
-            const darknessGross = vd.dps * (vd.automatons.wraithProduction || 1) *
-                vd.darknessMultiplier * this.getVoidRefinementBonus() * voidBonus;
+            const darknessGross = fold('darknessGross', [
+                ['base.dps', vd.dps],
+                ['target:void.automaton.wraith.output', this.lineScale(vd.automatons.wraithProduction)],
+                ['target:void.darkness.multiplier', vd.darknessMultiplier],
+                ['repeatable.void_refinement', this.getVoidRefinementBonus()],
+                ['@voidBonus', voidBonus],
+            ]);
 
             /* Revenants are the Void's Throne: they burn Darkness to condense
                Shadows. Same throttle as the primordial side — flat out while
                Darkness is banked, on income alone once the bank is dry, so an
                overbuild stalls the conversion instead of deadlocking it. */
             const revenantCount = vd.automatons.revenantCount || 0;
-            const revenantDraw = revenantCount * Economy.revenantDarknessDraw *
-                (vd.revenantDrawMultiplier ?? 1);
+            const revenantDraw = fold('revenantDraw', [
+                ['base.revenantCount', revenantCount],
+                ['const.revenantDarknessDraw', Economy.revenantDarknessDraw],
+                ['target:void.revenant.draw', vd.revenantDrawMultiplier ?? 1],
+            ]);
             const hasBankedDarkness = (vd.resources.darkness || 0) > 1;
             const revenantActivity = revenantDraw <= 0
                 ? 0
                 : (hasBankedDarkness ? 1 : Math.min(1, darknessGross / revenantDraw));
+            if (ledger) ledger.scalars.revenantActivity = { value: revenantActivity, banked: hasBankedDarkness, idle: revenantDraw <= 0 };
+            const revenantDrawn = fold('revenantDrawn', [
+                ['@revenantDraw', revenantDraw],
+                ['scalar.revenantActivity', revenantActivity],
+            ]);
 
             rates.darknessGross = darknessGross;
-            rates.revenantDraw = revenantDraw * revenantActivity;
-            rates.darkness = darknessGross - (revenantDraw * revenantActivity);
-            rates.shadows = revenantCount * Economy.revenantShadowYield * revenantActivity *
-                (vd.automatons.revenantProduction || 1) * vd.shadowMultiplier * voidBonus;
-            rates.echoes = vd.eps * (vd.automatons.phantomProduction || 1) *
-                vd.echoMultiplier * voidBonus;
+            rates.revenantDraw = revenantDrawn;
+            rates.darkness = fold('darkness', [
+                ['@darknessGross', darknessGross],
+                ['@revenantDrawn', revenantDrawn, 'sub'],
+            ]);
+            rates.shadows = fold('shadows', [
+                ['base.revenantCount', revenantCount],
+                ['const.revenantShadowYield', Economy.revenantShadowYield],
+                ['scalar.revenantActivity', revenantActivity],
+                ['target:void.automaton.revenant.output', this.lineScale(vd.automatons.revenantProduction)],
+                ['target:void.shadow.multiplier', vd.shadowMultiplier],
+                ['@voidBonus', voidBonus],
+            ]);
+            rates.echoes = fold('echoes', [
+                ['base.eps', vd.eps],
+                ['target:void.automaton.phantom.output', this.lineScale(vd.automatons.phantomProduction)],
+                ['target:void.echo.multiplier', vd.echoMultiplier],
+                ['@voidBonus', voidBonus],
+            ]);
         }
 
         const timeline = State.timelines.effects[State.timelines.current] || {};
@@ -568,6 +691,218 @@ const game = {
         rates.adoration *= (timeline.adorationBonus || 1) * globalGainBonus;
 
         return rates;
+    },
+
+    /* ── The production breakdown ─────────────────────────────────────────
+       "Where does this number come from?" — answered by replaying
+       computeProduction with a ledger and dressing each recorded step. DOM
+       free: ui renders it, tests/breakdown.mjs holds it to the real value. */
+    RATE_LINES: {
+        praise: 'praise', offerings: 'offerings', souls: 'souls',
+        darkness: 'darkness', shadows: 'shadows', echoes: 'echoes',
+    },
+
+    CAP_TARGETS: {
+        praise: 'caps.praise', offerings: 'caps.offerings', souls: 'caps.souls',
+        darkness: 'void.caps.darkness', shadows: 'void.caps.shadows', echoes: 'void.caps.echoes',
+    },
+
+    explainProductionRate(resource, now = Date.now(), includeTransient = true) {
+        const line = this.RATE_LINES[resource];
+        if (!line) return null;
+        const ledger = { lines: {}, scalars: {} };
+        this.computeProduction(now, includeTransient, ledger);
+        const recorded = ledger.lines[line];
+        if (!recorded) {
+            // The Void is sealed: getProductionRates reports a flat zero and
+            // there is no fold to show.
+            return { resource, kind: 'rate', value: 0, steps: [], sealed: true };
+        }
+        return {
+            resource,
+            kind: 'rate',
+            // The fold's own result — not a re-read of getProductionRates —
+            // so the equality test compares two independent evaluations.
+            value: recorded.value,
+            steps: this.dressProductionSteps(ledger, line, now),
+            cascade: this.cascadeState(),
+        };
+    },
+
+    dressProductionSteps(ledger, line, now) {
+        const recorded = ledger.lines[line];
+        if (!recorded) return [];
+        return recorded.steps.map((step) => {
+            const dressed = { ...step, ...this.describeProductionFactor(step.key, ledger) };
+            if (step.key.startsWith('@')) {
+                dressed.children = this.dressProductionSteps(ledger, step.key.slice(1), now);
+            } else if (step.key.startsWith('target:')) {
+                const target = step.key.slice('target:'.length);
+                const explained = this.explainTarget(target, now);
+                dressed.children = explained.steps;
+                dressed.fold = explained.value;
+            }
+            return dressed;
+        });
+    },
+
+    /* What a recorded factor IS, in the player's terms. `group` is the
+       section the panel files it under; `detail` is the arithmetic behind a
+       factor that is not itself a fold. */
+    describeProductionFactor(key, ledger) {
+        const vd = State.dimensions.void;
+        const rank = (id, pool) => (pool === 'void' ? vd?.repeatables?.[id] : State.repeatables?.[id]) || 0;
+        const repeatableName = (id) => RepeatableList.find((r) => r.id === id)?.name || id;
+        const unitsOf = (rateKey, count, host) => ({
+            count, perUnit: count > 0 ? (host[rateKey] || 0) / count : 0,
+        });
+        switch (key) {
+            case 'base.pps': return { group: 'base', label: 'Seraphs', ...unitsOf('pps', State.automatons.seraphCount || 0, State), unit: 'Seraph' };
+            case 'base.sps': return { group: 'base', label: 'Cherubs', ...unitsOf('sps', State.automatons.cherubCount || 0, State), unit: 'Cherub' };
+            case 'base.dps': return { group: 'base', label: 'Wraiths', ...unitsOf('dps', vd.automatons.wraithCount || 0, vd), unit: 'Wraith' };
+            case 'base.eps': return { group: 'base', label: 'Phantoms', ...unitsOf('eps', vd.automatons.phantomCount || 0, vd), unit: 'Phantom' };
+            case 'base.throneCount': return { group: 'base', label: 'Thrones', count: State.automatons.throneCount || 0, unit: 'Throne' };
+            case 'base.revenantCount': return { group: 'base', label: 'Revenants', count: vd.automatons.revenantCount || 0, unit: 'Revenant' };
+            case 'const.thronePraiseDraw': return { group: 'base', label: 'Praise drawn per Throne' };
+            case 'const.throneOfferingYield': return { group: 'base', label: 'Offerings per Throne' };
+            case 'const.revenantDarknessDraw': return { group: 'base', label: 'Darkness drawn per Revenant' };
+            case 'const.revenantShadowYield': return { group: 'base', label: 'Shadows per Revenant' };
+            case 'scalar.throneActivity':
+            case 'scalar.revenantActivity': {
+                const scalar = ledger.scalars[key.slice('scalar.'.length)] || {};
+                const what = key === 'scalar.throneActivity' ? 'Praise' : 'Darkness';
+                return {
+                    group: 'base',
+                    label: 'Conversion running',
+                    note: scalar.idle ? 'nothing to convert'
+                        : scalar.banked ? `${what} banked — flat out`
+                            : `bank dry — running on incoming ${what}`,
+                };
+            }
+            case 'repeatable.praise_refinement':
+            case 'repeatable.automaton_drill':
+            case 'repeatable.entropy_drill':
+            case 'repeatable.void_refinement': {
+                const id = key.slice('repeatable.'.length);
+                const pool = id === 'entropy_drill' || id === 'void_refinement' ? 'void' : 'primordial';
+                return { group: 'multiplier', source: 'repeatable', label: repeatableName(id), rank: rank(id, pool) };
+            }
+            case 'bonus.dominion':
+                return { group: 'additive', source: 'automaton', label: 'Dominions', count: State.automatons.dominionCount || 0,
+                    each: Economy.dominionBonusEach * (State.automatons.dominionProduction || 1) };
+            case 'bonus.doctrine':
+                return { group: 'additive', source: 'doctrine', label: 'Standing Doctrine', rank: State.standingDoctrine || 0,
+                    each: Economy.doctrineBonusEach };
+            case 'bonus.nemesis':
+                return { group: 'additive', source: 'automaton', label: 'Nemesis', count: vd?.automatons?.nemesisCount || 0,
+                    each: Economy.nemesisBonusEach * (vd?.automatons?.nemesisProduction || 1) };
+            case 'bonus.nullDoctrine':
+                return { group: 'additive', source: 'doctrine', label: 'Null Doctrine', rank: State.nullDoctrine || 0,
+                    each: Economy.nullDoctrineBonusEach };
+            case 'skill.divineIntervention': return { group: 'transient', label: 'Divine Intervention' };
+            case 'transient.streak': return { group: 'transient', label: 'Miracle Streak', count: State.loopSystems?.miracleStreak || 0 };
+            case 'transient.overclock': return { group: 'transient', label: 'Celestial Overclock' };
+            case 'achievement.automationSpeed': return { group: 'achievement', label: 'Achievements — automation speed' };
+            case 'achievement.praiseGain': return { group: 'achievement', label: 'Achievements — Praise' };
+            case 'achievement.offeringValue': return { group: 'achievement', label: 'Achievements — Offerings' };
+            case 'achievement.soulGain': return { group: 'achievement', label: 'Achievements — Souls' };
+            case 'achievement.voidGain': return { group: 'achievement', label: 'Achievements — Void' };
+            case 'achievement.voidStability': return { group: 'achievement', label: 'Achievements — Void stability' };
+            case 'achievement.globalGain': return { group: 'achievement', label: 'Achievements — all gain' };
+            case '@throneDrawn': return { group: 'draw', label: 'Throne draw' };
+            case '@revenantDrawn': return { group: 'draw', label: 'Revenant draw' };
+            default:
+                break;
+        }
+        if (key.startsWith('target:')) {
+            return { group: 'multiplier', label: this.TARGET_LABELS[key.slice('target:'.length)] || key.slice(7) };
+        }
+        if (key.startsWith('@')) {
+            return { group: 'composite', label: this.LINE_LABELS[key.slice(1)] || key.slice(1) };
+        }
+        return { group: 'other', label: key };
+    },
+
+    TARGET_LABELS: {
+        'praise.multiplier': 'Praise multiplier',
+        'offerings.multiplier': 'Offering multiplier',
+        'souls.multiplier': 'Soul multiplier',
+        'automaton.seraph.output': 'Seraph output',
+        'automaton.cherub.output': 'Cherub output',
+        'automaton.throne.output': 'Throne output',
+        'throne.draw': 'Throne appetite',
+        'void.darkness.multiplier': 'Darkness multiplier',
+        'void.shadow.multiplier': 'Shadow multiplier',
+        'void.echo.multiplier': 'Echo multiplier',
+        'void.automaton.wraith.output': 'Wraith output',
+        'void.automaton.revenant.output': 'Revenant output',
+        'void.automaton.phantom.output': 'Phantom output',
+        'void.revenant.draw': 'Revenant appetite',
+        'caps.praise': 'Praise storage',
+        'caps.offerings': 'Offering storage',
+        'caps.souls': 'Soul storage',
+        'void.caps.darkness': 'Darkness storage',
+        'void.caps.shadows': 'Shadow storage',
+        'void.caps.echoes': 'Echo storage',
+    },
+
+    LINE_LABELS: {
+        transient: 'Transient effects',
+        baseHierarchy: 'Hierarchy bonus',
+        hierarchy: 'Hierarchy bonus (with Void payouts)',
+        praiseGross: 'Praise produced',
+        darknessGross: 'Darkness produced',
+        throneDraw: 'Throne draw at full rate',
+        revenantDraw: 'Revenant draw at full rate',
+        voidBonus: 'Void hierarchy bonus',
+    },
+
+    /* One registry fold, step by step, with each record's source made
+       legible: which kind of thing put it there, and for a mandate whether
+       the path is certified (full) or lapsed (residue). The status is read
+       from the certification itself, never inferred from the label. */
+    explainTarget(target, now = Date.now()) {
+        const explained = Modifiers.explain(target, now);
+        const spec = ModifierTargets[target];
+        const cert = this.certification();
+        const steps = explained.steps.map((step) => {
+            if (step.op === 'base') {
+                const divinityBase = typeof spec?.base === 'function';
+                return { ...step, kind: divinityBase ? 'divinity' : 'base',
+                    label: divinityBase ? 'Divinity carried forward' : 'Base' };
+            }
+            const source = step.source;
+            const kind = typeof source === 'string' ? source : (source?.kind || 'anon');
+            const dressed = { ...step, kind, sourceId: typeof source === 'object' ? source?.id : undefined };
+            if (kind === 'mandate') {
+                const mandate = MandateList.find((m) => m.id === source.id);
+                dressed.branch = mandate?.branch;
+                dressed.status = mandate && mandate.branch === cert.path ? 'full' : 'residue';
+                dressed.label = mandate?.name || step.label;
+            } else if (kind === 'repeatable') {
+                dressed.rank = source.rank;
+            } else if (kind === 'build') {
+                const entry = Reality.entry(State.reality?.build, source.id);
+                dressed.entryKind = entry?.kind;
+                dressed.severity = entry?.severity;
+            }
+            return dressed;
+        });
+        let value = explained.value;
+        // Modifiers.commit applies a declared floor after the fold.
+        if (spec?.floor !== undefined && spec.floor > value) {
+            value = spec.floor;
+            steps.push({ op: 'max', kind: 'floor', label: 'Playability floor', value: spec.floor, running: value });
+        }
+        return { target, value, steps };
+    },
+
+    /* A storage cap is a single registry fold, committed with its floor. */
+    explainCap(resource, now = Date.now()) {
+        const target = this.CAP_TARGETS[resource];
+        if (!target) return null;
+        const explained = this.explainTarget(target, now);
+        return { resource, kind: 'cap', target, value: explained.value, steps: explained.steps };
     },
 
     addCappedResource(container, key, cap, amount) {
@@ -688,6 +1023,10 @@ const game = {
             /* Before production is read, so a tier change throttles the tick
                that crossed into it rather than the one after. */
             if (attended) this.accrueInstability(deltaSeconds, now);
+            /* Same gate, same reason, same position: incidents spawn and
+               escalate on attended time only, and before the rates are read
+               so an outage halts the tick that caused it. See js/incidents.js. */
+            if (attended && this.incidentsLive()) Incidents.tick(deltaSeconds, now);
 
             const rates = this.getProductionRates(now, true);
             const praiseGain = rates.praise * deltaSeconds;
@@ -786,6 +1125,19 @@ const game = {
        that a few seconds of degradation are forgiven. */
     ATTENDED_GAP_SECONDS: 5,
 
+    /* Incidents (js/incidents.js) are on in the game and OFF in
+       tools/balance_sim.mjs, which has no incident policy yet: a simulated
+       player who never triages would measure an economy nobody plays, and
+       one who always pays would measure a different one. The flag keeps the
+       golden master byte-identical until a policy is chosen. Harnesses that
+       do not load incidents.js see `Incidents` undefined and are unaffected
+       either way. */
+    incidentsEnabled: true,
+
+    incidentsLive() {
+        return this.incidentsEnabled === true && typeof Incidents !== 'undefined';
+    },
+
     loop() {
         const now = Date.now();
         const previousTime = Number.isFinite(this.lastWallClockTime) ? this.lastWallClockTime : now - (1000 / 60);
@@ -874,6 +1226,7 @@ const game = {
             ui.spawnParticles(x, y, isFull ? 10 : 7, displayColor);
         }
 
+        this.sfx('miracle', { streak: loops.miracleStreak, overclock: overclockActive });
         ui.triggerCoreReaction(clickPower);
     },
 
@@ -1322,7 +1675,7 @@ const game = {
         return {
             target,
             op: 'add',
-            value: Math.floor(spec.capacityStep * Math.pow(spec.capacityGrowth, rank - 1)),
+            value: this.storageGrant(spec, rank),
         };
     },
 
@@ -1396,6 +1749,7 @@ const game = {
         }
         if ((cost.bag[cost.resource] || 0) < cost.amount) {
             ui.log(`Insufficient ${cost.resource} to patch. Need ${ui.formatNumber(cost.amount)}.`);
+            this.sfx('error');
             return false;
         }
 
@@ -1419,6 +1773,18 @@ const game = {
         this.syncCascade(now);
 
         ui.log(`Patched: ${entry.note.split('.')[0]}.`);
+        this.sfx('purchase');
+        /* The superseded module goes to the Recycle Bin, where it can be fed
+           to an open incident. Gated: the simulator patches constantly and
+           must not grow a Bin. */
+        if (this.incidentsLive()) {
+            Incidents.fileArtifact({
+                key: `patch_${entryId}_${State.prestigeLevel || 0}`,
+                name: `${entryId.replace(/^iss_/, '').toUpperCase()}.bak`,
+                type: 'backup',
+                description: `Superseded module, replaced by your patch. "${entry.note.split('.')[0]}." Retained per policy.`,
+            });
+        }
         ui.screenPulse('rgba(66, 144, 125, 0.3)');
         ui.renderRealityPanel?.();
         return true;
@@ -1447,6 +1813,7 @@ const game = {
 
         if (persisted && Array.isArray(persisted.records) && persisted.records.length) {
             Modifiers.hydrate(persisted);
+            this.reconcileRepeatableRanks();
         } else {
             this.rebuildModifierLog();
         }
@@ -1464,6 +1831,9 @@ const game = {
         this.bootstrapCertification();
         this.applyCertification(now);
         this.applyScars(now);
+        /* Open incidents and deferrals are derived the same way: normalised
+           from the save, then reconciled in place under scope 'incident'. */
+        if (this.incidentsLive()) Incidents.bootstrap(now);
 
         /* Reconcile the build against the log rather than inferring from which
            branch ran.
@@ -1603,6 +1973,7 @@ const game = {
 
         if ((pool[spec.currency] || 0) < cost) {
             ui.log(`Insufficient ${spec.currency} for ${spec.label}. Need ${Math.ceil(cost)}.`);
+            this.sfx('error');
             return;
         }
 
@@ -1610,6 +1981,7 @@ const game = {
         this.applyAutomatonPurchase(type, 1);
         const total = this.getAutomatonCount(type);
         ui.log(`${spec.label} commissioned. (${total} total)`);
+        this.sfx('purchase');
 
         ui.updateUpgrades();
         this.checkAchievements();
@@ -1630,6 +2002,7 @@ const game = {
         const amount = quantity === 'max' ? this.getAutomatonMaxAffordable(type) : Number(quantity) || 0;
         if (amount <= 0) {
             ui.log(`Cannot afford any ${spec.label}.`);
+            this.sfx('error');
             return;
         }
 
@@ -1637,12 +2010,14 @@ const game = {
         const pool = this.resourcePool(spec);
         if ((pool[spec.currency] || 0) < cost) {
             ui.log(`Insufficient ${spec.currency}. Need ${Math.ceil(cost)}.`);
+            this.sfx('error');
             return;
         }
 
         pool[spec.currency] -= cost;
         this.applyAutomatonPurchase(type, amount);
         ui.log(`${amount}× ${spec.label} commissioned. (${this.getAutomatonCount(type)} total)`);
+        this.sfx('purchase');
 
         ui.updateUpgrades();
         this.checkAchievements();
@@ -1686,20 +2061,80 @@ const game = {
         return this.repeatablesPool(spec)[id] || 0;
     },
 
+    /* A vault is priced against the vault.
+
+       Geometric cost against a geometric grant left storage either free (cost
+       growth below grant growth: each rank paid for itself forever, and caps
+       ran to 7.6e20 within two days) or walled (cost growth above it: a rank
+       eventually costs more than the cap can hold, and the ceiling is back).
+       Neither is a decision. Pricing a rank as a fraction of the capacity it
+       extends scales from the first hour to the thousandth: buying storage
+       always means emptying most of a full vault for a fraction of it back,
+       so it competes with automatons for the same Praise instead of being
+       the thing you buy because nothing else is affordable.
+
+       There is deliberately no geometric term underneath it. A first draft
+       kept one as a price floor and it walled the vault anyway: 1.32 per rank
+       outgrew the 1.25 grant, the floor crossed the cap at rank 57, and every
+       simulated run stalled at the identical 3.3e9 ceiling. baseCost is only
+       a fixed minimum for the first rank or two. */
     getRepeatableCost(id) {
         const spec = RepeatableList.find((r) => r.id === id);
         if (!spec) return Infinity;
+        if (spec.costFraction) {
+            const cap = Number(this.capsPool(spec)[spec.resource]) || 0;
+            return Math.max(spec.baseCost, Math.floor(cap * spec.costFraction));
+        }
         return Math.floor(spec.baseCost * Math.pow(spec.growth, this.getRepeatableLevel(id)));
     },
 
-    /* Capacity granted per rank grows faster than the rank's cost, so storage
-       always stays ahead of the price of more storage. */
-    applyRepeatableEffect(id, rank) {
-        const spec = RepeatableList.find((r) => r.id === id);
-        if (!spec?.capacityStep) return;
-        const grant = Math.floor(spec.capacityStep * Math.pow(spec.capacityGrowth, rank - 1));
-        const caps = this.capsPool(spec);
-        if (caps[spec.resource] !== undefined) caps[spec.resource] += grant;
+    /* Capacity a storage rank grants. One function, so the modifier, the
+       button text and the tests cannot disagree about it. */
+    storageGrant(spec, rank) {
+        return Math.floor(spec.capacityStep * Math.pow(spec.capacityGrowth, rank - 1));
+    },
+
+    /* Restores storage ranks a save paid for and never received.
+
+       Before the rank went into the modifier id, rank 2+ of every vault was
+       refused as a duplicate, so a hydrated log holds at most one record per
+       vault while the ledger holds the true rank. The player paid for every
+       one of those ranks; they are owed.
+
+       Each restored record is filed directly behind the vault's existing
+       records rather than appended. Fold order is load-bearing on caps.*:
+       mandates fold `mulfloor` and vaults fold `add`, and an add that jumps
+       behind a mulfloor stops being multiplied by it (14ae3d8 measured that
+       mistake at 4,750 -> 13,500 on a reload). Behind its own rank 1 is where
+       the rank would have been all along had the id carried it. Fractional
+       seq keeps hydrate()'s sort stable on the next load. */
+    reconcileRepeatableRanks() {
+        let restored = 0;
+        for (const spec of RepeatableList) {
+            if (!spec.capacityStep) continue;
+            const ranks = this.getRepeatableLevel(spec.id);
+            for (let rank = 1; rank <= ranks; rank++) {
+                const mod = this.repeatableMod(spec, rank);
+                if (!mod) continue;
+                const source = { kind: 'repeatable', id: spec.id, rank };
+                const id = Modifiers.autoId(source, mod.target, 0);
+                if (Modifiers.records.some((r) => r.id === id)) continue;
+
+                const siblings = Modifiers.records.filter((r) =>
+                    r.source?.kind === 'repeatable' && r.source?.id === spec.id && r.target === mod.target);
+                const anchor = siblings.length
+                    ? Math.max(...siblings.map((r) => Number(r.seq) || 0))
+                    : null;
+                const record = Modifiers.add({ ...mod, id, source, label: spec.name });
+                if (!record) continue;
+                if (anchor !== null) {
+                    record.seq = anchor + rank / 1024;
+                    Modifiers.records.sort((a, b) => a.seq - b.seq);
+                }
+                restored++;
+            }
+        }
+        return restored;
     },
 
     purchaseRepeatable(id) {
@@ -1710,6 +2145,7 @@ const game = {
         const pool = this.resourcePool(spec);
         if ((pool[spec.resource] || 0) < cost) {
             ui.log(`Insufficient ${spec.resource}. Need ${Math.ceil(cost)}.`);
+            this.sfx('error');
             return;
         }
 
@@ -1724,6 +2160,7 @@ const game = {
         }
 
         ui.log(`${spec.name} rank ${ranks[id]} installed.`);
+        this.sfx('purchase');
         ui.screenPulse('rgba(66, 144, 125, 0.28)');
         ui.updateUpgrades();
         this.checkAchievements();
@@ -1748,6 +2185,7 @@ const game = {
 
         if (!canAfford) {
             ui.log("Insufficient resources for this upgrade.");
+            this.sfx('error');
             return;
         }
 
@@ -1761,6 +2199,7 @@ const game = {
         this.applyContentItem(upgrade, 'upgrade');
 
         ui.log(`Upgrade acquired: ${upgrade.name}`);
+        this.sfx('purchase');
         ui.updateUpgrades(); // Refresh upgrades display
         this.checkAchievements(); // Check for achievements
 
@@ -2012,6 +2451,7 @@ const game = {
         this.updateDirectiveProgress();
 
         ui.log(`Divine Event claimed! +${event.value} Praise. Chain x${loops.divineEventChain}.`);
+        this.sfx('eventClaim', { chain: loops.divineEventChain });
         ui.showFloatingNumber(`+${event.value} • x${loops.divineEventChain}`, event.x, event.y, '#ffd700');
         ui.spawnParticles(event.x, event.y, 12, '#ffd700');
 
@@ -2064,6 +2504,7 @@ const game = {
            quietly set back the prestige it was supposed to build toward. */
         if (this.getAvailableDivinityPoints() < effectiveCost) {
             ui.log(`Insufficient Divinity. Need ${effectiveCost} DP.`);
+            this.sfx('error');
             return;
         }
 
@@ -2091,6 +2532,7 @@ const game = {
             : ' — dormant until you certify on this path');
         ui.log(`Divine Mandate enacted: ${mandate.name}${effectiveCost < mandate.cost ? ` (Efficiency: ${mandate.cost}→${effectiveCost})` : ''}${dormant}`);
         ui.screenPulse('rgba(138, 43, 226, 0.3)');
+        this.sfx('purchase');
         ui.updateMandates();
     },
 
@@ -2132,6 +2574,7 @@ const game = {
             ui.spawnParticles(x, y, isFull ? 5 : 3, displayColor);
         }
 
+        this.sfx('miracle', { void: true });
         ui.triggerVoidCoreReaction(clickPower);
     },
 
@@ -2271,11 +2714,13 @@ const game = {
         const cost = this.getDoctrineCost();
         if (this.getAvailableDivinityPoints() < cost) {
             ui.log(`Insufficient Divinity. Need ${cost} DP.`);
+            this.sfx('error');
             return;
         }
         State.divinityPointsSpent = (State.divinityPointsSpent || 0) + cost;
         State.standingDoctrine = (State.standingDoctrine || 0) + 1;
         ui.log(`Standing Doctrine ratified to rank ${State.standingDoctrine}.`);
+        this.sfx('purchase');
         ui.screenPulse('rgba(180, 145, 74, 0.3)');
         ui.updateMandates();
     },
@@ -2548,6 +2993,8 @@ const game = {
         // included, since that is a record of the build that caused it.
         Modifiers.dropScope('build');
         Modifiers.commit(Date.now());
+        // Tickets and deferrals belong to the outgoing build too.
+        if (this.incidentsLive()) Incidents.clearForReboot(Date.now());
 
         /* Certify for the run about to start. Ordered after the drops and
            before the re-grant loop, because the grants below are only issued
@@ -3099,6 +3546,7 @@ const game = {
 
         if (State.adoration < item.cost) {
             ui.log('Insufficient Adoration.');
+            this.sfx('error');
             return;
         }
 
@@ -3112,6 +3560,7 @@ const game = {
 
         item.effect();
         ui.log(`Purchased: ${item.name}`);
+        this.sfx('purchase');
         ui.renderShopContent(category);
     },
 
@@ -3307,7 +3756,14 @@ window.render_game_to_text = () => {
             target: progress.target,
             complete: progress.completed
         } : null,
-        openApps: Object.keys(system.windows)
+        openApps: Object.keys(system.windows),
+        // The false-alarm flag is deliberately absent, as it is from the UI.
+        incidents: game.incidentsLive()
+            ? Incidents.state().open.map((inc) => ({
+                id: inc.id, severity: inc.severity, template: inc.template,
+                remaining: Math.ceil(inc.remaining), labour: inc.labour ? inc.labour.hits : null,
+            }))
+            : []
     });
 };
 
