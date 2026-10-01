@@ -1034,3 +1034,131 @@ And two lessons that were not findings:
 
 Final: 32 tests in `tests/certification.mjs`, **26 mutants, 26 caught**, full
 suite green, golden master unchanged.
+
+## 2026-09-30 — Session 6: sinks, loops, sound, and the plan for moving pictures
+
+Current request: find where progress stopped, then improve UI/UX, gameplay,
+time sinks and resource sinks, and plan a visual upgrade (video scenes,
+training videos, animations) with concise Krea art direction.
+
+Branch `session-6/sinks-and-loops` (23 commits on top of `f52cd9c`), not yet
+merged to `main`. Four slices were built in parallel worktrees and merged
+here; the economy re-tune was done on the branch itself.
+
+### Where progress had stopped
+Session 5 (2026-09-03) shipped certification and ship-the-build, then left a
+documented, deliberately-unfixed defect: rank 2+ of every storage repeatable
+was discarded while still charged, so the whole economy sat under a ~7,000
+Praise ceiling — and, because every resource was pinned at its cap, every
+resource sink in the game cost nothing. The handoff said the next session
+should be the storage/economy re-tune. It was.
+
+### The economy (d212027, 5b141cf)
+- Rank is part of a modifier's identity (`Modifiers.autoId`); rank 1 keeps its
+  historical id so saves match themselves, and `reconcileRepeatableRanks`
+  restores ranks a save paid for, filed behind that vault's rank 1 so the
+  `mulfloor`/`add` fold order on caps is preserved.
+- A vault rank costs **65% of the vault it extends**. Geometric cost against a
+  geometric grant was either free forever (caps ran to 7.6e20) or walled (a
+  geometric floor walled every run at the identical 3.3e9). Share-of-vault is
+  scale-invariant and makes storage a sink that competes with automatons.
+- Prestige re-measured on top: bar 35,000 -> 1e8, bar growth 0.8 -> 1.2,
+  payout exponent 0.9 -> 0.75. Measured 22 / 66 / 296 Divinity at 24h / 72h /
+  240h, nothing collapsing toward the five-minute gate. A moderately deeper
+  run pays ~15–25% more; a very deep one wastes hours (runs saturate).
+- Void-tier upgrades 3x, capstones 5x: the first run no longer buys all 44
+  upgrades by minute 37. Void at ~17 min, last capstone ~66 min, first
+  reboot ~86 min for a steady clicker.
+- `tools/balance_sim.mjs --tune=file.json` overrides Economy, vaults,
+  repeatables and upgrade costs per run. The re-tune was a search over ~40
+  configurations at three horizons; this is how it was done.
+
+**Six existing tests went red and all six had gone vacuous, not wrong.** They
+stated runs in raw Souls (500K, 4M, 5M) that were comfortable multiples of the
+old bar and below the new one, so both sides paid zero. Restated in bars. The
+same pattern recurred in two merged slices' fixtures (breakdown, incidents) —
+both caught by their own "fixture check: the reboot happened" guards, which is
+the guard doing its job. **Any future change to the bar: grep tests for
+literal Soul amounts.**
+
+### Incidents — the maintenance loop the premise promised (js/incidents.js)
+14 ticket templates; at most 3 open; SEV-3 -> SEV-2 -> SEV-1 over attended
+minutes; a SEV-1 halts its production line and opens its own dialog (the
+`showCascadeAlert` render-or-retry contract). Every ticket offers **labour**
+(a needle-and-band timing ritual, ~15–45s), **resources** (seconds of
+production, bounded by cap fractions — now a real sink), or **debt** (a
+run-scoped penalty). ~25% are false alarms with a textual tell that close
+themselves if ignored and drop a quarantined log in the Recycle Bin, which —
+with patched-module `.bak` files — can be sacrificed to close any ticket.
+Prophets can be dispatched to a SEV-3. Task Manager is the triage console; a
+tray LED and an operator-panel line show the queue. Offline, Temporal Rift and
+suspended-tab catch-up never file or escalate. Disabled in the simulator
+(`game.incidentsEnabled = false`) — **there is no incident policy in the sim
+yet.** 29 tests, 54/54 mutants caught.
+
+Not done on purpose: `createResourceSacrifice` is still uncalled, and should
+stay so — it grants an unbounded permanent `globalGain` (1e6 Praise ≈
++100,000%). It is a hazard if anything ever calls it.
+
+### Production breakdown (js/breakdown.js)
+Hover, focus or tap any rate or vault for a "Provenance" sheet: base, grouped
+multipliers with sources and ranks, certified-full vs lapsed-residue mandates,
+transients, the cascade throttle in alarm red, the Throne/Revenant draw as a
+subtraction. `getProductionRates` now runs through `computeProduction`, a fold
+over named factors in the exact old operand order, so the rate and its
+explanation share one code path and the golden was byte-identical. 21 tests
+asserting exact equality, 11/11 mutants caught. Also stopped
+`renderRealityPanel` rewriting identical HTML at 10Hz (it destroyed focus).
+
+### Audio (js/audio.js)
+Fully synthesised WebAudio — no files. Buses, limiter, ~22 cues (miracle bell
+climbing a pentatonic with the streak, purchase, the reimagined ding, tiered
+achievement stingers, cascade alarm per tier, adversary glitch, release
+chord, boot POST), an ambient drone that brightens with production and
+darkens/detunes under a cascade, settings in Divine Settings, a tray mute.
+Every call goes through `game.sfx`, inert headlessly. This session added an
+`incident` pager cue and wired Incidents and Patience.exe. Known: browsers
+block audio before a gesture, so the boot cue usually won't play.
+
+### Patience.exe (js/solitaire.js)
+The 500-Adoration Solitaire purchase that installed nothing — and, it turned
+out, could never be bought at all (`minigames` vs `miniGames` schema key) —
+now installs Golf solitaire with the four automaton ranks as suits. Pays
+Adoration and Overclock charge with a continuously-draining fatigue curve so
+it is a break, not a farm; Divine Mulligans (undo / reshuffle) cost 5% / 15%
+of the Praise vault. Rounds are seed + move list, replayed, so they survive
+reload and resist tampered saves. 43 + 9 browser tests, 39/39 mutants caught.
+
+### Visual upgrade plan
+`docs/VISUAL_UPGRADE_PLAN.md`: a paste-ready Krea style block and negative
+prompt, the palette tokens, five rules (never bake text into generated art),
+seven cinematics tied to the code site that plays each, six diegetic
+"CMS Operator Orientation" training tapes for a Sacred Media Player app, the
+sprite/animation sets with art hooks (Patience card classes included), the
+media-layer engineering spec, and a production order.
+
+### Verification
+`npm test` green: save 18, modifiers 78, reality 29, adversary 40, prestige 16,
+storage 12, certification 32, breakdown 21, incidents 29, solitaire 43, golden
+(recaptured twice, intentionally), e2e, Patience e2e 9; `test:audio` 14. The
+integrated build was driven in a browser: a SEV-2 ticket triaged by labour,
+the Provenance sheet on Praise/s, Patience.exe bought and dealt.
+
+### Process notes
+- The Agent tool created all four worktrees from `9db0b7e`, three commits
+  behind `main`. One agent noticed and fast-forwarded; the others were told.
+  **In every agent worktree, check `git merge-base --is-ancestor <expected-base> HEAD`.**
+- Agents share the session scratchpad; a generic filename (`dbg.mjs`) was
+  overwritten mid-session. Prefix scratch files.
+- Vite on this machine binds `localhost` (IPv6) only; the tests default to
+  `127.0.0.1`. Use `COSMOS_TEST_URL=http://localhost:5173`.
+
+### Next
+1. An incident policy in `tools/balance_sim.mjs`, then measure what triage
+   costs the curve (currently invisible to the sim).
+2. Merge `session-6/sinks-and-loops` to `main` (PR).
+3. The media layer (`js/media.js`) and Sacred Media Player from the visual
+   plan, then the first Krea assets: V2 *Ship the Build*, V6 *First Seraph*.
+4. Still open from before: the Archived channel; the Void's thin Reality
+   Build coverage; achievement rewards and shop items mutating `State`
+   directly.
