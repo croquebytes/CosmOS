@@ -89,7 +89,8 @@ const { State, game, UpgradeList, MandateList, RepeatableList, AutomatonSpecs, E
        "repeatables": { "praise_vault": { "baseCost": 500 } } }
 
    "vaults" applies to every storage repeatable (the ones with a
-   capacityStep); "repeatables" patches one spec by id and wins over it. */
+   capacityStep); "repeatables" patches one spec by id and wins over it;
+   "upgradeCostScale" multiplies one upgrade's whole cost by id. */
 const TUNE_PATH = (args.find((a) => a.startsWith('--tune=')) || '').split('=')[1] || null;
 if (TUNE_PATH) {
     const tune = JSON.parse(readFileSync(resolve(process.cwd(), TUNE_PATH), 'utf8'));
@@ -97,6 +98,12 @@ if (TUNE_PATH) {
     for (const spec of RepeatableList) {
         if (spec.capacityStep && tune.vaults) Object.assign(spec, tune.vaults);
         if (tune.repeatables?.[spec.id]) Object.assign(spec, tune.repeatables[spec.id]);
+    }
+    // "upgradeCostScale": { "void_unlock": 8 } multiplies every currency in that cost.
+    for (const upgrade of UpgradeList) {
+        const k = tune.upgradeCostScale?.[upgrade.id];
+        if (!k) continue;
+        for (const res of Object.keys(upgrade.cost)) upgrade.cost[res] = Math.ceil(upgrade.cost[res] * k);
     }
 }
 
