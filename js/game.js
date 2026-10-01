@@ -10,6 +10,16 @@ const game = {
         if (typeof audio !== 'undefined' && audio && typeof audio.play === 'function') audio.play(name, opts);
     },
 
+    /* Cinematics (js/media.js), on the same terms as sfx: inert wherever
+       `media` is undefined, which is the simulator and every vm test. A
+       reel decorates a moment and never decides one, so nothing here waits
+       on it — media.play() resolves on its own, and a missing reel is
+       skipped without a frame of player. */
+    cinematic(id, opts) {
+        if (typeof media === 'undefined' || !media || typeof media.play !== 'function') return null;
+        try { return media.play(id, opts); } catch (err) { return null; }
+    },
+
     ensureLoopState() {
         if (!State.loopSystems) {
             State.loopSystems = {};
@@ -2153,6 +2163,7 @@ const game = {
         const total = this.getAutomatonCount(type);
         ui.log(`${spec.label} commissioned. (${total} total)`);
         this.sfx('purchase');
+        if (type === 'seraph' && total === 1) this.cinematic('first-seraph'); // V6
 
         ui.updateUpgrades();
         this.checkAchievements();
@@ -2189,6 +2200,7 @@ const game = {
         this.applyAutomatonPurchase(type, amount);
         ui.log(`${amount}× ${spec.label} commissioned. (${this.getAutomatonCount(type)} total)`);
         this.sfx('purchase');
+        if (type === 'seraph' && this.getAutomatonCount(type) === amount) this.cinematic('first-seraph'); // V6
 
         ui.updateUpgrades();
         this.checkAchievements();
@@ -2371,6 +2383,7 @@ const game = {
 
         ui.log(`Upgrade acquired: ${upgrade.name}`);
         this.sfx('purchase');
+        if (upgradeId === 'void_unlock') this.cinematic('void-breach'); // V5
         ui.updateUpgrades(); // Refresh upgrades display
         this.checkAchievements(); // Check for achievements
 

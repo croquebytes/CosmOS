@@ -354,6 +354,10 @@ const ui = {
     showReleaseNotes(build) {
         const layer = document.getElementById('system-modal-layer');
         if (!layer || !build) return;
+        /* The V2 reel plays between the ship confirm and these notes. While a
+           cinematic holds the slot the notes wait for it — with no reel
+           installed nothing holds it and this returns false at once. */
+        if (typeof media !== 'undefined' && media.deferUntilClear?.(() => this.showReleaseNotes(build))) return;
 
         const lines = (build.entries || []).map((entry) => {
             const mark = this.releaseMarks[entry.kind] || '-';
@@ -706,6 +710,9 @@ const ui = {
         this.dismissSystemModal();
         this.shipSelection = null;
         game.sfx('ship');
+        // V2 Ship the Build. Claimed before the reboot so the release notes
+        // it raises queue behind the reel instead of under it.
+        game.cinematic('ship-the-build');
         game.performPrestige({ confirmed: true, certifyOn: path });
     },
 
@@ -2881,6 +2888,11 @@ const ui = {
         if (patienceIcon) {
             patienceIcon.style.display = State.unlockedApps.includes('solitaire') ? 'block' : 'none';
         }
+
+        const mediaIcon = document.getElementById('icon-mediaplayer');
+        if (mediaIcon) {
+            mediaIcon.style.display = State.unlockedApps.includes('mediaplayer') ? 'block' : 'none';
+        }
     },
 
     // === DOCUMENT SYSTEM UI ===
@@ -4210,6 +4222,7 @@ Annotated by: void_mirror.service (shadow instance)</pre>
         }
 
         if (typeof audio !== 'undefined') audio.syncSettingsUI();
+        if (typeof media !== 'undefined') media.syncSettingsUI();
     },
 
     updateNotationMode(mode) {

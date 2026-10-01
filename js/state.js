@@ -300,6 +300,17 @@ const State = {
             ambientEnabled: true,
             muted: false,
         },
+        /* Read and normalised by js/media.js (MediaLogic.defaults). Same
+           no-bump reasoning as audio: an older save just gains these.
+           `seen` is the cinematics already played; `tapes` the training
+           tapes filed; `watched` the tapes played to the end. */
+        media: {
+            cinematics: 'first',      // 'first' | 'always' | 'off'
+            vhs: true,
+            seen: [],
+            tapes: [],
+            watched: [],
+        },
     },
 
     // Prestige System

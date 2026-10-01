@@ -179,3 +179,129 @@ into sprite strips or exported as small WebM.
 
 Approve every asset at its **real in-game size** before batching the rest of its set.
 That rule from the 2026-07-26 pass caught the Notepad icon being squeezed to 19 px.
+
+---
+
+## 7. Media drop-in contract (built)
+
+`js/media.js` (cinematics, the tape catalogue) and `js/mediaplayer.js` (the Sacred
+Media Player) are in. **Nothing needs registering.** Drop a file into `assets/video/`
+under the exact name below and reload: the next time its moment comes round, it plays.
+While a file is missing, its scene is skipped and its tape shot shows a fallback slide,
+so with the folder empty the game behaves exactly as it did before.
+
+**Rules**
+
+- **Three files per stem:** `<stem>.webm` (VP9, preferred), `<stem>.mp4` (H.264,
+  used only where WebM will not play), and `<stem>.webp` (poster). Any one video is
+  enough. The poster is what reduced-motion players see (for 1.5s) instead of the reel.
+- **Cinematics** are 16:9, 1280×720, ≤ 2.5 MB, any length (the stage closes on the
+  reel's own end). They are always muted: the cue in the table is rung through
+  `game.sfx`.
+- **Tape shots** are shown 4:3, cropped from the centre. Generate them at 960×720, or
+  at 1280×720 with the action inside the middle 960 px. A reel shorter than its shot
+  holds its last frame, and a longer one is cut at the shot's end. Make each reel at
+  least as long as the shot.
+- **Never bake text.** Captions, labels (`FIG. 2 — PERFORM MIRACLE`) and title cards
+  are HTML over the reel. Title cards (shot 1, and T6 shot 6) never take a file.
+- **Availability** is probed with a HEAD request, and a response that is HTML counts
+  as missing (Vite answers a missing file with `index.html`). A file that fails to
+  decode ends its cinematic quietly and is not marked seen.
+- **To re-watch** a cinematic, set Divine Settings → Cinematics to *Always*. V1 plays
+  only on a fresh save (no Miracles yet, briefing unseen).
+
+**Cinematics**
+
+| # | Scene | Mode | Cue | Files in `assets/video/` | Plays |
+|---|---|---|---|---|---|
+| V1 | Cold Boot | blend, inside the boot overlay | `boot` | `cine__cold-boot__720.webm` / `.mp4` / `.webp` | first launch; the boot waits for it or a skip |
+| V2 | Ship the Build | overlay | — (`ship` already rings) | `cine__ship-the-build__720.webm` / `.mp4` / `.webp` | after the ship dialog confirms; the release notes wait for it |
+| V5 | Void Breach | blend | `adversary` | `cine__void-breach__720.webm` / `.mp4` / `.webp` | buying *Breach the Veil* |
+| V6 | First Seraph | window | `directive` | `cine__first-seraph__720.webm` / `.mp4` / `.webp` | the first Seraph of a run |
+
+Modes: *overlay* is full frame on black; *blend* is `mix-blend-mode: screen`, so the
+reel's black drops out (Krea has no alpha); *window* frames it in CosmOS chrome. A
+cinematic queues while any system dialog is open and plays when the slot clears; while
+it plays it holds the slot, so a cascade alert or outage waits for it in turn. Esc or a
+click skips.
+
+**Training tapes: shot list for Krea**
+
+Every shot uses the style block from §1 plus *"VHS training-video still, soft bloom,
+4:3"*, image-to-video from an approved keyframe, with the Instructor character sheet
+as the reference wherever the Instructor appears. The fallback column is the slide that
+plays until the reel exists.
+
+**T1 — Welcome to Sector 7G** (0:44; filed after the tenth Miracle)
+
+| Shot | Length | File stem | Generate in Krea | Fallback slide until then |
+|---|---|---|---|---|
+| 1 | 4.5s | — | title card (HTML) | — |
+| 2 | 8s | `tape__t1__shot2__720` | The Instructor gestures at the Universal Engine. | desktop_primordial + core_idle + motes |
+| 3 | 8s | `tape__t1__shot3__720` | A hand presses the brass Miracle key; the core answers. | desktop_primordial + core_charging + flare |
+| 4 | 8s | `tape__t1__shot4__720` | Motes rise from the core as the charge meter fills. | desktop_primordial + core_overclocked + motes |
+| 5 | 8s | `tape__t1__shot5__720` | A vault seal, half of it dark: the Sector 7G partition. | desktop_primordial + sigil + halo |
+| 6 | 7.5s | `tape__t1__shot6__720` | The Instructor, framed like a 1994 HR presenter, points off-screen to the next tape. | desktop_restored + halo + motes |
+
+**T2 — Commissioning Your First Seraph** (0:44; filed with the first Seraph)
+
+| Shot | Length | File stem | Generate in Krea | Fallback slide until then |
+|---|---|---|---|---|
+| 1 | 4s | — | title card (HTML) | — |
+| 2 | 8s | `tape__t2__shot2__720` | A six-winged Seraph of brass organ pipes unfolds (V6, re-cut to 4:3). | desktop_primordial + halo + flare |
+| 3 | 8s | `tape__t2__shot3__720` | A Seraph working a choir console. | desktop_primordial + core_charging + motes |
+| 4 | 8.5s | `tape__t2__shot4__720` | A ledger filling itself, column by column. | desktop_restored + notepad icon + sigil |
+| 5 | 8.5s | `tape__t2__shot5__720` | The console at night, unattended, still lit. | desktop_restored + core_idle + halo |
+| 6 | 7s | `tape__t2__shot6__720` | The Instructor closes the ledger. | desktop_primordial + engine icon + motes |
+
+**T3 — Known Issues and You** (0:46; filed when Offerings come online, or with the first patch)
+
+| Shot | Length | File stem | Generate in Krea | Fallback slide until then |
+|---|---|---|---|---|
+| 1 | 4s | — | title card (HTML) | — |
+| 2 | 8.5s | `tape__t3__shot2__720` | A changelog scroll unrolls across the iron. | desktop_primordial + notepad icon + sigil |
+| 3 | 8s | `tape__t3__shot3__720` | An ichor crack in the core housing. | desktop_void + core_void + motes |
+| 4 | 9s | `tape__t3__shot4__720` | Three warning lamps in a row: amber, red, dark. | desktop_void + core_void + halo |
+| 5 | 8.5s | `tape__t3__shot5__720` | A brass patch-plate is riveted over the crack. | desktop_primordial + core_idle + flare |
+| 6 | 8.5s | `tape__t3__shot6__720` | The superseded module, filed in the Recycle Bin. | desktop_restored + recyclebin icon + motes |
+
+**T4 — Shipping a Build** (0:46; filed when a run first earns a release)
+
+| Shot | Length | File stem | Generate in Krea | Fallback slide until then |
+|---|---|---|---|---|
+| 1 | 4s | — | title card (HTML) | — |
+| 2 | 8.5s | `tape__t4__shot2__720` | The ship dialog; a brass wax seal raised over it. | desktop_restored + prestige icon + halo |
+| 3 | 8.5s | `tape__t4__shot3__720` | Three doors in the nave: Creation, Maintenance, Entropy. | desktop_primordial + mandates icon + sigil |
+| 4 | 9s | `tape__t4__shot4__720` | The Instructor stamps one door. | desktop_restored + sigil + flare |
+| 5 | 8.5s | `tape__t4__shot5__720` | The engine sealed, collapsing to a single star (V2, re-cut to 4:3). | desktop_void + core_charging + flare |
+| 6 | 7.5s | `tape__t4__shot6__720` | Release notes for the next reality, still warm from the press. | desktop_restored + notepad icon + motes |
+
+**T5 — Incident Response Etiquette** (0:49; filed with the first incident ticket)
+
+| Shot | Length | File stem | Generate in Krea | Fallback slide until then |
+|---|---|---|---|---|
+| 1 | 4s | — | title card (HTML) | — |
+| 2 | 9s | `tape__t5__shot2__720` | An alarm lamp in a brass cage turns red (V7's lamp). | desktop_primordial + taskmgr icon + flare |
+| 3 | 8.5s | `tape__t5__shot3__720` | The first operator, hands on the console. | desktop_primordial + core_charging + motes |
+| 4 | 9s | `tape__t5__shot4__720` | The second operator feeds a furnace; the third signs an IOU scroll. | desktop_primordial + core_overclocked + flare |
+| 5 | 9s | `tape__t5__shot5__720` | The Instructor sets the pager face down; the console dims. | desktop_restored + core_idle + halo |
+| 6 | 10s | `tape__t5__shot6__720` | Task Manager, the triage console, with a Prophet dispatched. | desktop_primordial + recyclebin icon + sigil |
+
+**T6 — [REDACTED]** (0:37; secret, filed at first contact with NULL.OPERATOR)
+
+| Shot | Length | File stem | Generate in Krea | Fallback slide until then |
+|---|---|---|---|---|
+| 1 | 4s | — | title card (HTML): *Reporting a Duplicate Session*, "Tape 6 of 5" | — |
+| 2 | 6s | `tape__t6__shot2__720` | The Instructor begins a routine safety briefing. | desktop_primordial + core_idle + motes |
+| 3 | 5s | `tape__t6__shot3__720` | The Instructor freezes mid-gesture; the tape tears. | desktop_void + core_void + sigil |
+| 4 | 8.5s | `tape__t6__shot4__720` | A silhouette identical to the viewer stands where the Instructor was (V4's silhouette). | desktop_void + core_void + motes |
+| 5 | 8.5s | `tape__t6__shot5__720` | The silhouette leans toward the lens; the symmetry breaks. | desktop_void + sigil + flare |
+| 6 | 5s | — | title card (HTML): *Programme ends.* | — |
+
+T6 shots 3–6 carry a glitch treatment in CSS whether or not VHS is on, so their reels
+should be generated clean: the tear is applied on top.
+
+**Total if every slot is filled:** 4 cinematics and 29 tape shots, 33 reels. At the
+§5 budgets (2.5 MB for each cinematic, about 1 MB for each 8s tape shot at 960×720)
+that comes to about 40 MB, which is the Steam ceiling. Encode the tapes at a lower
+bitrate than the cinematics; they are meant to look like tape.

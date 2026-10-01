@@ -6021,3 +6021,777 @@ body.performance-mode .pt-flourish {
         display: none;
     }
 }
+
+/* ============================================================
+   CINEMATICS — js/media.js
+
+   A reel occupies the system modal slot while it plays, so it sits inside
+   #system-modal-layer and covers the scrim. overlay is full frame; blend
+   screen-blends a reel with no alpha so its black drops out; window frames
+   it in CosmOS chrome. The cold boot plays inside #boot-overlay instead
+   (.is-hosted). Captions are type, never baked into the reel.
+   ============================================================ */
+.cine-stage {
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    background: var(--cos-void);
+    cursor: pointer;
+    outline: none;
+}
+
+.cine-stage.is-hosted {
+    position: absolute;
+    z-index: 5;
+}
+
+.cine-screen {
+    position: relative;
+    width: min(100vw, calc(100vh * 16 / 9));
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background: #000;
+}
+
+.cine-video,
+.cine-still {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.cine--blend:not(.is-hosted) {
+    /* Over the layer's scrim: dark enough that screen-blended black reads
+       as black, light enough that the desktop is still there behind it. */
+    background: rgba(4, 6, 10, 0.6);
+}
+
+.cine--blend .cine-screen {
+    background: transparent;
+}
+
+.cine--blend .cine-video,
+.cine--blend .cine-still {
+    mix-blend-mode: screen;
+}
+
+.cine-caption {
+    position: absolute;
+    left: 50%;
+    bottom: max(28px, 7vh);
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: min(720px, calc(100vw - 32px));
+    padding: 6px 16px;
+    color: var(--cos-brass-100);
+    background: rgba(4, 6, 10, 0.74);
+    border-top: 1px solid var(--cos-brass-700);
+    border-bottom: 1px solid var(--cos-brass-700);
+    font: 14px/1.45 var(--cos-font-display);
+    letter-spacing: 0.02em;
+    text-align: center;
+    animation: cine-caption-in 900ms ease-out both;
+}
+
+@keyframes cine-caption-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.cine-skip {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    color: var(--cos-ink-inv-dim);
+    font: 10px var(--cos-font-machine);
+    letter-spacing: 0.16em;
+}
+
+.cine--window {
+    /* The modal layer's own scrim is already behind it. */
+    background: transparent;
+}
+
+.cine-window {
+    width: min(560px, calc(100vw - 28px));
+    cursor: pointer;
+}
+
+.cine-window .cine-screen {
+    width: auto;
+    margin: 10px 10px 0;
+    border: 2px solid;
+    border-color: var(--win-border-dark) var(--win-border-light) var(--win-border-light) var(--win-border-dark);
+}
+
+.cine-window .cine-caption {
+    position: static;
+    transform: none;
+    width: auto;
+    max-width: none;
+    margin: 8px 10px 12px;
+    padding: 0;
+    color: var(--cos-ink);
+    background: transparent;
+    border: 0;
+    font-size: 13px;
+}
+
+.cine-window-skip {
+    color: var(--cos-ink-inv-dim);
+    font-weight: normal;
+    letter-spacing: 0.12em;
+}
+
+.cine--window .cine-skip {
+    display: none;
+}
+
+/* ============================================================
+   SACRED MEDIA PLAYER — js/mediaplayer.js
+
+   The house grammar again: vellum chrome, a sunken shelf, a sunken caption
+   well. The screen is the one dark surface, because it is a television.
+   The VHS treatment lives entirely here, behind .mp.is-vhs, so it stays
+   crisp and switchable; reduced motion stops every animation in it.
+   ============================================================ */
+.mediaplayer-icon,
+.app-glyph--mediaplayer {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Cdefs%3E%3ClinearGradient id='i' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23364356'/%3E%3Cstop offset='1' stop-color='%23121823'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='48' cy='48' r='42' fill='none' stroke='%23dec483' stroke-opacity='.4' stroke-width='2'/%3E%3Crect x='11' y='25' width='74' height='48' rx='4' fill='url(%23i)' stroke='%23b4914a' stroke-width='2.5'/%3E%3Crect x='19' y='30' width='58' height='14' rx='1.5' fill='%23e6dfcf' stroke='%2377592b' stroke-width='1.5'/%3E%3Cpath d='M24 37h26' stroke='%2377592b' stroke-width='1.6'/%3E%3Cpath d='M68 32.4l1.1 2.9 3 .2-2.3 1.9.8 3-2.6-1.7-2.6 1.7.8-3-2.3-1.9 3-.2z' fill='%239063db'/%3E%3Crect x='25' y='49' width='46' height='16' rx='8' fill='%23090d15' stroke='%2377592b' stroke-width='1.5'/%3E%3Ccircle cx='35' cy='57' r='5.2' fill='none' stroke='%23dec483' stroke-width='2'/%3E%3Ccircle cx='61' cy='57' r='5.2' fill='none' stroke='%23dec483' stroke-width='2'/%3E%3Ccircle cx='35' cy='57' r='1.7' fill='%23dec483'/%3E%3Ccircle cx='61' cy='57' r='1.7' fill='%23dec483'/%3E%3Cpath d='M29 73l4-5h30l4 5' fill='none' stroke='%2377592b' stroke-width='1.5'/%3E%3C/svg%3E");
+}
+
+.app-glyph--mediaplayer {
+    display: inline-block;
+    background-position: center;
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.window-content.app-mediaplayer {
+    padding: 0;
+    overflow: hidden;
+}
+
+.mplayer {
+    height: 100%;
+    container: mplayer / inline-size;
+}
+
+.mp {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    color: var(--cos-ink);
+}
+
+.mp-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--cos-vellum-500);
+    box-shadow: 0 1px 0 var(--cos-vellum-100);
+}
+
+.mp-brand {
+    color: var(--cos-ink-dim);
+    font: bold 10px var(--cos-font-machine);
+    letter-spacing: 0.18em;
+}
+
+.mp-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--cos-ink);
+    font: 11px var(--cos-font-machine);
+    cursor: pointer;
+}
+
+.mp-body {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 214px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px;
+}
+
+/* ── The shelf: tapes stood on their spines ── */
+.mp-shelf {
+    list-style: none;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px;
+    background: var(--cos-vellum-300);
+    border: 2px solid;
+    border-color: var(--cos-vellum-500) var(--cos-vellum-100) var(--cos-vellum-100) var(--cos-vellum-500);
+}
+
+.mp-tape {
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    column-gap: 8px;
+    row-gap: 2px;
+    padding: 7px 8px 7px 6px;
+    text-align: left;
+    color: var(--cos-ink-inv);
+    background: linear-gradient(180deg, var(--cos-iron-700), var(--cos-iron-900));
+    border: 1px solid var(--cos-iron-900);
+    border-left: 4px solid var(--cos-brass-700);
+    border-radius: var(--cos-radius);
+    font: 11px var(--cos-font-machine);
+    cursor: pointer;
+}
+
+.mp-tape:hover:not(:disabled) {
+    border-left-color: var(--cos-brass-500);
+    background: linear-gradient(180deg, var(--cos-iron-600), var(--cos-iron-800));
+}
+
+.mp-tape:focus-visible {
+    outline: 1px dotted var(--cos-ink);
+    outline-offset: 2px;
+}
+
+.mp-tape-code {
+    grid-row: span 2;
+    align-self: center;
+    padding: 3px 5px;
+    color: var(--cos-ink);
+    background: var(--cos-vellum-200);
+    border: 1px solid var(--cos-brass-700);
+    font-weight: bold;
+}
+
+.mp-tape-title {
+    color: var(--cos-brass-100);
+    font: bold 12px/1.25 var(--cos-font-display);
+}
+
+.mp-tape-meta {
+    color: var(--cos-ink-inv-dim);
+    font-size: 10px;
+    line-height: 1.3;
+}
+
+.mp-tape.is-current {
+    border-left-color: var(--cos-brass-300);
+    box-shadow: inset 0 0 0 1px var(--cos-brass-500);
+}
+
+.mp-tape.is-secret {
+    border-left-color: var(--cos-ichor-500);
+}
+
+.mp-tape.is-secret .mp-tape-title {
+    color: var(--cos-ichor-300);
+}
+
+.mp-tape.is-locked {
+    color: var(--cos-ink-dim);
+    background: var(--cos-vellum-200);
+    border: 1px dashed var(--cos-vellum-500);
+    border-left: 4px solid var(--cos-vellum-500);
+    cursor: default;
+}
+
+.mp-tape.is-locked .mp-tape-code {
+    color: var(--cos-ink-dim);
+    background: transparent;
+    border-color: var(--cos-vellum-500);
+}
+
+.mp-tape.is-locked .mp-tape-title,
+.mp-tape.is-locked .mp-tape-meta {
+    color: var(--cos-ink-dim);
+}
+
+.mp-tape.is-locked .mp-tape-meta {
+    font-style: italic;
+}
+
+.mp-new {
+    color: var(--cos-verd-300);
+    letter-spacing: 0.08em;
+}
+
+/* ── The deck ── */
+.mp-deck {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mp-screen-wrap {
+    flex: 1;
+    min-height: 120px;
+    display: grid;
+    place-items: center;
+    container-type: size;
+}
+
+.mp-screen {
+    position: relative;
+    width: min(100cqw, calc(100cqh * 4 / 3));
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    background: #000;
+    border: 2px solid;
+    border-color: var(--cos-vellum-500) var(--cos-vellum-100) var(--cos-vellum-100) var(--cos-vellum-500);
+    box-shadow: inset 0 0 0 1px #000;
+    cursor: pointer;
+}
+
+.mp-picture {
+    position: absolute;
+    inset: 0;
+}
+
+.mp-slide {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: var(--cos-void);
+}
+
+.mp-move {
+    position: absolute;
+    inset: 0;
+    transform-origin: 50% 50%;
+    will-change: transform;
+}
+
+.mp-art-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.92;
+}
+
+.mp-art-subject,
+.mp-art-fx {
+    position: absolute;
+    left: 50%;
+    top: 46%;
+    aspect-ratio: 1;
+    object-fit: contain;
+    transform: translate(-50%, -50%);
+}
+
+.mp-art-subject {
+    width: 46%;
+    filter: drop-shadow(0 0 18px rgba(144, 99, 219, 0.35));
+}
+
+/* The plaques are 96px pixel art: kept crisp, and smaller. */
+.mp-art-subject[src*="/icons/"] {
+    width: 30%;
+    image-rendering: pixelated;
+}
+
+.mp-art-fx {
+    width: 72%;
+    mix-blend-mode: screen;
+    opacity: 0.85;
+}
+
+.mp-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #000;
+}
+
+.mp-label {
+    position: absolute;
+    left: 4%;
+    bottom: 5%;
+    max-width: 92%;
+    padding: 3px 8px;
+    color: var(--cos-brass-100);
+    background: rgba(4, 6, 10, 0.72);
+    border-left: 3px solid var(--cos-brass-500);
+    font: bold 11px var(--cos-font-machine);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+/* A 1994 title card: corporate blue, struck brass. */
+.mp-card {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 8%;
+    text-align: center;
+    background:
+        radial-gradient(ellipse 70% 55% at 50% 42%, rgba(222, 196, 131, 0.12), transparent 70%),
+        radial-gradient(ellipse at 50% 40%, #142a46, #06101d 72%);
+}
+
+.mp-card-kicker {
+    color: var(--cos-brass-300);
+    font: bold 10px var(--cos-font-machine);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+.mp-card-title {
+    color: var(--cos-halo);
+    font: 700 clamp(18px, 6.5cqw, 36px)/1.1 var(--cos-font-display);
+    text-shadow: 0 2px 0 #000;
+}
+
+.mp-card-rule {
+    width: 42%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--cos-brass-500), transparent);
+}
+
+.mp-card-sub {
+    color: var(--cos-ink-inv);
+    font: 12px var(--cos-font-machine);
+}
+
+.mp-card.is-glitch {
+    background:
+        radial-gradient(ellipse 70% 55% at 50% 42%, rgba(144, 99, 219, 0.2), transparent 70%),
+        radial-gradient(ellipse at 50% 40%, #2a1240, var(--cos-void) 72%);
+}
+
+/* ── VHS: scanlines, chroma, tracking, the deck's own OSD ── */
+.mp-fx,
+.mp-track,
+.mp-osd,
+.mp-counter {
+    position: absolute;
+    pointer-events: none;
+    display: none;
+}
+
+.mp-fx {
+    inset: 0;
+    background:
+        repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.24) 0 1px, transparent 1px 3px),
+        radial-gradient(ellipse at center, transparent 56%, rgba(0, 0, 0, 0.5));
+}
+
+.mp-track {
+    left: 0;
+    right: 0;
+    top: -12%;
+    height: 9%;
+    background: linear-gradient(180deg, transparent, rgba(255, 247, 222, 0.06) 35%, rgba(255, 247, 222, 0.13) 50%, rgba(255, 247, 222, 0.05) 65%, transparent);
+    animation: mp-track 7.5s linear infinite;
+}
+
+.mp-osd {
+    top: 6%;
+    left: 6%;
+    color: #f2f6ff;
+    font: bold clamp(13px, 3.4cqw, 22px) var(--cos-font-machine);
+    letter-spacing: 0.08em;
+    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.7), 1px 0 rgba(255, 40, 80, 0.55), -1px 0 rgba(40, 190, 255, 0.55);
+}
+
+.mp-counter {
+    top: 6%;
+    right: 6%;
+    color: #f2f6ff;
+    font: bold clamp(11px, 2.6cqw, 16px) var(--cos-font-machine);
+    letter-spacing: 0.06em;
+    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.7);
+}
+
+.mp.is-vhs .mp-fx,
+.mp.is-vhs .mp-track,
+.mp.is-vhs .mp-osd,
+.mp.is-vhs .mp-counter {
+    display: block;
+}
+
+.mp.is-vhs .mp-picture {
+    animation: mp-wobble 6.5s steps(1, end) infinite;
+}
+
+.mp.is-vhs .mp-art-bg,
+.mp.is-vhs .mp-video {
+    filter: saturate(1.18) contrast(1.06) blur(0.35px);
+}
+
+/* Subject only: the vfx plates are opaque RGB, and a drop-shadow on an
+   opaque square draws its edges as two coloured lines. */
+.mp.is-vhs .mp-art-subject {
+    filter: drop-shadow(2px 0 0 rgba(255, 40, 80, 0.5)) drop-shadow(-2px 0 0 rgba(40, 190, 255, 0.45));
+}
+
+.mp.is-vhs .mp-card-title,
+.mp.is-vhs .mp-label {
+    text-shadow: 1.5px 0 rgba(255, 40, 80, 0.6), -1.5px 0 rgba(40, 190, 255, 0.6), 0 2px 0 #000;
+}
+
+@keyframes mp-track {
+    from { transform: translateY(0); }
+    to { transform: translateY(1350%); }
+}
+
+@keyframes mp-wobble {
+    0% { transform: none; }
+    90% { transform: translateX(1.5px) skewX(-0.5deg); }
+    91% { transform: translateX(-1px); }
+    92% { transform: translateX(2px) skewX(0.4deg); }
+    93% { transform: none; }
+}
+
+/* T6. NULL.OPERATOR is not on the VHS switch: the tape itself is damaged. */
+.mp-screen.is-glitch .mp-picture {
+    animation: mp-glitch 0.9s steps(2, end) infinite;
+}
+
+.mp-screen.is-glitch .mp-art-bg {
+    filter: hue-rotate(35deg) saturate(1.6) contrast(1.2);
+}
+
+.mp-screen.is-glitch .mp-art-subject {
+    filter: drop-shadow(5px 0 0 rgba(144, 99, 219, 0.85)) drop-shadow(-4px 0 0 rgba(212, 85, 58, 0.6));
+}
+
+.mp-screen.is-glitch .mp-track {
+    display: block;
+    height: 24%;
+    animation-duration: 0.8s;
+}
+
+@keyframes mp-glitch {
+    0% { transform: translateX(0); clip-path: inset(0 0 0 0); }
+    25% { transform: translateX(-4px); clip-path: inset(8% 0 62% 0); }
+    50% { transform: translateX(3px) skewX(-2deg); clip-path: inset(0 0 0 0); }
+    75% { transform: translateX(-2px); clip-path: inset(41% 0 22% 0); }
+}
+
+/* ── Caption well and transport ── */
+.mp-caption {
+    min-height: 4.1em;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 7px 10px;
+    color: var(--cos-ink);
+    background: var(--cos-vellum-100);
+    border: 2px solid;
+    border-color: var(--cos-vellum-500) var(--cos-vellum-100) var(--cos-vellum-100) var(--cos-vellum-500);
+    font: 13px/1.45 var(--cos-font-display);
+}
+
+.mp-speaker {
+    flex: 0 0 auto;
+    color: var(--cos-brass-700);
+    font: bold 10px var(--cos-font-machine);
+    letter-spacing: 0.12em;
+}
+
+.mp-speaker:empty {
+    display: none;
+}
+
+.mp-caption.is-null .mp-speaker,
+.mp-caption.is-null .mp-line {
+    color: var(--cos-ichor-700);
+}
+
+.mp-caption.is-null .mp-line {
+    font-family: var(--cos-font-machine);
+}
+
+.mp-transport {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mp .win-btn.mp-btn {
+    flex: 0 0 36px;
+    width: 36px;
+    margin: 0;
+    padding: 4px 0;
+    font-size: 13px;
+    line-height: 1.1;
+}
+
+.mp .win-btn.mp-play {
+    flex-basis: 44px;
+    width: 44px;
+}
+
+.mp-scrub-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 80px;
+    display: flex;
+    align-items: center;
+}
+
+.mp-scrub {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 22px;
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
+.mp-scrub::-webkit-slider-runnable-track {
+    height: 6px;
+    background: var(--cos-vellum-300);
+    border: 1px solid;
+    border-color: var(--win-border-dark) var(--win-border-light) var(--win-border-light) var(--win-border-dark);
+}
+
+.mp-scrub::-moz-range-track {
+    height: 6px;
+    background: var(--cos-vellum-300);
+    border: 1px solid;
+    border-color: var(--win-border-dark) var(--win-border-light) var(--win-border-light) var(--win-border-dark);
+}
+
+.mp-scrub::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 11px;
+    height: 19px;
+    margin-top: -8px;
+    background: linear-gradient(180deg, var(--cos-brass-100), var(--cos-brass-300));
+    border: 1px solid;
+    border-color: var(--cos-halo) var(--cos-brass-700) var(--cos-brass-700) var(--cos-halo);
+    box-shadow: 1px 1px 0 var(--cos-brass-900);
+}
+
+.mp-scrub::-moz-range-thumb {
+    width: 9px;
+    height: 17px;
+    border-radius: 0;
+    background: linear-gradient(180deg, var(--cos-brass-100), var(--cos-brass-300));
+    border: 1px solid;
+    border-color: var(--cos-halo) var(--cos-brass-700) var(--cos-brass-700) var(--cos-halo);
+}
+
+.mp-scrub:focus-visible {
+    outline: 1px dotted var(--cos-ink);
+    outline-offset: 2px;
+}
+
+/* One notch per cut, so a scrub can land on a shot. */
+.mp-marks {
+    position: absolute;
+    inset: 0 5px;
+    pointer-events: none;
+}
+
+.mp-marks i {
+    position: absolute;
+    top: 50%;
+    width: 1px;
+    height: 12px;
+    margin-top: -6px;
+    background: var(--cos-vellum-500);
+}
+
+.mp-time {
+    min-width: 84px;
+    color: var(--cos-ink-dim);
+    font: 11px var(--cos-font-machine);
+    text-align: right;
+}
+
+.mp-status {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 10px;
+    color: var(--cos-ink-dim);
+    border-top: 1px solid var(--cos-vellum-500);
+    box-shadow: inset 0 1px 0 var(--cos-vellum-100);
+    font: 10px var(--cos-font-machine);
+    letter-spacing: 0.06em;
+}
+
+/* Narrow windows and phones: the shelf lies down along the top. */
+@container mplayer (max-width: 620px) {
+    .mp-body {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr);
+        gap: 8px;
+        padding: 8px;
+    }
+
+    .mp-shelf {
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    .mp-shelf li {
+        flex: 0 0 196px;
+    }
+
+    /* The screen takes the full width and the deck stacks under it, rather
+       than centring a width-bound screen in a tall empty well. */
+    .mp-screen-wrap {
+        flex: 0 0 auto;
+        min-height: 0;
+        display: block;
+        container-type: normal;
+    }
+
+    .mp-screen {
+        width: 100%;
+    }
+
+    .mp-brand {
+        display: none;
+    }
+
+    .mp-time {
+        min-width: 0;
+    }
+
+    .mp-status-src {
+        text-align: right;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cine-caption,
+    .mp.is-vhs .mp-picture,
+    .mp-screen.is-glitch .mp-picture {
+        animation: none;
+    }
+
+    .mp.is-vhs .mp-track,
+    .mp-screen.is-glitch .mp-track {
+        display: none;
+    }
+}
