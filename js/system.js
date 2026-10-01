@@ -57,12 +57,16 @@ const system = {
         divineglobe: { label: 'Divine Globe', art: 'globe', hint: 'Assign prophets' },
         divinecalls: { label: 'Divine Calls', art: 'calls', hint: 'Convert resources' },
         adorationshop: { label: 'Adoration Shop', art: 'shop', hint: 'Acquire persistent utilities' },
+        // No authored plaque yet: `glyph` names a CSS-drawn mark instead.
+        solitaire: { label: 'Patience.exe', glyph: 'patience', hint: 'Golf solitaire, dealt from the arcana' },
         settings: { label: 'Divine Settings', art: 'settings', hint: 'Save, prestige, and display' }
     },
 
     /* The taskbar and Genesis menu reuse the desktop plaques rather than a
        second, unrelated symbol set. */
     appGlyph(id) {
+        const glyph = this.appMeta[id]?.glyph;
+        if (glyph) return `<span class="app-glyph app-glyph--${glyph}" aria-hidden="true"></span>`;
         const art = this.appMeta[id]?.art;
         if (!art) return '';
         const label = this.appMeta[id]?.label || id;
@@ -151,6 +155,11 @@ const system = {
                     return; // never auto-advance past an unanswered choice
                 }
                 ui.advanceAdversaryScene();
+                return;
+            }
+
+            // Patience.exe claims arrows, Enter and Space while it is on top.
+            if (typeof PatienceView !== 'undefined' && PatienceView.handleKey(e, this.getTopWindowId())) {
                 return;
             }
 
@@ -350,7 +359,8 @@ const system = {
             divinecalls: { width: 620, height: 520 },
             adorationshop: { width: 650, height: 560 },
             taskmgr: { width: 860, height: 560 },
-            recyclebin: { width: 700, height: 560 }
+            recyclebin: { width: 700, height: 560 },
+            solitaire: { width: 660, height: 540 }
         };
 
         return appSizes[id] || { width: 620, height: 560 };
@@ -1098,6 +1108,12 @@ const system = {
                     State.achievementProgress.open_recyclebin = (State.achievementProgress.open_recyclebin || 0) + 1;
                     ui.updateRecycleBinList();
                 }
+            },
+
+            'solitaire': {
+                title: 'Patience.exe - Celestial Arcana',
+                initialHTML: `<div class="patience" id="patience-root"></div>`,
+                onOpen: () => PatienceView.open()
             }
         };
         return configs[id] || { title: 'Unknown App', initialHTML: 'ERROR' };
