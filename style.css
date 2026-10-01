@@ -5020,6 +5020,11 @@ tr.is-focus td { background: rgba(212, 85, 58, 0.08); }
 }
 
 /* Task Manager is a LIGHT vellum surface: ink, never the dark-panel inks. */
+/* Inherits the report header's light ink: that panel is dark iron, not vellum. */
+.offline-held {
+    margin-top: 8px;
+}
+
 .incident-hold-note {
     display: flex;
     align-items: baseline;

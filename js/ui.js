@@ -288,6 +288,14 @@ const ui = {
             ? `<p class="offline-overflow">Storage overflowed and discarded <strong>${spilled.join(', ')}</strong>. Expand your vaults under Standing Requisitions before the next shift.</p>`
             : '';
 
+        /* Held tickets are the other thing a returning player needs to know:
+           that nothing happened to them, and that the clocks start again
+           when they do. See ABSENCE IS NEVER PUNISHED in js/incidents.js. */
+        const held = this.incidentsAvailable?.() ? Incidents.state().open.length : 0;
+        const heldNotice = held
+            ? `<p class="offline-held"><span class="code-stamp">ON HOLD</span> ${held} incident ticket${held === 1 ? ' was' : 's were'} held while you were away: no penalty, no escalation. Clocks resume when you do, with at least ${Incidents.RETURN_GRACE}s each.</p>`
+            : '';
+
         layer.innerHTML = `
             <section class="system-dialog offline-report" role="dialog" aria-modal="true" aria-labelledby="offline-title">
                 <div class="system-dialog-titlebar">
@@ -301,6 +309,7 @@ const ui = {
                         <h2 id="offline-title">The universe kept running.</h2>
                         <p>Your processes operated for ${this.formatNumber(elapsedMinutes)} minutes while the console was closed, at ${efficiencyPct}% of attended output.${report.capped ? ` Accrual was capped at ${simulatedHours} hours — the Providence Capacitor extends that window.` : ''}</p>
                         ${overflowNotice}
+                        ${heldNotice}
                     </div>
                 </div>
                 <ul class="offline-gains">${gained || '<li><span>No active production</span><strong>—</strong></li>'}</ul>
