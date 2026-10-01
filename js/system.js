@@ -154,6 +154,17 @@ const system = {
                 return;
             }
 
+            /* A stabilisation ritual owns Space and Enter while its Align
+               button has focus: the button is the instrument, and a Miracle
+               fired from the same key would be noise. Repeats are dropped so
+               holding the key cannot machine-gun the needle. */
+            const align = e.target && e.target.closest && e.target.closest('.labour-align');
+            if (align && (e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter')) {
+                e.preventDefault();
+                if (!e.repeat) align.click();
+                return;
+            }
+
             // Space: Perform Miracle
             if (e.code === 'Space') {
                 e.preventDefault();
@@ -1033,6 +1044,8 @@ const system = {
                                 <span class="taskmgr-stat">Memory: <strong id="taskmgr-mem-total">0 MB</strong></span>
                             </div>
                         </div>
+
+                        <section id="taskmgr-incidents" class="taskmgr-incidents" aria-live="polite" hidden></section>
 
                         <div class="taskmgr-table-container">
                             <table class="taskmgr-table">

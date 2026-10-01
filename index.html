@@ -74,6 +74,10 @@
                 <div class="operator-divider"></div>
                 <div class="operator-kicker">NEXT SYSTEM MILESTONE</div>
                 <div id="operator-next-milestone" class="operator-next-milestone">Calibrating…</div>
+                <button id="operator-incidents" class="operator-incidents" type="button" hidden onclick="system.openApp('taskmgr')">
+                    <span class="operator-kicker">INCIDENT QUEUE</span>
+                    <span data-role="count">QUEUE CLEAR</span>
+                </button>
                 <button class="operator-open-button" onclick="system.openApp('console')">Open Universal Engine <span>C</span></button>
             </div>
         </aside>
@@ -104,6 +108,10 @@
             </button>
             <div id="active-tasks"></div>
             <div id="system-tray">
+                <button id="tray-incident-led" class="tray-incident-led" type="button" hidden
+                        onclick="system.openApp('taskmgr')" aria-label="No open incidents" title="No open incidents">
+                    <span class="led-lamp" aria-hidden="true"></span><span class="led-label">INC</span>
+                </button>
                 <span id="epoch-time">Epoch 0.0.0</span>
             </div>
         </div>
@@ -128,6 +136,7 @@
     <script src="js/state.js"></script>
     <script src="js/modifiers.js"></script>
     <script src="js/reality.js"></script>
+    <script src="js/incidents.js"></script>
     <script src="js/system.js"></script>
     <script src="js/ui.js"></script>
     <script src="js/game.js"></script>

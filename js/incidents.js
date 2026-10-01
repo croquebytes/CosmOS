@@ -249,9 +249,14 @@ const Incidents = {
        fifteen orders of magnitude. */
     COST: { 3: [0.12, 0.4, 90], 2: [0.2, 0.6, 180], 1: [0.3, 0.85, 300] },
     DEBT_DEPTH: { 3: 1, 2: 1.5, 1: 2 },
-    LABOUR_HITS: { 3: 6, 2: 8, 1: 10 },
-    LABOUR_PERIOD_MS: 1800,
-    LABOUR_COOLDOWN_MS: 220,
+    /* Tuned so a flawless pair of hands takes ~9s on a SEV-3 and ~16s on an
+       outage, and a person with misses lands in the 15-45s the loop wants:
+       long enough to be the time sink, short enough not to be a chore. The
+       cooldown is what makes the floor real — a pulse inside it is ignored,
+       not counted as a miss, so it costs patience rather than progress. */
+    LABOUR_HITS: { 3: 8, 2: 11, 1: 14 },
+    LABOUR_PERIOD_MS: 2000,
+    LABOUR_COOLDOWN_MS: 450,
     PROPHET_SECONDS: 120,
     ARTIFACT_QUOTA: 5,
     MAX_DEBTS: 64,
@@ -711,7 +716,7 @@ const Incidents = {
        UI only draws what this says. Timing is wall-clock ms because the
        ritual is a thing you do with your hands, not a thing that accrues. */
     newBand(hits) {
-        const width = Math.max(0.12, 0.24 - hits * 0.012);
+        const width = Math.max(0.1, 0.24 - hits * 0.01);
         return { at: Math.max(0, Math.min(1 - width, this.random() * (1 - width))), width };
     },
 
@@ -869,9 +874,13 @@ const Incidents = {
     claimedEffect(inc) {
         const tpl = this.template(inc.template);
         if (!tpl) return '';
+        const line = IncidentLines[tpl.line];
+        // When the effect IS the line, the halt replaces it rather than
+        // stacking on it — effectMods does the same — so say only that.
+        if (inc.severity === 1 && tpl.effect.target === line.target) return `${line.label} halted`;
         const sev = inc.severity === 1 ? 2 : inc.severity;
         const parts = [this.describeMod(tpl.effect.target, tpl.effect.op, tpl.effect[sev])];
-        if (inc.severity === 1) parts.push(`${IncidentLines[tpl.line].label} halted`);
+        if (inc.severity === 1) parts.push(`${line.label} halted`);
         return parts.join(' · ');
     },
 

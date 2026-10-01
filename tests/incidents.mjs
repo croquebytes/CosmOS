@@ -259,21 +259,21 @@ check('labour resolves only after the required aligned pulses, and a miss costs 
     const need = env.Incidents.labourNeed(inc);
     let t = 0;
 
-    t = momentWhere(env, inc, t + 300, true);
+    t = momentWhere(env, inc, t + env.Incidents.LABOUR_COOLDOWN_MS + 20, true);
     assert.equal(env.Incidents.labourPulse(inc.id, t).hit, true);
     assert.equal(env.Incidents.labourPulse(inc.id, t + 50).ignored, true, 'pulse spam was not ignored');
 
-    t = momentWhere(env, inc, t + 300, false);
+    t = momentWhere(env, inc, t + env.Incidents.LABOUR_COOLDOWN_MS + 20, false);
     const miss = env.Incidents.labourPulse(inc.id, t);
     assert.equal(miss.hit, false);
     assert.equal(inc.labour.hits, 0, 'a miss did not cost a hit');
 
     for (let i = 0; i < need - 1; i++) {
-        t = momentWhere(env, inc, t + 300, true);
+        t = momentWhere(env, inc, t + env.Incidents.LABOUR_COOLDOWN_MS + 20, true);
         env.Incidents.labourPulse(inc.id, t);
         assert.ok(env.Incidents.find(inc.id), `resolved after ${i + 1} of ${need} hits`);
     }
-    t = momentWhere(env, inc, t + 300, true);
+    t = momentWhere(env, inc, t + env.Incidents.LABOUR_COOLDOWN_MS + 20, true);
     assert.equal(env.Incidents.labourPulse(inc.id, t).done, true);
     assert.equal(env.Incidents.find(inc.id), null, 'labour did not close the ticket');
     assert.equal(env.State.incidents.stats.labour, 1);
