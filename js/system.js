@@ -641,17 +641,18 @@ const system = {
                         <div class="resource-panel">
                             <div class="stat-box">
                                 <label>PRAISE</label>
-                                <div id="val-praise" class="stat-value">0</div>
-                                <div class="stat-rate">+<span id="val-praise-rate">0</span>/s</div>
+                                <div id="val-praise" class="stat-value" data-breakdown="cap:praise" tabindex="0">0</div>
+                                <div class="stat-rate" data-breakdown="rate:praise" tabindex="0">+<span id="val-praise-rate">0</span>/s</div>
                             </div>
                             <div class="stat-box">
                                 <label>OFFERINGS</label>
-                                <div id="val-offerings" class="stat-value">0</div>
+                                <div id="val-offerings" class="stat-value" data-breakdown="cap:offerings" tabindex="0">0</div>
+                                <div class="stat-rate" data-breakdown="rate:offerings" tabindex="0">+<span id="val-offering-rate">0</span>/s</div>
                             </div>
                             <div class="stat-box">
                                 <label>SOULS</label>
-                                <div id="val-souls" class="stat-value">0</div>
-                                <div class="stat-rate">+<span id="val-soul-rate">0</span>/s</div>
+                                <div id="val-souls" class="stat-value" data-breakdown="cap:souls" tabindex="0">0</div>
+                                <div class="stat-rate" data-breakdown="rate:souls" tabindex="0">+<span id="val-soul-rate">0</span>/s</div>
                             </div>
                         </div>
                         <div class="actions">

@@ -4759,3 +4759,225 @@ body.start-menu-open .adversary-bark-layer { z-index: 9000; }
 .cascade-body h2 { margin: 9px 0 8px; font: 700 18px/1.25 var(--cos-font-display); color: var(--cos-ink); }
 .cascade-body p { margin: 0 0 8px; font-size: 12px; line-height: 1.6; color: var(--cos-ink); }
 .cascade-advice { color: var(--cos-ink-dim) !important; }
+
+/* ── The production breakdown ("provenance sheet") ──
+
+   A property sheet the Sacred OS files for any rate or storage readout. Same
+   material as .system-dialog: an iron titlebar over a LIGHT vellum body, so
+   every ink here is --cos-ink / --cos-ink-dim, never the dark-panel inks —
+   the ship dialog shipped light-on-light once by inheriting those. Numbers
+   use tabular figures so a column of ×24.50 and ×1.0040 lines up. */
+[data-breakdown] { cursor: help; }
+[data-breakdown]:focus-visible {
+    outline: 1px dotted var(--cos-brass-500);
+    outline-offset: 2px;
+}
+.stat-rate[data-breakdown]:hover,
+.stat-value[data-breakdown]:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
+
+.breakdown-panel {
+    position: fixed;
+    z-index: 9450; /* over windows and the taskbar, under the modal layer */
+    width: min(420px, calc(100vw - 32px));
+    overflow: auto;
+    overscroll-behavior: contain;
+    color: var(--cos-ink);
+    background: var(--win-bg);
+    border: 2px solid;
+    border-color: var(--win-border-light) var(--win-border-dark) var(--win-border-dark) var(--win-border-light);
+    box-shadow: 3px 3px 0 #000, 0 14px 40px rgba(0, 0, 0, 0.5);
+    font: 11px/1.4 var(--cos-font-machine);
+    user-select: text;
+    animation: breakdownIn 110ms ease-out;
+}
+.breakdown-panel[hidden] { display: none; }
+.breakdown-panel * { user-select: text; }
+
+@keyframes breakdownIn {
+    from { opacity: 0; transform: translateY(-3px); }
+    to { opacity: 1; transform: none; }
+}
+
+.bd-titlebar {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    height: 22px;
+    padding: 2px 3px 2px 7px;
+    color: var(--cos-brass-100);
+    background: linear-gradient(180deg, var(--cos-iron-700), var(--cos-iron-900));
+    border-bottom: 1px solid var(--cos-brass-700);
+    font: bold 10px var(--cos-font-machine);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+.bd-titlebar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Hover never needs a close box; a pinned (clicked or tapped) sheet does. */
+.bd-close {
+    display: none;
+    width: 17px;
+    height: 15px;
+    place-items: center;
+    flex: none;
+    color: var(--cos-ink);
+    background: var(--win-bg);
+    border: 1px solid;
+    border-color: #fff #555 #555 #fff;
+    font: bold 10px/1 var(--cos-font-machine);
+    cursor: pointer;
+}
+.breakdown-panel.is-pinned .bd-close { display: grid; }
+
+.bd-body { padding: 8px 10px 9px; }
+
+.bd-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 6px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid var(--cos-vellum-500);
+}
+.bd-eyebrow {
+    color: var(--cos-ink-dim);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.bd-total {
+    color: var(--cos-brass-700);
+    font: 700 17px var(--cos-font-display);
+    white-space: nowrap;
+}
+
+.bd-alert {
+    margin: 0 0 7px;
+    padding: 5px 7px;
+    border: 1px solid var(--cos-alarm);
+    border-left-width: 3px;
+    background: rgba(212, 85, 58, 0.09);
+    color: var(--cos-ink);
+    font-size: 10px;
+    line-height: 1.5;
+}
+.bd-alert .code-stamp { margin-right: 4px; }
+
+.bd-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+}
+.bd-table thead th {
+    padding: 0 0 3px 8px;
+    color: var(--cos-ink-dim);
+    font: 9px var(--cos-font-machine);
+    letter-spacing: 0.08em;
+    text-align: right;
+    text-transform: uppercase;
+}
+.bd-table thead th:first-child { text-align: left; padding-left: 0; }
+.bd-table thead th:nth-child(2) { padding-right: 10px; }
+.bd-table td { padding: 2px 0; vertical-align: top; }
+.bd-table td.bd-label { padding-right: 8px; overflow-wrap: anywhere; }
+.bd-factor,
+.bd-running { text-align: right; white-space: nowrap; }
+.bd-table td.bd-factor { padding-right: 10px; color: var(--cos-ink); }
+.bd-running { color: var(--cos-ink-dim); min-width: 5.5em; }
+
+.bd-section th {
+    padding: 7px 0 2px;
+    color: var(--cos-brass-700);
+    border-bottom: 1px solid var(--cos-vellum-400);
+    font: bold 9px var(--cos-font-machine);
+    letter-spacing: 0.1em;
+    text-align: left;
+    text-transform: uppercase;
+}
+.bd-group td { padding-top: 3px; }
+.bd-group .bd-label { color: var(--cos-ink); }
+.bd-item td { padding-top: 0; padding-bottom: 1px; font-size: 10px; }
+.bd-table .bd-item td.bd-label { padding-left: 12px; color: var(--cos-ink-dim); position: relative; }
+.bd-item .bd-label::before {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 0;
+    width: 5px;
+    height: 0.7em;
+    border-left: 1px solid var(--cos-vellum-500);
+    border-bottom: 1px solid var(--cos-vellum-500);
+}
+.bd-table .bd-item td.bd-factor { color: var(--cos-ink-dim); }
+
+.bd-table .bd-group.is-alarm td.bd-label,
+.bd-table .bd-group.is-alarm td.bd-factor { color: var(--cos-alarm); }
+.bd-group.is-residue .bd-label { color: var(--cos-ink-dim); font-style: italic; }
+
+/* "Why?" lands here: the throttle rows are marked, not just scrolled to. */
+.bd-section.is-focus th { color: var(--cos-alarm); border-bottom-color: var(--cos-alarm); }
+tr.is-focus td { background: rgba(212, 85, 58, 0.08); }
+
+.bd-final th,
+.bd-final td {
+    padding-top: 5px;
+    border-top: 2px double var(--cos-vellum-500);
+    color: var(--cos-ink);
+    font: bold 11px var(--cos-font-machine);
+    text-align: left;
+}
+.bd-final td { text-align: right; color: var(--cos-brass-700); }
+
+.bd-stamp {
+    min-width: 0;
+    margin-left: 5px;
+    padding: 0 3px;
+    font-size: 8px;
+    vertical-align: 1px;
+}
+.code-stamp.is-residue {
+    border-color: var(--cos-vellum-500);
+    background: rgba(151, 140, 118, 0.14);
+    color: var(--cos-ink-dim);
+}
+
+.bd-note {
+    display: block;
+    color: var(--cos-ink-dim);
+    font-size: 9px;
+}
+
+.bd-foot,
+.bd-empty {
+    margin: 7px 0 0;
+    color: var(--cos-ink-dim);
+    font-size: 9px;
+    line-height: 1.45;
+}
+.bd-empty { font-size: 11px; color: var(--cos-ink); }
+
+/* The "Why?" next to a cascade stamp. Sized as a stamp, not a full-width
+   .win-btn, so it reads as an annotation on the readout. */
+.win-btn.stability-why {
+    display: inline-block;
+    width: auto;
+    margin: 0 auto 0 6px;
+    padding: 1px 6px;
+    font-size: 9px;
+    letter-spacing: 0.04em;
+}
+
+@media (max-width: 520px) {
+    .breakdown-panel { font-size: 10px; }
+    .bd-total { font-size: 15px; }
+    .bd-running { min-width: 4.5em; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .breakdown-panel { animation: none; }
+}

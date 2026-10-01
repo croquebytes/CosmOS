@@ -6,14 +6,15 @@
     "test:e2e": "node tests/e2e-smoke.mjs",
     "test:save": "node tests/save-migration.mjs",
     "test:golden": "node tools/golden.mjs",
-    "test": "npm run test:save && npm run test:modifiers && npm run test:reality && npm run test:adversary && npm run test:prestige && npm run test:storage && npm run test:certification && npm run test:golden && npm run test:e2e",
+    "test": "npm run test:save && npm run test:modifiers && npm run test:reality && npm run test:adversary && npm run test:prestige && npm run test:storage && npm run test:certification && npm run test:breakdown && npm run test:golden && npm run test:e2e",
     "test:modifiers": "node tests/modifier-equivalence.mjs",
     "test:reality": "node tests/reality-builds.mjs",
     "test:adversary": "node tests/adversary-scene.mjs",
     "test:prestige": "node tests/prestige-curve.mjs",
     "test:certification": "node tests/certification.mjs",
     "test:storage": "node tests/storage.mjs",
-    "test:audio": "node tests/audio.mjs"
+    "test:audio": "node tests/audio.mjs",
+    "test:breakdown": "node tests/breakdown.mjs"
   },
   "devDependencies": {
     "playwright": "^1.62.0",
