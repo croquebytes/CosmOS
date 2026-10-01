@@ -83,6 +83,13 @@ const MediaCatalog = (() => {
             caption: 'Veil breached. The Void Dimension is now in scope.',
             krea: 'Keyframe: an iron cathedral wall with a vertical tear of violet light. Motion: the tear opens like an iris and wraith-light pours in; camera holds.',
         }),
+        'mirror-login': scene('V4', 'mirror-login', {
+            // The Adversary scene opens straight after; its own glitch cue
+            // would double a cue here, so the reel is silent.
+            title: 'Mirror Login', mode: 'overlay', cue: null, length: 6,
+            caption: 'Session conflict: Operator already logged in.',
+            krea: 'Keyframe: a CRT monitor set in the iron housing showing a dark silhouette identical to the viewer. Motion: the silhouette tilts its head a frame early; scanlines tear; symmetry breaks.',
+        }),
         'first-seraph': scene('V6', 'first-seraph', {
             title: 'First Seraph', mode: 'window', cue: 'directive', length: 4,
             caption: 'Seraphic Automaton #1 commissioned. It has already started.',
@@ -293,6 +300,23 @@ const MediaCatalog = (() => {
         },
     ];
 
+    /* ── Dialog loops ─────────────────────────────────────────────────
+       Not cinematics: short seamless loops that play INSIDE a system
+       dialog, in a dark monitor strip at its head, while the dialog is up.
+       They never hold the modal slot and never delay the dialog — if the
+       file is not installed the dialog renders exactly as it always has. */
+    const loop = (code, slug, extra) => ({ id: slug, code, ...files(`loop__${slug}__512`), ...extra });
+    const loops = {
+        'cascade-tier1': loop('V3', 'cascade-tier1', { title: 'Cascade — Degraded',
+            krea: 'Keyframe: the engine core, one containment ring hairline-cracked, a thread of violet ichor. Motion: the ring segment drifts a few pixels and back; ichor rises slowly. Seamless 4s loop.' }),
+        'cascade-tier2': loop('V3', 'cascade-tier2', { title: 'Cascade — Failing',
+            krea: 'Keyframe: the engine core, two rings split, ichor pooling upward through the iron. Motion: segments drift apart and stutter; the core flickers. Seamless 4s loop.' }),
+        'cascade-tier3': loop('V3', 'cascade-tier3', { title: 'Cascade — Collapse',
+            krea: 'Keyframe: the engine core with its rings shattered and orbiting loose, symmetry gone, ichor flooding the frame. Motion: the debris orbits off-axis; the core gutters. Seamless 4s loop.' }),
+        'sev1-alarm': loop('V7', 'sev1-alarm', { title: 'SEV-1 Alarm',
+            krea: 'Keyframe: an alarm lamp in a brass cage on dark iron, red #d4553a. Motion: the lamp rotates and throws red light across the iron. Seamless 3s loop.' }),
+    };
+
     // Number every shot and give each picture shot its drop-in reel.
     for (const tape of tapes) {
         tape.shots.forEach((shot, i) => {
@@ -306,7 +330,9 @@ const MediaCatalog = (() => {
         DIR,
         scenes,
         tapes,
+        loops,
         scene: (id) => (Object.prototype.hasOwnProperty.call(scenes, id) ? scenes[id] : null),
+        loop: (id) => (Object.prototype.hasOwnProperty.call(loops, id) ? loops[id] : null),
         tape: (id) => tapes.find((t) => t.id === id) || null,
         SPEAKERS: { I: 'INSTRUCTOR', N: 'NULL.OPERATOR', S: '' },
     };
@@ -360,6 +386,14 @@ const MediaLogic = {
         if (available === false) return 'missing';
         if (available === true) return 'play';
         return 'probe';
+    },
+
+    /* A dialog loop plays only when cinematics are not switched off and the
+       player has not asked for reduced motion. It is decoration on a dialog
+       that is complete without it, so there is no poster fallback. */
+    loopAllowed(settings, reduced) {
+        const s = settings || this.defaults();
+        return s.cinematics !== 'off' && !reduced;
     },
 
     /* The outcomes that count as the player having seen the scene. */
@@ -708,6 +742,28 @@ const media = (() => {
         return undefined;
     }
 
+    /* Mounts a dialog loop (MediaCatalog.loops) as a dark monitor strip at
+       the head of `host`, if its file is installed and the dialog is still
+       on screen when the probe answers. Resolves true when it mounted. */
+    async function attachLoop(host, id) {
+        const entry = MediaCatalog.loop(id);
+        if (!hasDOM || !entry || !host) return false;
+        if (!MediaLogic.loopAllowed(settings(), reducedMotion())) return false;
+        const src = await sourceFor(entry);
+        if (!src || !host.isConnected || host.querySelector('.dialog-loop')) return false;
+        const frame = document.createElement('div');
+        frame.className = 'dialog-loop';
+        frame.setAttribute('aria-hidden', 'true');
+        const video = document.createElement('video');
+        Object.assign(video, { src, muted: true, loop: true, autoplay: true, playsInline: true });
+        video.setAttribute('muted', '');
+        video.setAttribute('playsinline', '');
+        frame.appendChild(video);
+        host.prepend(frame);
+        video.play?.()?.catch?.(() => {});
+        return true;
+    }
+
     /* ── The cinematic stage ──────────────────────────────────────────── */
     let current = null;   // { skip(), id } while a reel is on screen
 
@@ -970,6 +1026,7 @@ const media = (() => {
         isPlaying: () => !!current,
         queued: () => director.queued(),
         deferUntilClear: (fn) => director.deferUntilClear(fn),
+        attachLoop,
         skip: () => { if (current) current.skip(); },
 
         probeUrl,

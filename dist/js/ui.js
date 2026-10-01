@@ -750,6 +750,10 @@ const ui = {
         `;
         layer.classList.add('active');
         game.sfx('cascade', { tier: cascade.tier });
+        // V3: the tier's loop in a monitor strip, when installed. Never awaited.
+        if (typeof media !== 'undefined') {
+            media.attachLoop?.(layer.querySelector('.cascade-body'), `cascade-tier${Math.max(1, Math.min(3, cascade.tier))}`);
+        }
         return true;
     },
 
@@ -816,6 +820,26 @@ const ui = {
     },
 
     playAdversaryScene() {
+        /* V4 Mirror Login opens the scene when installed. Claimed first so the
+           scene queues behind the reel (the V2 pattern in showReleaseNotes),
+           and only once per page so a re-presentation, or Cinematics set to
+           Always, cannot loop reel -> scene -> reel. With no reel installed
+           the director resolves at once and the scene opens as it always did. */
+        if (!this.mirrorReelClaimed && typeof media !== 'undefined') {
+            this.mirrorReelClaimed = true;
+            game.cinematic('mirror-login');
+            /* The deferred call presents only if nobody has presented the scene
+               since this claim. game.checkAdversaryTrigger's resume branch polls
+               once a second and may present it while the probe is out — and
+               the director holds deferred calls until the modal slot clears,
+               which for a presented scene is AFTER the player finishes it.
+               "Not open right now" would re-run a finished scene. */
+            const claim = this.advPresentations || 0;
+            if (media.deferUntilClear?.(() => {
+                if ((this.advPresentations || 0) === claim && !this.isAdversarySceneOpen()) this.playAdversaryScene();
+            })) return;
+        }
+
         /* Test exhaustion BEFORE spending the attempt. Incrementing first made
            the third presentation short-circuit, so the budget was really two
            renders while both comments said three. */
@@ -844,6 +868,7 @@ const ui = {
 
         const layer = document.getElementById('system-modal-layer');
         if (!layer) return;
+        this.advPresentations = (this.advPresentations || 0) + 1;
 
         this.advScene = { open: true, phase: 1, index: 0, choiceId: null, escapeArmed: false, timer: null };
 
@@ -3836,6 +3861,8 @@ Annotated by: void_mirror.service (shadow instance)</pre>
             </section>
         `;
         layer.classList.add('active');
+        // V7: the alarm lamp in a monitor strip, when installed. Never awaited.
+        if (typeof media !== 'undefined') media.attachLoop?.(layer.querySelector('.incident-alert-body'), 'sev1-alarm');
         return true;
     },
 
