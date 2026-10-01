@@ -126,23 +126,31 @@ console.log('\nIncidents\n');
 
 /* ── Spawning ──────────────────────────────────────────────────────────── */
 
-check('no ticket is filed during the onboarding quiet period, or before the first directive', () => {
+check('no ticket is filed during the onboarding quiet period', () => {
+    /* The two onboarding gates are tested apart. Together, either one masks
+       the other: a first version of this test passed with the quiet period
+       deleted outright, because the directive gate was also closed. */
     const env = game_({}, { onboarded: false, random: 0 });
     env.Incidents.FALSE_ALARM_CHANCE = 0;
+    env.State.loopSystems.directives.completed = 1;   // only the clock is closed
     play(env, env.Incidents.QUIET_SECONDS - 5, 5);
     assert.equal(env.State.incidents.open.length, 0, 'a ticket arrived inside the quiet period');
+    play(env, 65, 5);
+    assert.equal(env.State.incidents.open.length, 1,
+        'fixture check: once the clock has run, a certain roll files a ticket');
+});
 
-    // Past the quiet period, but the first work order is not done.
-    play(env, 180, 5);
-    assert.ok(env.State.incidents.attendedSeconds >= env.Incidents.QUIET_SECONDS,
-        'fixture check: the quiet period has elapsed');
+check('no ticket is filed before the first directive is complete', () => {
+    const env = game_({}, { onboarded: false, random: 0 });
+    env.Incidents.FALSE_ALARM_CHANCE = 0;
+    env.State.incidents.attendedSeconds = env.Incidents.QUIET_SECONDS;   // only the work order is open
+    play(env, 300, 5);
     assert.equal(env.State.incidents.open.length, 0,
         'a ticket arrived before the first directive was complete — onboarding is not clean');
-
     env.State.loopSystems.directives.completed = 1;
     play(env, 65, 5);
     assert.equal(env.State.incidents.open.length, 1,
-        'fixture check: once onboarded, a certain roll files a ticket');
+        'fixture check: once the work order is done, a certain roll files a ticket');
 });
 
 check('no more than three tickets are ever open at once', () => {
@@ -154,6 +162,19 @@ check('no more than three tickets are ever open at once', () => {
     assert.equal(env.State.incidents.stats.filed, env.Incidents.MAX_OPEN,
         'more tickets were filed than the cap allows — the cap is not what stopped them');
     assert.equal(env.Incidents.file('anomaly_flood'), null, 'file() bypassed the cap');
+});
+
+check('tickets are filed at least SPAWN_GAP attended seconds apart', () => {
+    const env = game_({}, { random: 0 });
+    env.Incidents.FALSE_ALARM_CHANCE = 0;
+    const { SPAWN_INTERVAL: every, SPAWN_GAP: gap } = env.Incidents;
+    assert.ok(gap > every && gap < 2 * every, 'fixture check: the gap swallows exactly one roll');
+    play(env, every, 5);
+    assert.equal(env.State.incidents.open.length, 1, 'fixture check: the first roll files');
+    play(env, every, 5);
+    assert.equal(env.State.incidents.open.length, 1, 'a second ticket arrived inside the gap');
+    play(env, every, 5);
+    assert.equal(env.State.incidents.open.length, 2, 'fixture check: the roll after the gap files');
 });
 
 check('Nightly files tickets where Stable would not, and unpatched issues add pressure', () => {
@@ -378,6 +399,11 @@ check('a Recycle Bin artifact resolves any ticket instantly — and nothing else
     assert.equal(env.Incidents.sacrifice(inc.id), false, 'something that is not an artifact was sacrificed');
     assert.equal(env.Incidents.sacrifice(inc.id, 'adversary_patch'), false, 'the Adversary\'s patch was sacrificed');
     assert.ok(env.Incidents.find(inc.id));
+
+    // An artifact marked undeletable is not fit either.
+    env.State.recycleBin.items.push({ id: 'locked', name: 'LOCKED.bak', type: 'backup', deletable: false, incidentArtifact: true });
+    assert.equal(env.Incidents.sacrifice(inc.id, 'locked'), false, 'an undeletable artifact was sacrificed');
+    env.State.recycleBin.items = env.State.recycleBin.items.filter((i) => i.id !== 'locked');
 
     env.Incidents.fileArtifact({ key: 't', name: 'T.bak', type: 'backup', description: '' });
     assert.ok(env.Incidents.sacrifice(inc.id), 'the artifact was refused');
@@ -607,6 +633,9 @@ check('a suspended tab neither files nor escalates tickets', () => {
     const remaining = inc.remaining;
     // loop() marks a gap this size unattended.
     env.game.tick(8 * 3600, Date.now(), { attended: false });
+    // An unattended tick never advances the clock, however short — the gap
+    // guard inside Incidents.tick is a second line, not the first.
+    for (let i = 0; i < 300; i++) env.game.tick(1, Date.now(), { attended: false });
     // And a direct caller that forgets to is still bulk time.
     env.game.tick(3600, Date.now());
     assert.equal(env.State.incidents.open.length, 1, 'a suspended tab filed tickets');
@@ -651,6 +680,30 @@ check('an escalation into SEV-1 opens the dialog unprompted', () => {
     assert.equal(rendered, 0, 'a SEV-2 opened the outage dialog');
     play(env, 2);
     assert.equal(rendered, 1, 'an outage arrived silently');
+});
+
+check('nothing runs before the registry is hydrated', () => {
+    /* game.loop() ticks once at script load, before system.init() calls
+       bootstrapModifiers. A sync then would commit base values over every
+       scalar from an empty registry. */
+    const store = {};
+    const env = game_(store);
+    realSev3(env);
+    env.State.save();
+    const reloaded = boot(store);           // no bootstrapModifiers yet
+    const before = reloaded.State.incidents.attendedSeconds;
+    reloaded.game.tick(1, Date.now());
+    assert.equal(reloaded.State.incidents.attendedSeconds, before, 'the incident clock ran before bootstrap');
+    assert.equal(reloaded.Modifiers.records.length, 0, 'incidents wrote to an unhydrated registry');
+});
+
+check('a container replaced mid-session is normalised before it is used', () => {
+    const env = game_();
+    // Passes the cheap shape check, so only the identity check can catch it.
+    env.State.incidents = { open: [null, { template: 'nope' }], debts: [], stats: {} };
+    play(env, 5);
+    assert.ok(Array.isArray(env.State.incidents.open) && env.State.incidents.open.length === 0);
+    assert.ok(Array.isArray(env.State.incidents.debts));
 });
 
 /* ── The switch, and the rest ──────────────────────────────────────────── */
