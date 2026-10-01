@@ -3611,6 +3611,8 @@ const ui = {
         if (perfCheckbox) {
             perfCheckbox.checked = State.settings.performanceMode || false;
         }
+
+        if (typeof audio !== 'undefined') audio.syncSettingsUI();
     },
 
     updateNotationMode(mode) {

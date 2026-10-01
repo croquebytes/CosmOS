@@ -775,6 +775,33 @@ const system = {
                             </div>
                         </div>
 
+                        <h3>Sound Settings</h3>
+                        <div class="audio-settings">
+                            <div class="setting-row">
+                                <label for="audio-master">Master Volume:</label>
+                                <span class="setting-checkbox-spacer" aria-hidden="true"></span>
+                                <input type="range" id="audio-master" class="setting-range" min="0" max="100" step="1" value="70" oninput="audio.setVolume('master', this.value / 100)">
+                                <span class="setting-value" id="audio-master-value">70%</span>
+                            </div>
+                            <div class="setting-row">
+                                <label for="audio-sfx">System Sounds:</label>
+                                <input type="checkbox" id="audio-sfx-enabled" class="setting-checkbox" checked aria-label="System sounds enabled" onchange="audio.setEnabled('sfx', this.checked)">
+                                <input type="range" id="audio-sfx" class="setting-range" min="0" max="100" step="1" value="80" oninput="audio.setVolume('sfx', this.value / 100)">
+                                <span class="setting-value" id="audio-sfx-value">80%</span>
+                            </div>
+                            <div class="setting-row">
+                                <label for="audio-ambient">Ambient Hum:</label>
+                                <input type="checkbox" id="audio-ambient-enabled" class="setting-checkbox" checked aria-label="Ambient hum enabled" onchange="audio.setEnabled('ambient', this.checked)">
+                                <input type="range" id="audio-ambient" class="setting-range" min="0" max="100" step="1" value="35" oninput="audio.setVolume('ambient', this.value / 100)">
+                                <span class="setting-value" id="audio-ambient-value">35%</span>
+                            </div>
+                            <div class="setting-row">
+                                <label for="audio-muted">Mute All:</label>
+                                <input type="checkbox" id="audio-muted" class="setting-checkbox" onchange="audio.setMuted(this.checked)">
+                                <span class="setting-desc" id="audio-status">Standing by for your first action.</span>
+                            </div>
+                        </div>
+
                         <h3>Performance Settings</h3>
                         <div class="performance-settings">
                             <div class="setting-row">
