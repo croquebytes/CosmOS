@@ -73,15 +73,21 @@ try {
     await scenePage.goto(`${baseUrl}/?testMode=1`, { waitUntil: 'domcontentloaded' });
     await scenePage.getByRole('button', { name: 'Perform Miracle' }).waitFor();
 
-    const scene = await scenePage.evaluate(() => {
+    await scenePage.evaluate(() => {
         ui.dismissSystemModal();
         // Put the save where the trigger fires from, then let it fire.
         State.totalStats.soulsGained = 800000;
         State.dimensions.void.unlocked = true;
         State.achievementProgress.prestige_count = 3;
         game.checkAdversaryTrigger();
+    });
+    /* Not synchronous any more: the V4 Mirror Login reel is probed first and
+       the scene opens when the probe answers (at once, with no reel). */
+    const openedInTime = await scenePage.waitForFunction(() => ui.isAdversarySceneOpen(), null, { timeout: 4000, polling: 50 })
+        .then(() => true, () => false);
 
-        const opened = ui.isAdversarySceneOpen();
+    const scene = await scenePage.evaluate((openedInTime) => {
+        const opened = openedInTime && ui.isAdversarySceneOpen();
         const loginTitle = (document.getElementById('adv-title') || {}).textContent;
 
         // Drive to the choice, answer it, and require the scene to TERMINATE.
@@ -107,7 +113,7 @@ try {
             patch: State.recycleBin.items.map((i) => i.name),
             mirrorAchievement: !!State.achievements['ACH-S-005'],
         };
-    });
+    }, openedInTime);
 
     assert.equal(scene.opened, true, 'the Adversary scene did not fire on a qualifying save');
     assert.match(scene.loginTitle || '', /AUTHENTICATION/,

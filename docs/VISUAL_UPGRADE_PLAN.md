@@ -218,12 +218,36 @@ so with the folder empty the game behaves exactly as it did before.
 | V2 | Ship the Build | overlay | — (`ship` already rings) | `cine__ship-the-build__720.webm` / `.mp4` / `.webp` | after the ship dialog confirms; the release notes wait for it |
 | V5 | Void Breach | blend | `adversary` | `cine__void-breach__720.webm` / `.mp4` / `.webp` | buying *Breach the Veil* |
 | V6 | First Seraph | window | `directive` | `cine__first-seraph__720.webm` / `.mp4` / `.webp` | the first Seraph of a run |
+| V4 | Mirror Login | overlay | — (the scene rings its own glitch) | `cine__mirror-login__720.webm` / `.mp4` / `.webp` | before the NULL.OPERATOR Adversary scene; the scene waits for it, Esc hands straight over |
 
 Modes: *overlay* is full frame on black; *blend* is `mix-blend-mode: screen`, so the
 reel's black drops out (Krea has no alpha); *window* frames it in CosmOS chrome. A
 cinematic queues while any system dialog is open and plays when the slot clears; while
 it plays it holds the slot, so a cascade alert or outage waits for it in turn. Esc or a
 click skips.
+
+**Dialog loops (V3, V7)**
+
+These are not cinematics. They are short, seamless loops that play inside a system dialog,
+in a dark monitor strip at its head, while the dialog is open. They never hold the
+modal slot and never delay the dialog. If no file is installed, the dialog looks exactly as
+it always has. They follow Cinematics: *Off* and reduced motion (no loop either way;
+there is no poster stand-in, because the dialog is complete without one).
+
+- **Size and length:** 16:9, made at 1280×720 (the stem says 512 because the strip is
+  short). The strip shows the middle band, about 112 px tall, so keep the action
+  horizontally centred.
+- **Loop:** seamless. The first frame matches the last frame, 3–4 s.
+
+| # | Loop | Files in `assets/video/` | Plays in |
+|---|---|---|---|
+| V3 | Cascade — Degraded | `loop__cascade-tier1__512.webm` / `.mp4` | the cascade alert, tier 1 |
+| V3 | Cascade — Failing | `loop__cascade-tier2__512.webm` / `.mp4` | the cascade alert, tier 2 |
+| V3 | Cascade — Collapse | `loop__cascade-tier3__512.webm` / `.mp4` | the cascade alert, tier 3 |
+| V7 | SEV-1 Alarm | `loop__sev1-alarm__512.webm` / `.mp4` | the unprompted SEV-1 outage dialog |
+
+The Krea prompt for each loop is in `MediaCatalog.loops` in `js/media.js` (the `krea` field):
+a keyframe plus a motion line, as for the cinematics.
 
 **Training tapes: shot list for Krea**
 

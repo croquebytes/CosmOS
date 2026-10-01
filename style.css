@@ -6795,3 +6795,23 @@ body.performance-mode .pt-flourish {
         display: none;
     }
 }
+
+/* ── Dialog loops (js/media.js attachLoop) ──────────────────────────────
+   A dark monitor strip at the head of a system dialog, mounted only when
+   the loop's file is installed. The dialog is a LIGHT vellum surface, so
+   the strip is its own iron-framed screen rather than a blend over vellum. */
+.dialog-loop {
+    height: 112px;
+    margin: -2px 0 10px;
+    overflow: hidden;
+    background: var(--cos-void);
+    border: 1px solid var(--cos-iron-600);
+    box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.8);
+}
+
+.dialog-loop video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}

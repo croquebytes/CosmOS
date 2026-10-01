@@ -278,6 +278,114 @@ try {
         await page.unrouteAll({ behavior: 'ignoreErrors' });
     }
 
+    /* ── 4b. Dialog loops (V3, V7) and the Mirror Login opener (V4) ───── */
+    {
+        const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+        const p = await freshTestPage(ctx);
+        const outageView = () => p.evaluate(() => {
+            State.automatons.seraphCount = Math.max(1, State.automatons.seraphCount);
+            const inc = State.incidents.open.find((i) => i.severity === 1)
+                || Incidents.file('choir_desync', { severity: 1, falseAlarm: false, sector: '7G' });
+            ui.dismissSystemModal();
+            return ui.showIncidentAlert(Incidents.view(inc));
+        });
+        const strip = () => p.evaluate(() => !!document.querySelector('#system-modal-layer .dialog-loop video'));
+
+        assert.equal(await outageView(), true, 'fixture: the SEV-1 dialog rendered');
+        await p.waitForTimeout(900);
+        assert.equal(await strip(), false, 'a loop that is not installed mounts nothing');
+        step('no loop installed: the SEV-1 dialog renders exactly as before');
+        await ctx.close();
+    }
+    if (reel) {
+        // A fresh page: probes are cached for the session, so a file has to be
+        // installed before the first time anything asks for it.
+        const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+        for (const stem of ['sev1-alarm', 'cascade-tier2']) {
+            await ctx.route(`**/assets/video/loop__${stem}__512.webm`, (route) =>
+                route.fulfill({ status: 200, contentType: 'video/webm', body: reel }));
+        }
+        await ctx.route('**/assets/video/cine__mirror-login__720.webm', (route) =>
+            route.fulfill({ status: 200, contentType: 'video/webm', body: reel }));
+        const p = await freshTestPage(ctx);
+        const outageView = () => p.evaluate(() => {
+            State.automatons.seraphCount = Math.max(1, State.automatons.seraphCount);
+            const inc = State.incidents.open.find((i) => i.severity === 1)
+                || Incidents.file('choir_desync', { severity: 1, falseAlarm: false, sector: '7G' });
+            ui.dismissSystemModal();
+            return ui.showIncidentAlert(Incidents.view(inc));
+        });
+        const strip = () => p.evaluate(() => !!document.querySelector('#system-modal-layer .dialog-loop video'));
+        {
+            await outageView();
+            await p.locator('#system-modal-layer .incident-alert .dialog-loop video').waitFor({ timeout: 3000 });
+            step('V7: an installed alarm loop plays in a monitor strip inside the SEV-1 dialog');
+
+            await p.evaluate(() => { ui.dismissSystemModal(); ui.showCascadeAlert({ tier: 2, label: 'SEV TEST', output: 0.6, award: 0.6 }); });
+            await p.locator('#system-modal-layer .cascade-alert .dialog-loop video').waitFor({ timeout: 3000 });
+            step('V3: the cascade alert mounts its tier\'s loop');
+
+            await p.evaluate(() => { media.setCinematics('off'); });
+            await outageView();
+            await p.waitForTimeout(900);
+            assert.equal(await strip(), false, 'Cinematics: Off also switches dialog loops off');
+            await p.evaluate(() => { media.setCinematics('first'); ui.dismissSystemModal(); });
+            step('Cinematics: Off suppresses dialog loops too');
+
+            await p.evaluate(() => { ui.mirrorReelClaimed = false; ui.playAdversaryScene(); });
+            await p.locator('.cine-stage[data-scene="mirror-login"]').waitFor({ timeout: 3000 });
+            assert.equal(await p.evaluate(() => ui.isAdversarySceneOpen()), false, 'the scene waits for the reel');
+            await p.keyboard.press('Escape');
+            await p.waitForFunction(() => ui.isAdversarySceneOpen(), null, { timeout: 4000, polling: 100 });
+            step('V4: Mirror Login plays first; Esc hands straight over to the Adversary scene');
+        }
+        await ctx.close();
+    }
+
+    /* ── 4c. A slow probe cannot present the Adversary scene twice ────── */
+    {
+        const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+        // The reel is "not installed", but the answer takes 1.5s to arrive.
+        await ctx.route('**/assets/video/cine__mirror-login__720.*', async (route) => {
+            await new Promise((r) => setTimeout(r, 1500));
+            await route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html>' });
+        });
+        const p = await freshTestPage(ctx);
+        const result = await p.evaluate(async () => {
+            const before = State.adversary.sceneAttempts || 0;
+            // Every presentation renders a fresh .adversary-scene section; a
+            // second presentation re-renders from the first beat.
+            window.__advRenders = 0;
+            new MutationObserver((records) => {
+                for (const r of records) for (const n of r.addedNodes) if (n.classList?.contains('adversary-scene')) window.__advRenders++;
+            }).observe(document.getElementById('system-modal-layer'), { childList: true });
+            ui.mirrorReelClaimed = false;
+            ui.playAdversaryScene();                     // claims V4, defers the scene
+            await new Promise((r) => setTimeout(r, 300));
+            const openDuringProbe = ui.isAdversarySceneOpen();
+            if (!openDuringProbe) ui.playAdversaryScene(); // what the trigger's resume branch does
+            // Finish the scene while the probe is still out, as a quick player
+            // would; the deferred call fires only once the slot clears.
+            let guard = 0;
+            while (ui.isAdversarySceneOpen() && guard++ < 80) {
+                const beat = ui.advBeats[ui.advScene.index];
+                if (beat && beat.type === 'choice_prompt' && !ui.advScene.choiceId) ui.chooseAdversaryResponse('OP-B');
+                else ui.advanceAdversaryScene();
+            }
+            const finished = !ui.isAdversarySceneOpen();
+            await new Promise((r) => setTimeout(r, 3000));
+            return { attempts: (State.adversary.sceneAttempts || 0) - before, open: ui.isAdversarySceneOpen(),
+                renders: window.__advRenders, openDuringProbe, finished };
+        });
+        assert.equal(result.openDuringProbe, false, 'fixture: the scene should be held back while the probe is out');
+        assert.equal(result.finished, true, 'fixture: the scene could not be driven to its end');
+        assert.equal(result.renders, 1, `the scene was presented ${result.renders} times`);
+        assert.equal(result.open, false, 'a finished scene came back');
+        assert.ok(result.attempts <= 1, `the presentation budget was spent ${result.attempts} times`);
+        step('a slow V4 probe plus a trigger retry presents the scene once, and a finished scene stays finished');
+        await ctx.close();
+    }
+
     /* ── 5. Reduced motion shows the poster for 1.5s instead ───────────── */
     {
         const rm = await browser.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' });

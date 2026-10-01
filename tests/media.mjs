@@ -506,7 +506,7 @@ test('the catalogue: tapes have 4-7 shots, real art, real cues, captions that fi
 
 test('the catalogue: scenes use the plan\'s names and real cues', () => {
     const sounds = Object.keys(boot({ withAudio: true }).audio.SOUNDS);
-    assert.deepEqual(plain(Object.keys(C.scenes).sort()), ['cold-boot', 'first-seraph', 'ship-the-build', 'void-breach']);
+    assert.deepEqual(plain(Object.keys(C.scenes).sort()), ['cold-boot', 'first-seraph', 'mirror-login', 'ship-the-build', 'void-breach']);
     for (const [id, s] of Object.entries(C.scenes)) {
         assert.equal(s.webm, `assets/video/cine__${id}__720.webm`);
         assert.equal(s.mp4, `assets/video/cine__${id}__720.mp4`);
@@ -514,6 +514,26 @@ test('the catalogue: scenes use the plan\'s names and real cues', () => {
         assert.ok(s.caption, `${id} caption`);
         if (s.cue) assert.ok(sounds.includes(s.cue), `${id} cue ${s.cue}`);
     }
+});
+
+test('the catalogue: dialog loops are named loop__<slug>__512 and cover V3 x3 and V7', () => {
+    assert.deepEqual(plain(Object.keys(C.loops).sort()), ['cascade-tier1', 'cascade-tier2', 'cascade-tier3', 'sev1-alarm']);
+    for (const [id, l] of Object.entries(C.loops)) {
+        assert.equal(l.webm, `assets/video/loop__${id}__512.webm`);
+        assert.equal(l.mp4, `assets/video/loop__${id}__512.mp4`);
+        assert.ok(l.krea, `${id} has its Krea prompt`);
+        assert.equal(C.loop(id), l);
+    }
+    assert.equal(C.loop('toString'), null, 'prototype keys are not loops');
+    assert.equal(C.scene('cascade-tier1'), null, 'a loop is not a cinematic: it must never hold the modal slot');
+});
+
+test('loops: allowed unless cinematics are off or motion is reduced', () => {
+    assert.equal(L.loopAllowed(L.defaults(), false), true);
+    assert.equal(L.loopAllowed({ ...L.defaults(), cinematics: 'always' }, false), true);
+    assert.equal(L.loopAllowed({ ...L.defaults(), cinematics: 'off' }, false), false);
+    assert.equal(L.loopAllowed(L.defaults(), true), false);
+    assert.equal(L.loopAllowed(null, false), true, 'missing settings fall back to defaults');
 });
 
 /* ═════════════════════════════ The tape clock ═════════════════════════════ */
