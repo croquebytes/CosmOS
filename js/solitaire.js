@@ -605,6 +605,12 @@ const PatienceView = {
         else if (action === 'dismiss') { this.banner = null; this.newDeal(); }
     },
 
+    /* A run of plays climbs the same bell ladder as a Divine Event chain.
+       Routed through game.sfx, which is inert headlessly. */
+    cue(name, opts) {
+        if (typeof game !== 'undefined' && typeof game.sfx === 'function') game.sfx(name, opts);
+    },
+
     play(col) {
         this.selected = col;
         const state = PatienceApp.current();
@@ -613,15 +619,20 @@ const PatienceView = {
         if (!column || !column.length) return;
         if (!PatienceRules.isLegalPlay(state, col)) {
             this.flash(`${PatienceRules.describe(column[column.length - 1])} does not follow ${PatienceRules.describe(PatienceRules.wasteTop(state))}.`);
+            this.cue('error');
             this.render();
             return;
         }
         this.flash('');
+        this.run = (this.run || 0) + 1;
+        this.cue('eventClaim', { chain: this.run });
         this.after(PatienceApp.act(`p${col}`));
     },
 
     draw() {
         if (this.banner?.kind === 'result') return;
+        this.run = 0;
+        this.cue('click');
         this.after(PatienceApp.act('d'));
     },
 
@@ -629,6 +640,7 @@ const PatienceView = {
         const out = PatienceApp.mulligan(kind);
         if (!out) return;
         ui.log(`[Patience] Divine Mulligan: ${kind === 'undo' ? 'move withdrawn' : 'stock reshuffled'} for ${ui.formatNumber(out.cost)} Praise.`);
+        this.cue('purchase');
         this.banner = null;
         this.after(out);
     },
@@ -659,6 +671,8 @@ const PatienceView = {
     finish(result) {
         if (!result) { this.banner = null; PatienceApp.deal(); this.render(); return; }
         this.banner = { kind: 'result', result };
+        this.run = 0;
+        this.cue(result.won ? 'achievement' : 'document', result.won ? { tier: 'Gold' } : undefined);
         this.announce(result, false);
         this.render();
     },

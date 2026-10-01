@@ -404,6 +404,20 @@ const audio = (() => {
                 return bell(ctx, out, t, midi(69), { peak: 0.15, decay: 0.55, bright: 0.6, partials: BELL_DULL });
             },
         },
+        incident: {
+            bus: 'sfx', wet: 0.18, gap: 400, render: 0.9,
+            desc: 'Pager chirp from the NOC: one tone at SEV-3, two at SEV-2, three and lower at SEV-1.',
+            fn(ctx, G, out, t, o = {}) {
+                const sev = [1, 2, 3].includes(o.severity) ? o.severity : 3;
+                const count = 4 - sev;
+                const base = sev === 1 ? 494 : 740;
+                let end = t;
+                for (let i = 0; i < count; i++) {
+                    end = beep(ctx, out, t + i * 0.13, base, 0.08, { peak: 0.04 + 0.01 * count, to: base * 0.94, lp: 1700 });
+                }
+                return end;
+            },
+        },
         directive: {
             bus: 'sfx', wet: 0.35, gap: 300, render: 2.6,
             desc: 'Four-bell arpeggio over a short choir breath.',

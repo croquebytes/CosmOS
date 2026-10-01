@@ -506,6 +506,12 @@ const Incidents = {
 
     /* Files a ticket. Spawning calls this; so can the tests and a debugging
        Operator. `opts` may pin severity, falseAlarm and sector. */
+    /* Sound is presentation: routed through game.sfx, which is inert in the
+       simulator and every vm test, and never decides anything. */
+    cue(name, opts) {
+        if (typeof game !== 'undefined' && typeof game.sfx === 'function') game.sfx(name, opts);
+    },
+
     file(templateId, opts = {}, now = Date.now()) {
         const tpl = this.template(templateId);
         if (!tpl) return null;
@@ -543,6 +549,7 @@ const Incidents = {
         this.sync(now);
 
         ui.log(`[${inc.id}] SEV-${severity} filed: ${this.titleOf(inc)}. See Task Manager.`);
+        this.cue('incident', { severity });
         ui.onIncidentsChanged?.();
         this.announce();
         return inc;
@@ -582,6 +589,7 @@ const Incidents = {
             inc.severity -= 1;
             inc.remaining = this.ESCALATE_AFTER[inc.severity] || 0;
             changed = true;
+            this.cue('incident', { severity: inc.severity });
             if (inc.severity === 1) {
                 s.stats.outages += 1;
                 const line = IncidentLines[this.template(inc.template).line].label;
@@ -617,6 +625,8 @@ const Incidents = {
         if (!waiting) return false;
         if (ui.showIncidentAlert?.(this.view(waiting)) !== true) return false;
         waiting.alerted = true;
+        // Cued only once the dialog has actually rendered, so retries are silent.
+        this.cue('cascade', { tier: 3 });
         return true;
     },
 
@@ -641,6 +651,7 @@ const Incidents = {
             prophet: 'resolved by a Prophet on site',
         };
         ui.log(`[${inc.id}] ${verbs[method] || 'closed'}.`);
+        this.cue(method === 'debt' ? 'error' : 'directive');
         ui.screenPulse?.(method === 'debt' ? 'rgba(212, 85, 58, 0.22)' : 'rgba(66, 144, 125, 0.28)');
         ui.onIncidentsChanged?.();
         return true;
@@ -757,6 +768,8 @@ const Incidents = {
             labour.misses += 1;
             labour.hits = Math.max(0, labour.hits - 1);
         }
+        if (!hit) this.cue('error');
+        else if (labour.hits < this.labourNeed(inc)) this.cue('eventClaim', { chain: labour.hits });
         const done = labour.hits >= this.labourNeed(inc);
         if (done) this.resolve(id, 'labour', Date.now());
         return { hit, done, hits: labour.hits, need: this.labourNeed(inc) };
