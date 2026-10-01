@@ -228,6 +228,19 @@ const State = {
            a known issue is filed once. Each carries a residual penalty, so
            shipping a dirty build is cheap now and expensive forever. */
         scars: [],
+
+        /* The release history: one record per shipped build, enough to
+           regenerate it exactly. This is what the Archived channel replays.
+           Capped, validated on every load by game.normaliseArchive(); see
+           Reality.historyRecord for the record shape. A save written before
+           it existed has none, and the history simply starts at its next
+           ship. */
+        history: [],
+        // The reboot index of the build picked for the next Archived replay.
+        // Consumed when the replay starts — there is no default pick.
+        replay: null,
+        // NULL.OPERATOR's postmortems, filed once per original build.
+        annotations: [],
     },
 
     /* ── Certification ────────────────────────────────────────────────────
@@ -286,6 +299,17 @@ const State = {
             sfxEnabled: true,
             ambientEnabled: true,
             muted: false,
+        },
+        /* Read and normalised by js/media.js (MediaLogic.defaults). Same
+           no-bump reasoning as audio: an older save just gains these.
+           `seen` is the cinematics already played; `tapes` the training
+           tapes filed; `watched` the tapes played to the end. */
+        media: {
+            cinematics: 'first',      // 'first' | 'always' | 'off'
+            vhs: true,
+            seen: [],
+            tapes: [],
+            watched: [],
         },
     },
 
@@ -2796,6 +2820,15 @@ const AchievementList = [
       reward: null, flavor: 'Fifteen faults, fifteen times the Operator came down to the floor.' },
     { id: 'ACH-S-009', name: 'Burnt Offering', tier: 'Secret', condition: () => (State.incidents?.stats?.outagesSacrificed || 0) >= 1,
       reward: null, flavor: 'You fed a deleted file to an outage. It accepted.' },
+
+    // ARCHIVE (2 achievements) — the Archived channel. No rewards, for the
+    // same reason as Incidents: Archived pays lore, and a bonus here would
+    // turn a zero-Divinity channel into an economy one by the back door.
+    { id: 'ACH-036', name: 'Cold Case', tier: 'Gold', condition: () => (State.achievementProgress.view_archived_branch || 0) >= 3,
+      reward: null, flavor: 'Three branches exhumed. The coroner is you.' },
+    { id: 'ACH-037', name: 'Chain of Custody', tier: 'Platinum',
+      condition: () => new Set((State.reality?.annotations || []).flatMap((a) => a.ids || [])).size >= 8,
+      reward: null, flavor: 'Eight of his signatures, authenticated. All of them in your handwriting.' },
 
     // SECRET (8 achievements)
     { id: 'ACH-S-001', name: 'I Can Fix Her', tier: 'Secret', condition: () => State.achievementProgress.attempt_repair_sector7g >= 1,

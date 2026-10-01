@@ -10,6 +10,16 @@ const game = {
         if (typeof audio !== 'undefined' && audio && typeof audio.play === 'function') audio.play(name, opts);
     },
 
+    /* Cinematics (js/media.js), on the same terms as sfx: inert wherever
+       `media` is undefined, which is the simulator and every vm test. A
+       reel decorates a moment and never decides one, so nothing here waits
+       on it — media.play() resolves on its own, and a missing reel is
+       skipped without a frame of player. */
+    cinematic(id, opts) {
+        if (typeof media === 'undefined' || !media || typeof media.play !== 'function') return null;
+        try { return media.play(id, opts); } catch (err) { return null; }
+    },
+
     ensureLoopState() {
         if (!State.loopSystems) {
             State.loopSystems = {};
@@ -1026,7 +1036,13 @@ const game = {
             /* Same gate, same reason, same position: incidents spawn and
                escalate on attended time only, and before the rates are read
                so an outage halts the tick that caused it. See js/incidents.js. */
-            if (attended && this.incidentsLive()) Incidents.tick(deltaSeconds, now);
+            if (this.incidentsLive()) {
+                /* Present, not merely attended: a visible tab with nobody at
+                   the keyboard is idle play, and idle play holds the queue. */
+                const present = attended && this.isPresent(now);
+                Incidents.setPresence(present, now);
+                if (present) Incidents.tick(deltaSeconds, now);
+            }
 
             const rates = this.getProductionRates(now, true);
             const praiseGain = rates.praise * deltaSeconds;
@@ -1133,6 +1149,25 @@ const game = {
        do not load incidents.js see `Incidents` undefined and are unaffected
        either way. */
     incidentsEnabled: true,
+
+    /* Presence: has the player touched anything recently?
+
+       system.js switches tracking on and reports input; headless (the
+       simulator and every vm suite) there is no tracking and every tick is a
+       player, which keeps those harnesses' behaviour exactly as it was.
+       Transient by design — never saved — so a reload always starts away. */
+    presenceTracking: false,
+    lastInputAt: 0,
+
+    notePresence(now = Date.now()) {
+        this.lastInputAt = now;
+    },
+
+    isPresent(now = Date.now()) {
+        if (!this.presenceTracking) return true;
+        const seconds = (typeof Incidents !== 'undefined' && Incidents.PRESENCE_SECONDS) || 120;
+        return now - this.lastInputAt <= seconds * 1000;
+    },
 
     incidentsLive() {
         return this.incidentsEnabled === true && typeof Incidents !== 'undefined';
@@ -1695,6 +1730,7 @@ const game = {
             rolled = true;
         }
         if (!reality.channel || !RealityChannels[reality.channel]) reality.channel = 'stable';
+        this.normaliseArchive();
         /* Always re-derive from the seed. Deriving rather than trusting the
            stored entries is what lets a content fix reach a save that is
            already mid-run — and it is free, because a build is a pure
@@ -1720,6 +1756,10 @@ const game = {
             ui.log('That release channel is not available yet.');
             return false;
         }
+        if (channel === 'archived' && !this.archivedBuilds().length) {
+            ui.log('The archive is empty. Ship a build first; it will be on file from then on.');
+            return false;
+        }
         State.reality.channel = channel;
         ui.log(`Next reality will be pulled from the ${RealityChannels[channel].label} channel.`);
         ui.renderRealityPanel?.();
@@ -1727,12 +1767,153 @@ const game = {
     },
 
     /* Rolls the next build. Called by prestige, after prestigeLevel has been
-       incremented, so the version number and seed follow the reboot count. */
+       incremented, so the version number and seed follow the reboot count.
+
+       Archived is the one channel that is not rolled: it REPLAYS the build
+       picked from the history, generated from that build's recorded inputs.
+       The pick is consumed here — the next ship has to pick again — so a
+       player who forgets the selector is on Archived is stopped by the ship
+       dialog rather than silently replaying the same universe for nothing.
+       With no valid pick (a bare performPrestige from the simulator or a
+       test, or a pick that no longer validates) it falls back to Stable and
+       says so, rather than rolling generate(..., 'archived'), which is a
+       Stable-shaped build that pays nothing. */
     rollNextBuild(now = Date.now()) {
         const reality = State.reality;
-        reality.build = Reality.generate(reality.runSeed, State.prestigeLevel, reality.channel);
+        let build = null;
+        if (reality.channel === 'archived') {
+            const record = this.archivedPick();
+            reality.replay = null;
+            if (record) {
+                build = Reality.replayBuild({ level: record.level, source: record.source, runSeed: record.runSeed });
+            } else {
+                reality.channel = 'stable';
+                ui.log('No archived build was picked. Pulling the next reality from Stable.');
+            }
+        }
+        reality.build = build || Reality.generate(reality.runSeed, State.prestigeLevel, reality.channel);
         Reality.apply(reality.build, now);
         return reality.build;
+    },
+
+    /* ── The Archived channel ─────────────────────────────────────────────
+       DESIGN_DIRECTION §2: "a specific past build, replayed: no Divinity,
+       unlocks lore". The reason to play a twentieth run. */
+
+    /* Every archive field validated on load. mergeInto does no type
+       checking, so each of these can arrive as anything at all. */
+    normaliseArchive() {
+        const reality = State.reality;
+        if (!reality || typeof reality !== 'object') return;
+        reality.history = Reality.normaliseHistory(reality.history);
+        reality.annotations = Reality.normaliseAnnotations(reality.annotations);
+        if (!Number.isInteger(reality.replay) ||
+            !Reality.replayable(reality.history).some((r) => r.reboot === reality.replay)) {
+            reality.replay = null;
+        }
+        // A selector naming a channel this save has not unlocked is not a
+        // choice the player made.
+        if (reality.channel === 'archived' &&
+            !Reality.channelsFor(State.prestigeLevel || 0).includes('archived')) {
+            reality.channel = 'stable';
+        }
+        const progress = State.achievementProgress;
+        if (progress) {
+            const n = progress.view_archived_branch;
+            progress.view_archived_branch = Number.isInteger(n) && n >= 0 ? n : 0;
+        }
+    },
+
+    archiveUnlocked() {
+        return Reality.channelsFor(State.prestigeLevel || 0).includes('archived');
+    },
+
+    archivedBuilds() {
+        return Reality.replayable(State.reality?.history);
+    },
+
+    archivedPick() {
+        const pick = State.reality?.replay;
+        if (!Number.isInteger(pick)) return null;
+        return this.archivedBuilds().find((r) => r.reboot === pick) || null;
+    },
+
+    isAnnotated(level) {
+        return (State.reality?.annotations || []).some((a) => a.level === level);
+    },
+
+    selectArchivedBuild(reboot) {
+        if (!this.archiveUnlocked()) return false;
+        const record = this.archivedBuilds().find((r) => r.reboot === Number(reboot));
+        if (!record) return false;
+        State.reality.replay = record.reboot;
+        if (State.reality.channel !== 'archived') State.reality.channel = 'archived';
+        ui.renderRealityPanel?.();
+        return true;
+    },
+
+    /* Appends the outgoing build to the history. Called by performPrestige
+       BEFORE the build is replaced, with the award it is actually paying. */
+    recordShip(build, award, now = Date.now()) {
+        const reality = State.reality;
+        if (!Array.isArray(reality.history)) reality.history = [];
+        const record = Reality.historyRecord(build, {
+            reboot: State.prestigeLevel || 0,
+            runSeed: reality.runSeed,
+            certified: this.certification().path,
+            award,
+            shippedAt: now,
+        });
+        if (!record) return null;
+        reality.history = Reality.normaliseHistory([...reality.history, record]);
+        return record;
+    },
+
+    /* The replay has started: file what NULL.OPERATOR did to the original.
+
+       Filed at the START of the replay, not at its ship. The player reads
+       his note on a known issue while that issue is on screen in front of
+       them, which is the point of replaying a cursed build; and the price is
+       already committed — choosing Archived commits the whole next run to
+       zero Divinity, and the only way out of it is to play it to the bar.
+
+       Filed ONCE per original build. Replaying the same build again still
+       counts as a visit, but adds no second document. */
+    beginArchivedReplay(build, now = Date.now()) {
+        const source = Reality.sanitiseReplayOf(build?.replayOf);
+        if (!source) return null;
+        const progress = State.achievementProgress;
+        progress.view_archived_branch = (Number(progress.view_archived_branch) || 0) + 1;
+
+        /* The adversary's ledger, on the semantics nudgeAdversaryStanding
+           already has: reading the paperwork is +1, a reboot is -1. A reboot
+           INTO an archived branch is the one reset that does not forget
+           anything ("an archived branch feels like being forgotten
+           mid-sentence", ADV-016), so performPrestige swaps its -1 for this. */
+        this.nudgeAdversaryStanding(1, 'reopened an archived branch', { exempt: true }); // once per run
+
+        if (this.isAnnotated(source.level)) {
+            ui.log(`[ARCHIVE] v${build.version}: NULL.OPERATOR's annotations on this build are already on file.`);
+            return null;
+        }
+        const record = this.archivedBuilds().find((r) => r.level === source.level) || null;
+        const annotation = Reality.normaliseAnnotation({
+            ...source,
+            ids: Reality.annotatableIds(record || { unpatched: [], entries: (build.entries || []).map((e) => e.id) }),
+            filedOn: State.prestigeLevel || 0,
+            certified: record?.certified ?? null,
+            filedAt: now,
+        });
+        if (!annotation) return null;
+        State.reality.annotations = Reality.normaliseAnnotations([...(State.reality.annotations || []), annotation]);
+        const doc = Reality.annotationDocument(annotation);
+        ui.showDocumentNotification?.(doc);
+        ui.log(`[DOCUMENT UNLOCKED] ${doc.title}`);
+        return annotation;
+    },
+
+    archiveDocuments() {
+        return (State.reality?.annotations || []).map((a) => Reality.annotationDocument(a));
     },
 
     /* Pay to remove a known issue. Priced off capacity rather than holdings —
@@ -1982,6 +2163,7 @@ const game = {
         const total = this.getAutomatonCount(type);
         ui.log(`${spec.label} commissioned. (${total} total)`);
         this.sfx('purchase');
+        if (type === 'seraph' && total === 1) this.cinematic('first-seraph'); // V6
 
         ui.updateUpgrades();
         this.checkAchievements();
@@ -2018,6 +2200,7 @@ const game = {
         this.applyAutomatonPurchase(type, amount);
         ui.log(`${amount}× ${spec.label} commissioned. (${this.getAutomatonCount(type)} total)`);
         this.sfx('purchase');
+        if (type === 'seraph' && this.getAutomatonCount(type) === amount) this.cinematic('first-seraph'); // V6
 
         ui.updateUpgrades();
         this.checkAchievements();
@@ -2200,6 +2383,7 @@ const game = {
 
         ui.log(`Upgrade acquired: ${upgrade.name}`);
         this.sfx('purchase');
+        if (upgradeId === 'void_unlock') this.cinematic('void-breach'); // V5
         ui.updateUpgrades(); // Refresh upgrades display
         this.checkAchievements(); // Check for achievements
 
@@ -2750,7 +2934,13 @@ const game = {
            Stable run and cash it out at the Nightly rate. */
         const playedChannel = State.reality?.build?.channel || State.reality?.channel;
         const channelPayout = RealityChannels[playedChannel]?.divinity ?? 1;
-        if (channelPayout <= 0) {
+        /* Archived pays nothing BY DESIGN — its payout is lore, filed when the
+           replay began — so its zero is not a reason to refuse. Without this
+           exemption an archived run could never be shipped at all: the
+           player would be locked inside a replay with no exit. Every other
+           channel keeps the refusal; a zero payout anywhere else is a bug. */
+        const archivedReplay = playedChannel === 'archived';
+        if (channelPayout <= 0 && !archivedReplay) {
             ui.log(`The ${RealityChannels[playedChannel]?.label || playedChannel} channel pays no Divinity. Switch channels before rebooting.`);
             return;
         }
@@ -2795,7 +2985,16 @@ const game = {
         /* File the known issues this build is shipping with, BEFORE the build
            is replaced. One entry per id ever: a known issue is filed once, so
            the ledger is bounded by the pool and the penalty cannot compound
-           into an unplayable game across a hundred runs. */
+           into an unplayable game across a hundred runs.
+
+           An archived replay files scars too. It is a real ship, and the
+           decision inside it has to cost something: exempting it would make
+           every known issue in a replay free to ignore, leaving the run
+           with no decision in it at all. In practice it rarely bites —
+           scars are once per id ever, so a build you shipped dirty the first
+           time is already on file. What it does catch is the issue you
+           PATCHED originally and skip now, which is the same choice priced
+           the same way as on any other channel. */
         const shippedDirty = [];
         if (!Array.isArray(State.reality.scars)) State.reality.scars = [];
         for (const entry of Reality.unpatchedIssues(State.reality.build)) {
@@ -2804,7 +3003,23 @@ const game = {
             shippedDirty.push(entry);
         }
 
-        // Award divinity points
+        // Into the release history, before the build is replaced.
+        this.recordShip(State.reality.build, divinityGain);
+
+        /* Award divinity points.
+
+           An archived ship advances prestigeLevel like any other ship. The
+           level is the ship counter and the SEED of the next build: holding
+           it still would make the run after a replay a byte-identical repeat
+           of the run before it (seedFor(runSeed, level) reused). And there is
+           nothing on the ladder for it to farm — every reboot-count gate in
+           the game (channels at 3/8/12, the prestige_count achievements and
+           documents, the reboot-6/8 barks) is behind it by reboot 12.
+
+           What Archived must NOT move is the bar. divinityGain is 0, so
+           totalDivinityPoints — which the bar and the production bonus are
+           both functions of — is untouched, and the next run is exactly as
+           hard as this one was. */
         State.prestigeLevel++;
         State.totalDivinityPoints += divinityGain;
         /* Close the run. The single write site for the run-souls baseline —
@@ -3015,6 +3230,8 @@ const game = {
 
         const nextBuild = this.rollNextBuild(Date.now());
         this.syncCascade(Date.now());
+        // Before the release notes, which say what the replay filed.
+        if (nextBuild.channel === 'archived') this.beginArchivedReplay(nextBuild);
         ui.showReleaseNotes(nextBuild);
 
         /* He turns up when you reboot — ADV-BARK-02, "Reset again. I dare you.
@@ -3022,7 +3239,8 @@ const game = {
            they accrue. Fired before the count-specific lines so the generic
            dare does not eat their cooldown slot. */
         this.appendAdversaryAuditEntry();
-        this.nudgeAdversaryStanding(-1, 'rebooted', { exempt: true }); // already once per run
+        // An archived replay nudged +1 instead, in beginArchivedReplay.
+        if (nextBuild.channel !== 'archived') this.nudgeAdversaryStanding(-1, 'rebooted', { exempt: true }); // already once per run
         const reboots = State.achievementProgress.prestige_count || 0;
         if (reboots === 6) this.triggerAdversaryBark('prestige_count_6');
         else if (reboots === 8) this.triggerAdversaryBark('prestige_count_8');
@@ -3058,8 +3276,12 @@ const game = {
 
         // Save and refresh
         State.save();
-        ui.log(`Divine Reboot complete! Gained ${divinityGain} Divinity Points.`);
-        ui.log(`All production increased by ${(divinityGain * 10)}%!`);
+        if (archivedReplay) {
+            ui.log('Archived replay shipped. No Divinity — this one was for the record.');
+        } else {
+            ui.log(`Divine Reboot complete! Gained ${divinityGain} Divinity Points.`);
+            ui.log(`All production increased by ${(divinityGain * 10)}%!`);
+        }
         if (shippedDirty.length) {
             ui.log(`${shippedDirty.length} known issue${shippedDirty.length === 1 ? '' : 's'} shipped unpatched. Filed permanently.`);
         }
