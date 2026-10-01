@@ -2687,6 +2687,11 @@ const ui = {
                 shopIcon.style.display = 'none';
             }
         }
+
+        const patienceIcon = document.getElementById('icon-solitaire');
+        if (patienceIcon) {
+            patienceIcon.style.display = State.unlockedApps.includes('solitaire') ? 'block' : 'none';
+        }
     },
 
     // === DOCUMENT SYSTEM UI ===

@@ -6,7 +6,7 @@
     "test:e2e": "node tests/e2e-smoke.mjs",
     "test:save": "node tests/save-migration.mjs",
     "test:golden": "node tools/golden.mjs",
-    "test": "npm run test:save && npm run test:modifiers && npm run test:reality && npm run test:adversary && npm run test:prestige && npm run test:storage && npm run test:certification && npm run test:breakdown && npm run test:incidents && npm run test:golden && npm run test:e2e",
+    "test": "npm run test:save && npm run test:modifiers && npm run test:reality && npm run test:adversary && npm run test:prestige && npm run test:storage && npm run test:certification && npm run test:breakdown && npm run test:incidents && npm run test:solitaire && npm run test:golden && npm run test:e2e && npm run test:solitaire:e2e",
     "test:modifiers": "node tests/modifier-equivalence.mjs",
     "test:reality": "node tests/reality-builds.mjs",
     "test:adversary": "node tests/adversary-scene.mjs",
@@ -15,7 +15,9 @@
     "test:storage": "node tests/storage.mjs",
     "test:audio": "node tests/audio.mjs",
     "test:breakdown": "node tests/breakdown.mjs",
-    "test:incidents": "node tests/incidents.mjs"
+    "test:incidents": "node tests/incidents.mjs",
+    "test:solitaire": "node tests/solitaire.mjs",
+    "test:solitaire:e2e": "node tests/solitaire-e2e.mjs"
   },
   "devDependencies": {
     "playwright": "^1.62.0",

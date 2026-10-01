@@ -352,6 +352,12 @@ const State = {
         cosmetics: {},
         utilities: {},
         prophetUpgrades: {},
+        /* Keyed by ShopItemList category, and the category is 'minigames'.
+           This said `miniGames`, so the Mini-Games tab threw on open and the
+           one item in it could never be bought. The old key is kept so a save
+           carrying it still merges cleanly; nothing reads it but
+           PatienceApp.reconcile. */
+        minigames: {},
         miniGames: {}
     },
 
@@ -2388,7 +2394,7 @@ const ShopItemList = [
       effect: () => { for (const dim in State.followers) State.followers[dim].adorationRate *= 1.3; } },
 
     // MINI-GAMES
-    { id: 'minigame_solitaire', category: 'minigames', name: 'Unlock Solitaire', description: 'Classic card game with Adoration rewards.', cost: 500, upgradable: false,
+    { id: 'minigame_solitaire', category: 'minigames', name: 'Install Patience.exe', description: 'Golf solitaire dealt from the celestial arcana. Cleared cards pay Adoration and Overclock charge; the first three rounds each hour pay in full.', cost: 500, upgradable: false,
       effect: () => { if (!State.unlockedApps.includes('solitaire')) State.unlockedApps.push('solitaire'); } }
 ];
 
