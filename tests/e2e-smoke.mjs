@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 
-const baseUrl = process.env.COSMOS_TEST_URL || 'http://127.0.0.1:5173';
+const baseUrl = process.env.COSMOS_TEST_URL || 'http://localhost:5173';
 const browser = await chromium.launch({
     headless: true,
     args: ['--use-gl=angle', '--use-angle=swiftshader']
