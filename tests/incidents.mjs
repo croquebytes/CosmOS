@@ -156,7 +156,9 @@ check('no ticket is filed before the first directive is complete', () => {
 check('no more than three tickets are ever open at once', () => {
     const env = game_({}, { random: 0 });
     env.Incidents.FALSE_ALARM_CHANCE = 0;
-    play(env, 30 * 60, 5);
+    // Long enough to fill the queue, short of the first outage being
+    // contained (which would free a slot and legitimately file a fourth).
+    play(env, 12 * 60, 5);
     assert.equal(env.State.incidents.open.length, env.Incidents.MAX_OPEN,
         `${env.State.incidents.open.length} tickets open`);
     assert.equal(env.State.incidents.stats.filed, env.Incidents.MAX_OPEN,
@@ -247,9 +249,42 @@ check('an ignored SEV-3 escalates to SEV-2, then to an outage that throttles its
     assert.ok(grossNow >= grossBefore * scale && grossNow <= grossBefore * scale * 1.02,
         `Praise in an outage is ${grossNow / grossBefore} of normal, expected about ${scale}`);
 
-    play(env, 600, 5);
+    play(env, env.Incidents.OUTAGE_CONTAINED_AFTER - 10, 5);
     assert.equal(inc.severity, 1, 'an outage is the floor');
+    assert.ok(env.Incidents.find(inc.id), 'the outage closed before the rota was due');
     assert.equal(env.State.incidents.stats.outages, 1);
+});
+
+check('an untouched outage is contained by the rota and becomes a deferral', () => {
+    /* --incidents=ignore stalled the simulated player at 10 Divinity for 48
+       hours: three permanent outages filled the queue and no run could reach
+       the bar again. Ignoring has to land somewhere other than a soft-lock. */
+    const env = game_();
+    const base = env.State.automatons.seraphProduction;
+    const inc = env.Incidents.file('choir_desync', { severity: 1, falseAlarm: false, sector: '7G' });
+    play(env, 5);
+    assert.ok(Math.abs(env.State.automatons.seraphProduction - base * env.Incidents.OUTAGE_SCALE) < 1e-12, 'fixture: outage bites');
+    play(env, env.Incidents.OUTAGE_CONTAINED_AFTER, 5);
+    assert.equal(env.Incidents.find(inc.id), null, 'the outage was never contained');
+    assert.equal(env.State.incidents.stats.contained, 1);
+    assert.ok(env.State.incidents.debts.some((d) => d.id === inc.id && d.severity === 1),
+        'containment did not file the outage as a deferral');
+    const now = env.State.automatons.seraphProduction;
+    assert.ok(now > base * env.Incidents.OUTAGE_SCALE, 'the line stayed on backup after containment');
+    assert.ok(now < base, 'containment was free: the deferral did not apply');
+});
+
+check('containment restores the line even when the deferral register is full', () => {
+    const env = game_();
+    const base = env.State.automatons.seraphProduction;
+    env.State.incidents.debts = Array.from({ length: env.Incidents.MAX_DEBTS }, (_, i) =>
+        ({ id: `INC-${9000 + i}`, template: 'hymnal_checksum', severity: 3 }));
+    env.Incidents.sync(env.clock || Date.now());
+    const inc = env.Incidents.file('choir_desync', { severity: 1, falseAlarm: false, sector: '7G' });
+    play(env, env.Incidents.OUTAGE_CONTAINED_AFTER + 5, 5);
+    assert.equal(env.Incidents.find(inc.id), null, 'a full register soft-locked the outage');
+    assert.equal(env.State.incidents.debts.length, env.Incidents.MAX_DEBTS, 'the register grew past its cap');
+    void base;
 });
 
 check('an open ticket\'s effect is a modifier record, and resolving removes it exactly', () => {

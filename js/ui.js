@@ -3393,7 +3393,7 @@ const ui = {
                 : v.prophet
                 ? `Prophet on site — closes in ${this.formatClock(v.prophet.remaining)}`
                 : v.severity === 1
-                    ? `OUTAGE — ${v.line} on backup`
+                    ? `OUTAGE — ${v.line} on backup · on-call rota contains it in ${this.formatClock(v.remaining)}`
                     : `Escalates to ${v.nextSeverity === 1 ? 'OUTAGE' : `SEV-${v.nextSeverity}`} in ${this.formatClock(v.remaining)}`;
             if (clock && clock.innerText !== clockText) clock.innerText = clockText;
 

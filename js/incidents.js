@@ -254,8 +254,16 @@ const Incidents = {
     ISSUE_PRESSURE: 0.35,
     FALSE_ALARM_CHANCE: 0.25,
     NIGHTLY_SEV2_CHANCE: 0.25,
-    /* Attended seconds a severity holds before escalating. SEV-1 holds. */
+    /* Attended seconds a severity holds before escalating. SEV-1 does not
+       escalate; its clock is OUTAGE_CONTAINED_AFTER instead. */
     ESCALATE_AFTER: { 3: 240, 2: 180 },
+    /* Attended seconds an untouched outage runs before the on-call rota
+       contains it: the ticket closes and is filed as a deferral at outage
+       depth, which a ship clears. Measured with tools/balance_sim.mjs
+       --incidents=ignore: without this, an at-keyboard player who never
+       triaged filled the queue with three permanent outages and stalled at
+       10 Divinity for the next 48 hours — a soft-lock, not a consequence. */
+    OUTAGE_CONTAINED_AFTER: 600,
     /* Resources: [floor fraction of cap, ceiling fraction of cap, seconds of
        production]. Seconds of production is the meaningful price; the cap
        fractions keep it non-trivial when production is small and payable
@@ -298,6 +306,11 @@ const Incidents = {
         return IncidentTemplates.find((t) => t.id === id) || null;
     },
 
+    /* The attended seconds a ticket at this severity starts with. */
+    clockFor(severity) {
+        return severity === 1 ? this.OUTAGE_CONTAINED_AFTER : (this.ESCALATE_AFTER[severity] || 0);
+    },
+
     defaults() {
         return {
             open: [], debts: [], nextNumber: 1, onHold: false,
@@ -309,7 +322,7 @@ const Incidents = {
     freshStats() {
         return {
             filed: 0, resolved: 0, labour: 0, resources: 0, debt: 0, sacrifice: 0,
-            prophet: 0, falseAlarmsCleared: 0, outages: 0, outagesSacrificed: 0,
+            prophet: 0, falseAlarmsCleared: 0, outages: 0, outagesSacrificed: 0, contained: 0,
         };
     },
 
@@ -354,7 +367,7 @@ const Incidents = {
             seen.add(raw.id);
             highest = Math.max(highest, number(raw.id));
             const sev = severity(raw.severity);
-            const limit = this.ESCALATE_AFTER[sev] || 0;
+            const limit = this.clockFor(sev);
             const remaining = Number.isFinite(raw.remaining) && raw.remaining >= 0 ? Math.min(limit, raw.remaining) : limit;
             const prophet = raw.prophet === true && sev === 3;
             open.push({
@@ -599,7 +612,7 @@ const Incidents = {
             id: `INC-${String(s.nextNumber).padStart(4, '0')}`,
             template: tpl.id,
             severity,
-            remaining: this.ESCALATE_AFTER[severity] || 0,
+            remaining: this.clockFor(severity),
             sector: IncidentSectors.includes(opts.sector) ? opts.sector
                 : IncidentSectors[Math.floor(this.random() * IncidentSectors.length) % IncidentSectors.length],
             falseAlarm,
@@ -644,16 +657,19 @@ const Incidents = {
                 if (inc.prophetRemaining <= 0) this.resolve(inc.id, 'prophet', now);
                 continue;
             }
-            if (inc.severity === 1) continue;
             inc.remaining -= deltaSeconds;
             if (inc.remaining > 0) continue;
+            if (inc.severity === 1) {
+                this.contain(inc, now);
+                continue;
+            }
 
             if (inc.falseAlarm) {
                 this.selfClose(inc, now);
                 continue;
             }
             inc.severity -= 1;
-            inc.remaining = this.ESCALATE_AFTER[inc.severity] || 0;
+            inc.remaining = this.clockFor(inc.severity);
             changed = true;
             this.cue('incident', { severity: inc.severity });
             if (inc.severity === 1) {
@@ -786,6 +802,24 @@ const Incidents = {
         return this.resolve(id, 'debt', now);
     },
 
+    /* An outage nobody touched for OUTAGE_CONTAINED_AFTER attended seconds.
+       Ignoring is the fourth answer, and now it lands somewhere: the same
+       place as deferring, at outage depth. If the register is full the line
+       is restored anyway — a full register must never become a soft-lock. */
+    contain(inc, now = Date.now()) {
+        const s = this.state();
+        s.stats.contained += 1;
+        if (s.debts.length < this.MAX_DEBTS) {
+            s.debts.push({ id: inc.id, template: inc.template, severity: inc.severity });
+        }
+        s.open = s.open.filter((i) => i !== inc);
+        this.sync(now);
+        ui.log(`[${inc.id}] Outage contained by the on-call rota. Filed as a deferral against this build: ${this.debtText(inc)}.`);
+        this.cue('error');
+        ui.onIncidentsChanged?.();
+        return true;
+    },
+
     /* ── Labour: the stabilisation ritual ─────────────────────────────────
        A marker sweeps a track; a band sits somewhere on it. Align while the
        marker is in the band. Hits needed scale with severity; a miss costs a
@@ -837,15 +871,24 @@ const Incidents = {
         if (!hit) this.cue('error');
         else if (labour.hits < this.labourNeed(inc)) this.cue('eventClaim', { chain: labour.hits });
         const done = labour.hits >= this.labourNeed(inc);
-        if (done) {
-            const charge = this.LABOUR_CHARGE[inc.severity] || 0;
-            this.resolve(id, 'labour', Date.now());
-            if (charge && typeof game !== 'undefined' && typeof game.gainOverclockCharge === 'function') {
-                game.gainOverclockCharge(charge);
-                ui.log(`[${inc.id}] Hands-on fix logged: +${charge} Overclock charge.`);
-            }
-        }
+        if (done) this.completeLabour(id, Date.now());
         return { hit, done, hits: labour.hits, need: this.labourNeed(inc) };
+    },
+
+    /* The labour answer landing: close the ticket and pay the hands-on
+       reward. The ritual calls this on its last hit; tools/balance_sim.mjs
+       calls it after modelling the attention a ritual costs, so the reward
+       cannot drift between the two. */
+    completeLabour(id, now = Date.now()) {
+        const inc = this.find(id);
+        if (!inc) return false;
+        const charge = this.LABOUR_CHARGE[inc.severity] || 0;
+        this.resolve(id, 'labour', now);
+        if (charge && typeof game !== 'undefined' && typeof game.gainOverclockCharge === 'function') {
+            game.gainOverclockCharge(charge);
+            ui.log(`[${inc.id}] Hands-on fix logged: +${charge} Overclock charge.`);
+        }
+        return true;
     },
 
     /* ── Sacrifice: the Recycle Bin finally has a use ─────────────────────

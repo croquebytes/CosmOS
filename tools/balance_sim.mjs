@@ -147,19 +147,32 @@ const PUSH = Number((args.find((a) => a.startsWith('--push')) || '').split('=')[
    it exists so that is measurable rather than assumed. */
 const NO_PATCH = args.includes('--no-patch');
 
-/* Incidents are OFF in the simulator, deliberately and for now.
+/* --incidents=off|ignore|labour|pay|mixed. Default OFF, which keeps the
+   golden master byte-identical: the economy constants are measured without
+   the triage layer, and incident cost is measured AGAINST that baseline.
 
-   The loop is attention-driven — labour, payment or deferral, chosen by
-   reading a ticket — and the simulator has no policy for any of it. A
-   simulated player who never triages measures an economy with permanent
-   outages; one who always pays measures a resource sink nobody has tuned.
-   Either would move the golden master for a reason that is not the economy.
+     ignore  never triages. Tickets escalate to outages (25% lines) and stay.
+     labour  fixes every ticket by hand. Labour costs attention: the player
+             stops clicking Miracles for LABOUR_SECONDS, then the ritual
+             lands through Incidents.completeLabour — the same path, and the
+             same Overclock reward, as the real ritual's last hit.
+     pay     pays every ticket the moment it is affordable, never labours.
+     mixed   a reasonable player: reads the ticket (spots a false alarm's
+             tell 70% of the time and ignores it), labours SEV-3s, pays
+             SEV-2 and outages when affordable, else labours them.
 
-   The file is still LOADED so the switch below is the only thing standing
-   between the simulator and the feature: when the storage/prestige re-tune
-   lands, the lead adds an incident policy here (spawn at the real rate,
-   resolve by a chosen rule) and recaptures, on purpose and in one commit. */
-game.incidentsEnabled = false;
+   The simulated player is always present (no presence tracking headless),
+   so this measures the worst case: a player at the keyboard for every
+   second of the run. Spawning uses a seeded rng so runs stay deterministic. */
+const INCIDENTS = (args.find((a) => a.startsWith('--incidents=')) || '').split('=')[1] || 'off';
+const Incidents = vm.runInContext("typeof Incidents === 'undefined' ? null : Incidents", ctx);
+game.incidentsEnabled = INCIDENTS !== 'off';
+if (game.incidentsEnabled) {
+    if (!Incidents || !['ignore', 'labour', 'pay', 'mixed'].includes(INCIDENTS)) {
+        throw new Error(`--incidents=${INCIDENTS}: expected off|ignore|labour|pay|mixed`);
+    }
+    Incidents.random = vm.runInContext('mulberry32', ctx)((SEED ^ 0x1c1de) >>> 0);
+}
 
 // The registry has to be seeded before any rate is read, exactly as
 // game.initializeSession() does it in the browser.
@@ -312,6 +325,45 @@ function playVoid(log, t) {
     return bought;
 }
 
+/* Attention a hand fix costs, by severity: a person with a few misses. */
+const LABOUR_SECONDS = { 3: 20, 2: 28, 1: 36 };
+const incidentTally = { labour: 0, pay: 0, ignoredFalse: 0, labourSeconds: 0 };
+let labouring = null;
+const readTell = new Map();
+const tellRng = Incidents ? vm.runInContext('mulberry32', ctx)((SEED ^ 0x7e11) >>> 0) : null;
+
+/* Returns true while the player's attention is on a ritual. */
+function triageIncidents(log, t, now) {
+    if (!game.incidentsEnabled || INCIDENTS === 'ignore') return false;
+    if (labouring) {
+        if (t < labouring.until) return true;
+        if (Incidents.completeLabour(labouring.id, now)) incidentTally.labour++;
+        labouring = null;
+    }
+    for (const inc of [...Incidents.state().open]) {
+        if (inc.prophet) continue;
+        if (INCIDENTS === 'mixed' && inc.falseAlarm) {
+            if (!readTell.has(inc.id)) readTell.set(inc.id, tellRng() < 0.7);
+            if (readTell.get(inc.id)) continue;
+        }
+        const wantsPay = INCIDENTS === 'pay' || (INCIDENTS === 'mixed' && inc.severity < 3);
+        if (wantsPay) {
+            const cost = Incidents.resourceCost(inc, now);
+            if (cost?.affordable && Incidents.payResources(inc.id, now)) {
+                incidentTally.pay++;
+                log(t, `incident ${inc.id} SEV-${inc.severity}: paid ${Math.ceil(cost.amount)} ${cost.resource}`);
+                continue;
+            }
+            if (INCIDENTS === 'pay') continue;
+        }
+        Incidents.beginLabour(inc.id, now);
+        labouring = { id: inc.id, until: t + LABOUR_SECONDS[inc.severity] };
+        incidentTally.labourSeconds += LABOUR_SECONDS[inc.severity];
+        return true;
+    }
+    return false;
+}
+
 function run() {
     const start = Date.now();
     let now = start;
@@ -335,7 +387,8 @@ function run() {
     for (let t = 0; t < totalSeconds; t++) {
         now = start + t * 1000;
 
-        if (t >= nextClick && Number.isFinite(clickInterval)) {
+        const busy = triageIncidents(log, t, now);
+        if (!busy && t >= nextClick && Number.isFinite(clickInterval)) {
             game.manualPraise(null);
             nextClick = t + clickInterval;
         }
@@ -484,6 +537,11 @@ if (JSON_OUT) {
         lastPurchaseSecond,
         prestigeLog
     };
+    // Only when a policy is on, so the golden master's shape is untouched.
+    if (game.incidentsEnabled) {
+        snapshot.incidents = { policy: INCIDENTS, ...incidentTally, stats: { ...Incidents.state().stats },
+            open: Incidents.state().open.map((i) => `${i.template}@SEV-${i.severity}`) };
+    }
     console.log(JSON.stringify(snapshot, null, 1));
     process.exit(0);
 }
@@ -527,6 +585,12 @@ for (const entry of State.reality.build?.entries || []) {
 console.log(`  standing doctrine rank ${State.standingDoctrine || 0} (+${Math.round((game.getDoctrineBonus() - 1) * 100)}% all production)`);
 console.log(`  upgrades left     ${remainingUpgrades} / ${UpgradeList.length}`);
 console.log(`  mandates left     ${remainingMandates} / ${MandateList.length}`);
+if (game.incidentsEnabled) {
+    const st = Incidents.state().stats;
+    console.log(`  incidents (${INCIDENTS})  filed ${st.filed}, outages ${st.outages}, by hand ${incidentTally.labour}` +
+        ` (${Math.round(incidentTally.labourSeconds / 60)} min of attention), paid ${incidentTally.pay},` +
+        ` false alarms let close ${st.falseAlarmsCleared}, open now ${Incidents.state().open.length}`);
+}
 console.log(`  last purchase at  ${hhmmss(lastPurchaseSecond)}` +
             (lastPurchaseSecond < totalSeconds - 60
                 ? `  → ${hhmmss(totalSeconds - lastPurchaseSecond)} of DEAD TIME`
