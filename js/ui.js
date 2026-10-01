@@ -2699,6 +2699,11 @@ const ui = {
         if (patienceIcon) {
             patienceIcon.style.display = State.unlockedApps.includes('solitaire') ? 'block' : 'none';
         }
+
+        const mediaIcon = document.getElementById('icon-mediaplayer');
+        if (mediaIcon) {
+            mediaIcon.style.display = State.unlockedApps.includes('mediaplayer') ? 'block' : 'none';
+        }
     },
 
     // === DOCUMENT SYSTEM UI ===

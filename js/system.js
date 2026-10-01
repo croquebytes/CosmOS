@@ -90,6 +90,7 @@ const system = {
         adorationshop: { label: 'Adoration Shop', art: 'shop', hint: 'Acquire persistent utilities' },
         // No authored plaque yet: `glyph` names a CSS-drawn mark instead.
         solitaire: { label: 'Patience.exe', glyph: 'patience', hint: 'Golf solitaire, dealt from the arcana' },
+        mediaplayer: { label: 'Sacred Media Player', glyph: 'mediaplayer', hint: 'Operator orientation tapes' },
         settings: { label: 'Divine Settings', art: 'settings', hint: 'Save, prestige, and display' }
     },
 
@@ -202,6 +203,10 @@ const system = {
 
             // Patience.exe claims arrows, Enter and Space while it is on top.
             if (typeof PatienceView !== 'undefined' && PatienceView.handleKey(e, this.getTopWindowId())) {
+                return;
+            }
+            // The Sacred Media Player claims Space and the arrows the same way.
+            if (typeof MediaPlayerView !== 'undefined' && MediaPlayerView.handleKey(e, this.getTopWindowId())) {
                 return;
             }
 
@@ -403,7 +408,8 @@ const system = {
             adorationshop: { width: 650, height: 560 },
             taskmgr: { width: 860, height: 560 },
             recyclebin: { width: 700, height: 560 },
-            solitaire: { width: 660, height: 540 }
+            solitaire: { width: 660, height: 540 },
+            mediaplayer: { width: 820, height: 600 }
         };
 
         return appSizes[id] || { width: 620, height: 560 };
@@ -1208,6 +1214,11 @@ const system = {
                 title: 'Patience.exe - Celestial Arcana',
                 initialHTML: `<div class="patience" id="patience-root"></div>`,
                 onOpen: () => PatienceView.open()
+            },
+            'mediaplayer': {
+                title: 'Sacred Media Player',
+                initialHTML: `<div class="mplayer" id="mplayer-root"></div>`,
+                onOpen: () => MediaPlayerView.open()
             }
         };
         return configs[id] || { title: 'Unknown App', initialHTML: 'ERROR' };
