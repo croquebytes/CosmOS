@@ -5019,6 +5019,19 @@ tr.is-focus td { background: rgba(212, 85, 58, 0.08); }
     font: 10px var(--cos-font-machine);
 }
 
+/* Task Manager is a LIGHT vellum surface: ink, never the dark-panel inks. */
+.incident-hold-note {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 6px 0 2px;
+    padding: 6px 8px;
+    color: var(--cos-ink);
+    background: rgba(180, 145, 74, 0.14);
+    border: 1px solid var(--cos-brass-500);
+    font: 11px/1.45 var(--cos-font-display);
+}
+
 .incident-queue-note {
     margin: 5px 0 7px;
     color: var(--cos-ink-dim);
@@ -5273,6 +5286,13 @@ tr.is-focus td { background: rgba(212, 85, 58, 0.08); }
 }
 
 .tray-incident-led.is-outage .led-lamp { animation: blink 1s steps(2, start) infinite; }
+
+/* Held: the lamp stays on but cools to brass — present, not urgent. */
+.tray-incident-led.is-held { color: var(--cos-brass-300); }
+.tray-incident-led.is-held .led-lamp {
+    background: var(--cos-brass-500);
+    box-shadow: 0 0 5px rgba(180, 145, 74, 0.55);
+}
 
 /* ── Operator panel line: also on iron ── */
 .operator-incidents {

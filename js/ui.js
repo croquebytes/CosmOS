@@ -3337,9 +3337,10 @@ const ui = {
             const lit = summary.open > 0;
             led.hidden = !summary.everFiled;
             led.classList.toggle('is-lit', lit);
-            led.classList.toggle('is-outage', lit && summary.worst === 1);
+            led.classList.toggle('is-outage', lit && summary.worst === 1 && !summary.onHold);
+            led.classList.toggle('is-held', lit && summary.onHold);
             const label = lit
-                ? `${summary.open} open incident${summary.open === 1 ? '' : 's'} — worst SEV-${summary.worst}. Open Task Manager.`
+                ? `${summary.open} open incident${summary.open === 1 ? '' : 's'} — worst SEV-${summary.worst}${summary.onHold ? ', on hold while you are away' : ''}. Open Task Manager.`
                 : 'No open incidents.';
             if (led.title !== label) {
                 led.title = label;
@@ -3351,11 +3352,11 @@ const ui = {
         if (line) {
             line.hidden = !summary.everFiled;
             const text = summary.open > 0
-                ? `${summary.open} OPEN · WORST SEV-${summary.worst}`
+                ? `${summary.open} ${summary.onHold ? 'HELD' : 'OPEN'} · WORST SEV-${summary.worst}`
                 : 'QUEUE CLEAR';
             const valueEl = line.querySelector('[data-role="count"]');
             if (valueEl && valueEl.innerText !== text) valueEl.innerText = text;
-            line.classList.toggle('is-alarm', summary.open > 0);
+            line.classList.toggle('is-alarm', summary.open > 0 && !summary.onHold);
         }
 
         this.renderIncidentTriage();
@@ -3373,7 +3374,7 @@ const ui = {
         /* Structure re-renders only when the queue changes shape; clocks,
            prices and affordability update in place. Re-rendering at 10Hz
            would eat the click on any button the player was reaching for. */
-        const signature = JSON.stringify([summary.everFiled, views.map((v) => [
+        const signature = JSON.stringify([summary.everFiled, summary.onHold, views.map((v) => [
             v.id, v.severity, !!v.prophet, v.labour ? [v.labour.band.at, v.labour.hits] : null,
             v.artifact?.id || null, v.canProphet,
         ])]);
@@ -3387,10 +3388,12 @@ const ui = {
             const row = host.querySelector(`[data-incident="${v.id}"]`);
             if (!row) continue;
             const clock = row.querySelector('[data-role="clock"]');
-            const clockText = v.prophet
+            const clockText = v.held
+                ? 'On hold — clock frozen while you are away'
+                : v.prophet
                 ? `Prophet on site — closes in ${this.formatClock(v.prophet.remaining)}`
                 : v.severity === 1
-                    ? `OUTAGE — ${v.line} halted`
+                    ? `OUTAGE — ${v.line} on backup`
                     : `Escalates to ${v.nextSeverity === 1 ? 'OUTAGE' : `SEV-${v.nextSeverity}`} in ${this.formatClock(v.remaining)}`;
             if (clock && clock.innerText !== clockText) clock.innerText = clockText;
 
@@ -3416,6 +3419,10 @@ const ui = {
                     : 'No open incidents. The universe is, for the moment, someone else’s problem.'}</span>
             </div>`;
         if (!views.length) return head;
+        const held = summary.onHold ? `
+            <p class="incident-hold-note"><span class="code-stamp">ON HOLD</span>
+                You stepped away, so the queue did too: penalties lifted, clocks frozen.
+                Touch anything to resume — every ticket gets at least ${Incidents.RETURN_GRACE}s back.</p>` : '';
 
         const rows = views.map((v) => {
             const id = esc(v.id);
@@ -3463,9 +3470,9 @@ const ui = {
                 </article>`;
         }).join('');
 
-        return `${head}
-            <p class="incident-queue-note">Unhandled tickets escalate. Tickets raised in error close themselves.
-                Telemetry is not always telling the truth.</p>
+        return `${head}${held}
+            <p class="incident-queue-note">Unhandled tickets escalate while you are on shift. Tickets raised in error close themselves.
+                Telemetry is not always telling the truth. A hands-on fix pays Overclock charge.</p>
             ${rows}`;
     },
 
@@ -3555,7 +3562,7 @@ const ui = {
                     </div>
                     <h2 id="incident-alert-title">${esc(view.title)}</h2>
                     <p>${esc(view.desc)}</p>
-                    <p class="incident-alert-impact">The <strong>${esc(view.line)}</strong> is halted until this is resolved.
+                    <p class="incident-alert-impact">The <strong>${esc(view.line)}</strong> is running on backup at ${Math.round(Incidents.OUTAGE_SCALE * 100)}% until this is resolved.
                         Reported impact: ${esc(view.effect)}.</p>
                     <p class="incident-alert-advice">Stabilise it by hand, pay it off, or defer it and carry
                         <strong>${esc(view.debt)}</strong> until this build ships.</p>

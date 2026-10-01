@@ -219,9 +219,11 @@ check('the first ticket a save ever files is real', () => {
 
 /* ── Escalation ────────────────────────────────────────────────────────── */
 
-check('an ignored SEV-3 escalates to SEV-2, then to an outage that halts its line', () => {
+check('an ignored SEV-3 escalates to SEV-2, then to an outage that throttles its line to backup', () => {
     const env = game_();
     const base = env.State.automatons.seraphProduction;
+    const grossBefore = env.game.getProductionRates(Date.now(), false).praiseGross;
+    assert.ok(grossBefore > 0, 'fixture: no Praise flowing to throttle');
     const inc = realSev3(env);
     assert.ok(Math.abs(env.State.automatons.seraphProduction - base * 0.6) < 1e-12, 'SEV-3 effect not applied');
 
@@ -233,8 +235,17 @@ check('an ignored SEV-3 escalates to SEV-2, then to an outage that halts its lin
 
     play(env, env.Incidents.ESCALATE_AFTER[2] + 1);
     assert.equal(inc.severity, 1, 'did not escalate to an outage');
-    assert.equal(env.State.automatons.seraphProduction, 0, 'the outage did not halt the Seraph line');
-    assert.equal(env.game.getProductionRates(Date.now(), false).praiseGross, 0, 'Praise still flowing in an outage');
+    /* Degraded, not dead: an outage that zeroed a line punished the one
+       verb an idle game is built on — walking away from it. */
+    const scale = env.Incidents.OUTAGE_SCALE;
+    assert.ok(scale > 0 && scale < 1, 'an outage must degrade, never stop or spare, its line');
+    assert.ok(Math.abs(env.State.automatons.seraphProduction - base * scale) < 1e-12,
+        `the outage left the Seraph line at ${env.State.automatons.seraphProduction / base} of base, not ${scale}`);
+    const grossNow = env.game.getProductionRates(Date.now(), false).praiseGross;
+    // Praise still flows, at about the backup share: sources outside the
+    // Seraph line are untouched by its outage, so a hair above `scale`.
+    assert.ok(grossNow >= grossBefore * scale && grossNow <= grossBefore * scale * 1.02,
+        `Praise in an outage is ${grossNow / grossBefore} of normal, expected about ${scale}`);
 
     play(env, 600, 5);
     assert.equal(inc.severity, 1, 'an outage is the floor');
@@ -736,6 +747,136 @@ check('resolving tickets unlocks the incident achievements', () => {
     assert.ok(env.State.achievements['ACH-033'], 'First Responder did not unlock');
     assert.ok(env.State.achievements['ACH-S-009'], 'Burnt Offering did not unlock');
     assert.ok(!env.State.achievements['ACH-034'], 'No Fault Found unlocked without a false alarm');
+});
+
+
+/* ── Absence is never punished ─────────────────────────────────────────── */
+
+/* Presence tracking as the browser runs it: on, with the last input long
+   ago. `back` is a click at the harness clock. */
+const away = (env) => { env.game.presenceTracking = true; env.game.lastInputAt = 0; };
+const back = (env) => env.game.notePresence(env.clock || Date.now());
+
+check('headless, every tick is a player (no presence tracking)', () => {
+    const env = game_();
+    assert.equal(env.game.presenceTracking, false);
+    assert.equal(env.game.isPresent(Date.now()), true, 'the simulator and suites would start holding the queue');
+});
+
+check('walking away holds the queue: penalty lifted, clock frozen', () => {
+    const env = game_();
+    const base = env.State.automatons.seraphProduction;
+    const inc = realSev3(env);
+    play(env, 10);
+    const left = inc.remaining;
+    assert.ok(env.State.automatons.seraphProduction < base, 'fixture: the ticket bites while present');
+
+    away(env);
+    play(env, 3600, 1);
+    assert.equal(env.State.incidents.onHold, true, 'an absent player did not put the queue on hold');
+    assert.equal(env.State.automatons.seraphProduction, base, 'a held ticket still costs production');
+    assert.equal(inc.remaining, left, 'a held ticket\'s clock kept running');
+    assert.equal(inc.severity, 3, 'a ticket escalated while nobody was there');
+});
+
+check('nothing is filed while the player is away', () => {
+    const env = game_({}, { random: 0 });   // every roll would file
+    away(env);
+    play(env, 1800);
+    assert.equal(env.State.incidents.open.length, 0, 'tickets were filed to an empty chair');
+    back(env);
+    play(env, env.Incidents.SPAWN_INTERVAL + 1);
+    assert.ok(env.State.incidents.open.length >= 1, 'fixture: the same rolls file once someone is back');
+});
+
+check('coming back resumes held tickets with the return grace', () => {
+    const env = game_();
+    const base = env.State.automatons.seraphProduction;
+    const inc = realSev3(env);
+    play(env, env.Incidents.ESCALATE_AFTER[3] - 5);   // 5s from escalating
+    away(env);
+    play(env, 600);
+    back(env);
+    play(env, 1);
+    assert.equal(env.State.incidents.onHold, false);
+    assert.ok(env.State.automatons.seraphProduction < base, 'the penalty did not come back with the player');
+    assert.ok(inc.remaining >= env.Incidents.RETURN_GRACE - 1,
+        `came back to ${inc.remaining}s on the clock, owed at least ${env.Incidents.RETURN_GRACE}`);
+    play(env, env.Incidents.RETURN_GRACE - 3);
+    assert.equal(inc.severity, 3, 'escalated inside the return grace');
+});
+
+check('a suspended-tab catch-up runs with the queue held', () => {
+    /* loop() replays a slept laptop through one unattended tick. Production
+       accrues across it, so the ticket's penalty must already be lifted when
+       that tick reads the rates — not merely its clock frozen. Measured on
+       gross Praise earned, which no vault caps. */
+    const env = game_();
+    const clean = env.game.getProductionRates(Date.now(), false).praiseGross;
+    realSev3(env);
+    play(env, 5);
+    assert.ok(env.game.getProductionRates(env.clock, false).praiseGross < clean, 'fixture: the ticket bites');
+    const before = env.State.totalStats.praiseGained || 0;
+    env.clock += 3600 * 1000;
+    env.game.tick(3600, env.clock, { attended: false });
+    const earned = (env.State.totalStats.praiseGained || 0) - before;
+    assert.equal(env.State.incidents.onHold, true, 'a catch-up tick did not hold the queue');
+    assert.ok(earned >= clean * 3600 * 0.999, `the hour earned ${earned}, a clean hour earns ${clean * 3600}`);
+});
+
+check('a save boots on hold in the browser, so offline accrual runs clean', () => {
+    const store = {};
+    const first = game_(store);
+    const base = first.State.automatons.seraphProduction;
+    realSev3(first);
+    assert.ok(first.State.automatons.seraphProduction < base, 'fixture: the ticket bites');
+    first.State.save();
+
+    const second = boot(store);
+    second.game.presenceTracking = true;      // as system.trackPresence does, before initializeSession
+    second.game.bootstrapModifiers(Date.now());
+    assert.equal(second.State.incidents.open.length, 1, 'fixture: the ticket survived the reload');
+    assert.equal(second.State.incidents.onHold, true, 'a fresh load with nobody at the keyboard was not held');
+    assert.equal(second.State.automatons.seraphProduction, base, 'offline accrual would read a penalised rate');
+});
+
+check('deferrals stay applied while away: they were a choice', () => {
+    const env = game_();
+    const inc = realSev3(env);
+    env.Incidents.defer(inc.id);
+    const debts = incidentRecords(env).length;
+    assert.ok(debts >= 1, 'fixture: the deferral left a record');
+    away(env);
+    play(env, 30);
+    assert.equal(incidentRecords(env).length, debts, 'a hold dropped a deferral the player chose');
+});
+
+check('a hands-on fix pays Overclock charge; paying or deferring does not', () => {
+    const charge = (env) => env.State.loopSystems.overclock.charge;
+    const env = game_();
+    env.State.loopSystems.overclock.charge = 0;
+    const inc = realSev3(env);
+    env.Incidents.beginLabour(inc.id, 0);
+    inc.labour.hits = env.Incidents.labourNeed(inc) - 1;
+    let t = 1e6;
+    for (let i = 0; i < 400 && env.Incidents.find(inc.id); i++) {
+        const live = env.Incidents.find(inc.id);
+        const b = live.labour.band;
+        t += 37;
+        const pos = env.Incidents.labourMarker(live, t);
+        if (pos > b.at && pos < b.at + b.width) env.Incidents.labourPulse(inc.id, t);
+    }
+    assert.ok(!env.Incidents.find(inc.id), 'fixture: the ritual never completed');
+    assert.equal(charge(env), env.Incidents.LABOUR_CHARGE[3], 'labour did not pay its charge');
+
+    const paid = game_();
+    paid.State.loopSystems.overclock.charge = 0;
+    const p = realSev3(paid);
+    paid.State.resources.praise = paid.State.resourceCaps.praise;
+    paid.Incidents.payResources(p.id);
+    const d = realSev3(paid, 'choir_desync');
+    if (d) paid.Incidents.defer(d.id);
+    assert.equal(charge(paid), 0, 'paying or deferring paid labour\'s reward');
 });
 
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}\n`);

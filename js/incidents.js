@@ -10,7 +10,8 @@
      DEBT       defer it. The ticket closes; a run-scoped penalty stays.
 
    And a fourth that is not a button: do nothing. A real fault escalates —
-   SEV-3 to SEV-2 to a SEV-1 outage that halts its production line. A false
+   SEV-3 to SEV-2 to a SEV-1 outage that throttles its production line to a
+   quarter (the backup choir) until it is fixed. A false
    alarm closes itself. Telling the two apart is the skill.
 
    ── Four rules this file is built around ────────────────────────────────
@@ -22,6 +23,18 @@
    re-add, because the fold is a left fold in insertion order and re-seating
    records on every boot is exactly how 2026-09-03 inflated storage caps by
    pressing reload.
+
+   ABSENCE IS NEVER PUNISHED. An idle game is played by walking away, so
+   incidents are a layer for the PRESENT player only. "Present" means input
+   in the last PRESENCE seconds (game.isPresent), not a visible tab: someone
+   watching numbers climb is idling, and idling must be safe. While absent —
+   AFK in the tab, the tab suspended, or the game closed — every open ticket
+   is ON HOLD: its penalty is lifted from the registry, its clock is frozen,
+   nothing new is filed and no dialog opens. Coming back resumes held tickets
+   with at least RETURN_GRACE seconds on the clock, so nobody returns to an
+   instant escalation. Engagement is rewarded instead: a ticket fixed by hand
+   pays Overclock charge. Deferrals (debts) stay applied — they are a choice
+   the player made while present, and they last only until the build ships.
 
    TIME IS ATTENDED TIME. Escalation timers and the spawn clock count only
    the seconds a player was present for. Offline progress, the Temporal Rift
@@ -41,7 +54,8 @@
    there, and anything the UI needs is returned by view().
    ════════════════════════════════════════════════════════════════════════ */
 
-/* Production lines. A SEV-1 outage halts exactly one of these. */
+/* Production lines. A SEV-1 outage throttles exactly one of these to
+   Incidents.OUTAGE_SCALE. */
 const IncidentLines = {
     seraph:   { label: 'Seraph line',   resource: 'praise',    target: 'automaton.seraph.output',
                 live: () => (State.automatons?.seraphCount || 0) >= 1 },
@@ -258,6 +272,20 @@ const Incidents = {
     LABOUR_PERIOD_MS: 2000,
     LABOUR_COOLDOWN_MS: 450,
     PROPHET_SECONDS: 120,
+    /* Seconds without input before the player counts as away and the queue
+       goes on hold. Two minutes: long enough to read a ticket, think, and
+       reach for the mouse; short enough that going to make tea is safe. */
+    PRESENCE_SECONDS: 120,
+    /* The least time a held ticket has left when its player comes back. */
+    RETURN_GRACE: 60,
+    /* An outage degrades its line rather than stopping it. At 0 a single
+       unread ticket could zero an entire resource, which in an idle game is
+       a punishment for the genre's core verb. A quarter still hurts enough
+       that the queue matters. */
+    OUTAGE_SCALE: 0.25,
+    /* Overclock charge (out of 100) for fixing a ticket by hand. The labour
+       answer costs the most attention, so it is the only one that pays. */
+    LABOUR_CHARGE: { 3: 12, 2: 20, 1: 35 },
     ARTIFACT_QUOTA: 5,
     MAX_DEBTS: 64,
 
@@ -272,7 +300,7 @@ const Incidents = {
 
     defaults() {
         return {
-            open: [], debts: [], nextNumber: 1,
+            open: [], debts: [], nextNumber: 1, onHold: false,
             attendedSeconds: 0, spawnClock: 0, quietUntil: 0,
             stats: this.freshStats(),
         };
@@ -301,6 +329,7 @@ const Incidents = {
         const finiteAtLeast = (v, min, fallback) => (Number.isFinite(v) && v >= min ? v : fallback);
 
         s.attendedSeconds = finiteAtLeast(s.attendedSeconds, 0, 0);
+        s.onHold = s.onHold === true;
         s.spawnClock = Number.isFinite(s.spawnClock) && s.spawnClock >= 0 && s.spawnClock < this.SPAWN_INTERVAL
             ? s.spawnClock : 0;
         s.quietUntil = finiteAtLeast(s.quietUntil, 0, 0);
@@ -399,8 +428,8 @@ const Incidents = {
                 value: eff[effSeverity], source, label });
         }
         if (inc.severity === 1) {
-            mods.push({ id: `incident:${inc.id}:${lineTarget}`, target: lineTarget, op: 'mul', value: 0,
-                source, label: `${inc.id} OUTAGE — ${IncidentLines[tpl.line].label} halted` });
+            mods.push({ id: `incident:${inc.id}:${lineTarget}`, target: lineTarget, op: 'mul', value: this.OUTAGE_SCALE,
+                source, label: `${inc.id} OUTAGE — ${IncidentLines[tpl.line].label} on backup` });
         }
         return mods;
     },
@@ -429,7 +458,8 @@ const Incidents = {
     desiredMods() {
         const s = this.state();
         return [
-            ...s.open.flatMap((inc) => this.effectMods(inc)),
+            // Held tickets cost nothing. See ABSENCE IS NEVER PUNISHED.
+            ...(s.onHold ? [] : s.open.flatMap((inc) => this.effectMods(inc))),
             ...s.debts.flatMap((d) => this.debtMods(d)),
         ];
     },
@@ -447,7 +477,43 @@ const Incidents = {
     bootstrap(now = Date.now()) {
         this._checked = this.normalise();
         this.booted = true;
+        /* A save loads with nobody at the keyboard yet, so in the browser the
+           queue boots ON HOLD. That is what keeps offline accrual — which
+           runs straight after this, off the committed rates — free of every
+           open ticket's penalty. The first input resumes it. Headless there
+           is no presence tracking and this is always false. */
+        this.state().onHold = this.presentNow(now) === false;
         return this.sync(now);
+    },
+
+    presentNow(now = Date.now()) {
+        return typeof game !== 'undefined' && typeof game.isPresent === 'function'
+            ? game.isPresent(now) : true;
+    },
+
+    /* Called from game.tick() every tick with whether the player is present.
+       Returns true when the hold state changed. */
+    setPresence(present, now = Date.now()) {
+        if (!this.booted) return false;
+        const s = this.state();
+        const hold = !present;
+        if (s.onHold === hold) return false;
+        s.onHold = hold;
+        if (!hold) {
+            for (const inc of s.open) {
+                if (!inc.prophet && inc.severity !== 1) inc.remaining = Math.max(inc.remaining, this.RETURN_GRACE);
+            }
+        }
+        this.sync(now);
+        const n = s.open.length;
+        if (n) {
+            const tickets = `${n} ticket${n === 1 ? '' : 's'}`;
+            ui.log(hold
+                ? `[On-call] You stepped away. ${tickets} held: penalties lifted, clocks frozen.`
+                : `[On-call] Welcome back. ${tickets} resumed, each with at least ${this.RETURN_GRACE}s on the clock.`);
+        }
+        ui.onIncidentsChanged?.();
+        return true;
     },
 
     /* ── Spawning ─────────────────────────────────────────────────────── */
@@ -504,14 +570,14 @@ const Incidents = {
         return this.file(tpl.id, {}, now);
     },
 
-    /* Files a ticket. Spawning calls this; so can the tests and a debugging
-       Operator. `opts` may pin severity, falseAlarm and sector. */
     /* Sound is presentation: routed through game.sfx, which is inert in the
        simulator and every vm test, and never decides anything. */
     cue(name, opts) {
         if (typeof game !== 'undefined' && typeof game.sfx === 'function') game.sfx(name, opts);
     },
 
+    /* Files a ticket. Spawning calls this; so can the tests and a debugging
+       Operator. `opts` may pin severity, falseAlarm and sector. */
     file(templateId, opts = {}, now = Date.now()) {
         const tpl = this.template(templateId);
         if (!tpl) return null;
@@ -593,7 +659,7 @@ const Incidents = {
             if (inc.severity === 1) {
                 s.stats.outages += 1;
                 const line = IncidentLines[this.template(inc.template).line].label;
-                ui.log(`[${inc.id}] Escalated to SEV-1. OUTAGE: ${line} halted.`);
+                ui.log(`[${inc.id}] Escalated to SEV-1. OUTAGE: ${line} running on backup at ${Math.round(this.OUTAGE_SCALE * 100)}%.`);
             } else {
                 ui.log(`[${inc.id}] Escalated to SEV-${inc.severity}: ${this.titleOf(inc)}.`);
             }
@@ -771,7 +837,14 @@ const Incidents = {
         if (!hit) this.cue('error');
         else if (labour.hits < this.labourNeed(inc)) this.cue('eventClaim', { chain: labour.hits });
         const done = labour.hits >= this.labourNeed(inc);
-        if (done) this.resolve(id, 'labour', Date.now());
+        if (done) {
+            const charge = this.LABOUR_CHARGE[inc.severity] || 0;
+            this.resolve(id, 'labour', Date.now());
+            if (charge && typeof game !== 'undefined' && typeof game.gainOverclockCharge === 'function') {
+                game.gainOverclockCharge(charge);
+                ui.log(`[${inc.id}] Hands-on fix logged: +${charge} Overclock charge.`);
+            }
+        }
         return { hit, done, hits: labour.hits, need: this.labourNeed(inc) };
     },
 
@@ -890,10 +963,11 @@ const Incidents = {
         const line = IncidentLines[tpl.line];
         // When the effect IS the line, the halt replaces it rather than
         // stacking on it — effectMods does the same — so say only that.
-        if (inc.severity === 1 && tpl.effect.target === line.target) return `${line.label} halted`;
+        const backup = `${line.label} on backup (${Math.round(this.OUTAGE_SCALE * 100)}%)`;
+        if (inc.severity === 1 && tpl.effect.target === line.target) return backup;
         const sev = inc.severity === 1 ? 2 : inc.severity;
         const parts = [this.describeMod(tpl.effect.target, tpl.effect.op, tpl.effect[sev])];
-        if (inc.severity === 1) parts.push(`${line.label} halted`);
+        if (inc.severity === 1) parts.push(backup);
         return parts.join(' · ');
     },
 
@@ -919,6 +993,7 @@ const Incidents = {
             effect: this.claimedEffect(inc),
             line: IncidentLines[tpl?.line]?.label || '',
             remaining: inc.remaining,
+            held: this.state().onHold === true,
             nextSeverity: inc.severity > 1 ? inc.severity - 1 : null,
             labourVerb: tpl?.labour || 'Stabilise by hand',
             labour: inc.labour ? { hits: inc.labour.hits, need: this.labourNeed(inc), band: inc.labour.band } : null,
@@ -936,6 +1011,7 @@ const Incidents = {
             open: open.length,
             worst: open.reduce((w, inc) => Math.min(w, inc.severity), 4),
             everFiled: this.state().stats.filed > 0,
+            onHold: this.state().onHold === true,
         };
     },
 };

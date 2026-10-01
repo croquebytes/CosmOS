@@ -1026,7 +1026,13 @@ const game = {
             /* Same gate, same reason, same position: incidents spawn and
                escalate on attended time only, and before the rates are read
                so an outage halts the tick that caused it. See js/incidents.js. */
-            if (attended && this.incidentsLive()) Incidents.tick(deltaSeconds, now);
+            if (this.incidentsLive()) {
+                /* Present, not merely attended: a visible tab with nobody at
+                   the keyboard is idle play, and idle play holds the queue. */
+                const present = attended && this.isPresent(now);
+                Incidents.setPresence(present, now);
+                if (present) Incidents.tick(deltaSeconds, now);
+            }
 
             const rates = this.getProductionRates(now, true);
             const praiseGain = rates.praise * deltaSeconds;
@@ -1133,6 +1139,25 @@ const game = {
        do not load incidents.js see `Incidents` undefined and are unaffected
        either way. */
     incidentsEnabled: true,
+
+    /* Presence: has the player touched anything recently?
+
+       system.js switches tracking on and reports input; headless (the
+       simulator and every vm suite) there is no tracking and every tick is a
+       player, which keeps those harnesses' behaviour exactly as it was.
+       Transient by design — never saved — so a reload always starts away. */
+    presenceTracking: false,
+    lastInputAt: 0,
+
+    notePresence(now = Date.now()) {
+        this.lastInputAt = now;
+    },
+
+    isPresent(now = Date.now()) {
+        if (!this.presenceTracking) return true;
+        const seconds = (typeof Incidents !== 'undefined' && Incidents.PRESENCE_SECONDS) || 120;
+        return now - this.lastInputAt <= seconds * 1000;
+    },
 
     incidentsLive() {
         return this.incidentsEnabled === true && typeof Incidents !== 'undefined';

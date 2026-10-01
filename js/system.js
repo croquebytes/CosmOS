@@ -4,8 +4,29 @@ const system = {
     windowStates: {},
     snapThreshold: 26,
 
+    /* Input is presence. Incidents hold while nobody has touched anything
+       for a couple of minutes (js/incidents.js), so every deliberate input
+       counts — and pointer movement too, throttled, because reading a ticket
+       with the mouse resting on it is attention. Passive listeners only:
+       this must never get in the way of the input it is watching. */
+    trackPresence() {
+        game.presenceTracking = true;
+        let lastMove = 0;
+        const note = () => game.notePresence(Date.now());
+        for (const type of ['pointerdown', 'keydown', 'wheel', 'touchstart']) {
+            document.addEventListener(type, note, { passive: true, capture: true });
+        }
+        document.addEventListener('pointermove', () => {
+            const now = Date.now();
+            if (now - lastMove < 1000) return;
+            lastMove = now;
+            game.notePresence(now);
+        }, { passive: true, capture: true });
+    },
+
     init() {
         console.log("CosmOS Initializing...");
+        this.trackPresence();
         const offlineReport = game.initializeSession();
         const testMode = new URLSearchParams(window.location.search).has('testMode');
         const bootDelay = testMode ? 0 : 3000;
