@@ -12,7 +12,8 @@
     "test:adversary": "node tests/adversary-scene.mjs",
     "test:prestige": "node tests/prestige-curve.mjs",
     "test:certification": "node tests/certification.mjs",
-    "test:storage": "node tests/storage.mjs"
+    "test:storage": "node tests/storage.mjs",
+    "test:audio": "node tests/audio.mjs"
   },
   "devDependencies": {
     "playwright": "^1.62.0",

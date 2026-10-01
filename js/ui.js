@@ -549,6 +549,7 @@ const ui = {
         if (!game.CERT_BRANCHES.includes(path)) return;
         this.dismissSystemModal();
         this.shipSelection = null;
+        game.sfx('ship');
         game.performPrestige({ confirmed: true, certifyOn: path });
     },
 
@@ -585,6 +586,7 @@ const ui = {
             </section>
         `;
         layer.classList.add('active');
+        game.sfx('cascade', { tier: cascade.tier });
         return true;
     },
 
@@ -706,6 +708,7 @@ const ui = {
             </section>
         `;
         layer.classList.add('active');
+        game.sfx('adversary');
 
         this.advBeats = this.buildAdversaryBeats(null);
         this.advStep();
@@ -1052,6 +1055,7 @@ const ui = {
         el.className = 'adversary-bark';
         el.innerHTML = `<span class="adversary-bark-mark">◆</span><span>${bark.text}</span>`;
         host.appendChild(el);
+        game.sfx('adversaryBark');
         setTimeout(() => el.classList.add('is-visible'), 20);
         setTimeout(() => {
             el.classList.remove('is-visible');
@@ -1463,6 +1467,7 @@ const ui = {
 
         document.body.appendChild(toast);
         this.repositionAchievementToasts();
+        game.sfx('achievement', { tier: achievement.tier });
 
         // Slide in from right
         setTimeout(() => toast.classList.add('show'), 10);
@@ -2150,6 +2155,7 @@ const ui = {
         element.onclick = () => game.clickDivineEvent();
 
         document.body.appendChild(element);
+        game.sfx('eventAppear');
     },
 
     hideDivineEvent() {
@@ -2674,6 +2680,7 @@ const ui = {
         `;
 
         document.body.appendChild(notification);
+        game.sfx('document');
 
         // Slide in from right
         setTimeout(() => notification.classList.add('show'), 10);
@@ -3604,6 +3611,8 @@ const ui = {
         if (perfCheckbox) {
             perfCheckbox.checked = State.settings.performanceMode || false;
         }
+
+        if (typeof audio !== 'undefined') audio.syncSettingsUI();
     },
 
     updateNotationMode(mode) {

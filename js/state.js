@@ -255,6 +255,17 @@ const State = {
         autosaveInterval: 30000,      // milliseconds (default 30s)
         performanceMode: false,       // reduce animations if true
         briefingSeen: false,
+        /* Read and normalised by js/audio.js (keep DEFAULTS there in step).
+           Added without a SAVE_VERSION bump on purpose: mergeInto recurses
+           into plain objects, so an older save simply gains these defaults. */
+        audio: {
+            master: 0.7,
+            sfx: 0.8,
+            ambient: 0.35,            // a bed for hours of idle: below the cues
+            sfxEnabled: true,
+            ambientEnabled: true,
+            muted: false,
+        },
     },
 
     // Prestige System

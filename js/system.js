@@ -13,6 +13,7 @@ const system = {
         setTimeout(() => {
             const boot = document.getElementById('boot-overlay');
             if (boot) boot.style.opacity = '0';
+            game.sfx('desktop');
             setTimeout(() => boot?.remove(), testMode ? 0 : 1000);
 
             setTimeout(() => {
@@ -273,6 +274,7 @@ const system = {
 
         if (shouldOpen) {
             this.renderStartMenu();
+            game.sfx('startMenu');
         }
     },
 
@@ -401,6 +403,7 @@ const system = {
 
     setWindowMode(id, mode) {
         this.windowStates[id] = this.windowStates[id] || { mode: 'normal', normalBounds: null };
+        if (this.windowStates[id].mode !== mode) game.sfx('windowMode', { mode });
         this.windowStates[id].mode = mode;
 
         const win = this.windows[id];
@@ -582,6 +585,7 @@ const system = {
 
         if (appConfig.onOpen) appConfig.onOpen();
         this.updateTaskbar();
+        game.sfx('windowOpen');
 
         /* He has opinions about which windows you open. One table rather than
            five scattered calls, so AdversaryHookedTriggers stays honest. */
@@ -607,6 +611,7 @@ const system = {
     closeApp(id) {
         if (this.windows[id]) {
             this.windows[id].remove();
+            game.sfx('windowClose');
             delete this.windows[id];
             delete this.windowStates[id];
             this.updateTaskbar();
@@ -767,6 +772,33 @@ const system = {
                                     <option value="suffix">Suffix (1.5M, 2.3B)</option>
                                     <option value="scientific">Scientific (1.50e6, 2.30e9)</option>
                                 </select>
+                            </div>
+                        </div>
+
+                        <h3>Sound Settings</h3>
+                        <div class="audio-settings">
+                            <div class="setting-row">
+                                <label for="audio-master">Master Volume:</label>
+                                <span class="setting-checkbox-spacer" aria-hidden="true"></span>
+                                <input type="range" id="audio-master" class="setting-range" min="0" max="100" step="1" value="70" oninput="audio.setVolume('master', this.value / 100)">
+                                <span class="setting-value" id="audio-master-value">70%</span>
+                            </div>
+                            <div class="setting-row">
+                                <label for="audio-sfx">System Sounds:</label>
+                                <input type="checkbox" id="audio-sfx-enabled" class="setting-checkbox" checked aria-label="System sounds enabled" onchange="audio.setEnabled('sfx', this.checked)">
+                                <input type="range" id="audio-sfx" class="setting-range" min="0" max="100" step="1" value="80" oninput="audio.setVolume('sfx', this.value / 100)">
+                                <span class="setting-value" id="audio-sfx-value">80%</span>
+                            </div>
+                            <div class="setting-row">
+                                <label for="audio-ambient">Ambient Hum:</label>
+                                <input type="checkbox" id="audio-ambient-enabled" class="setting-checkbox" checked aria-label="Ambient hum enabled" onchange="audio.setEnabled('ambient', this.checked)">
+                                <input type="range" id="audio-ambient" class="setting-range" min="0" max="100" step="1" value="35" oninput="audio.setVolume('ambient', this.value / 100)">
+                                <span class="setting-value" id="audio-ambient-value">35%</span>
+                            </div>
+                            <div class="setting-row">
+                                <label for="audio-muted">Mute All:</label>
+                                <input type="checkbox" id="audio-muted" class="setting-checkbox" onchange="audio.setMuted(this.checked)">
+                                <span class="setting-desc" id="audio-status">Standing by for your first action.</span>
                             </div>
                         </div>
 

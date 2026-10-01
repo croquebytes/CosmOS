@@ -104,6 +104,13 @@
             </button>
             <div id="active-tasks"></div>
             <div id="system-tray">
+                <button id="tray-audio" class="tray-audio" type="button" onclick="audio.toggleMute()" title="Sound: on" aria-label="Mute sound" aria-pressed="false">
+                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                        <path fill="currentColor" d="M2 6h3l4-3v10l-4-3H2z"/>
+                        <g class="tray-audio-waves" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M11 5.6a3.4 3.4 0 0 1 0 4.8"/><path d="M12.9 3.7a6 6 0 0 1 0 8.6"/></g>
+                        <g class="tray-audio-x" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 5.8l4 4.4M15 5.8l-4 4.4"/></g>
+                    </svg>
+                </button>
                 <span id="epoch-time">Epoch 0.0.0</span>
             </div>
         </div>
@@ -128,6 +135,7 @@
     <script src="js/state.js"></script>
     <script src="js/modifiers.js"></script>
     <script src="js/reality.js"></script>
+    <script src="js/audio.js"></script>
     <script src="js/system.js"></script>
     <script src="js/ui.js"></script>
     <script src="js/game.js"></script>

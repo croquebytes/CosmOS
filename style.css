@@ -446,12 +446,56 @@ html {
     padding: 0 12px;
     display: flex;
     align-items: center;
+    gap: 8px;
     background: var(--cos-void);
     border: 1px solid var(--cos-iron-700);
     border-radius: var(--cos-radius);
     color: var(--cos-verd-300);
     font: 11px var(--cos-font-machine);
     letter-spacing: 0.07em;
+}
+
+/* The speaker in the tray: one click silences the choir. */
+.tray-audio {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 18px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--cos-radius);
+    color: inherit;
+    cursor: pointer;
+}
+
+.tray-audio:hover {
+    border-color: var(--cos-iron-600);
+}
+
+.tray-audio:focus-visible {
+    outline: 1px dotted currentColor;
+    outline-offset: 1px;
+}
+
+.tray-audio svg {
+    display: block;
+    width: 14px;
+    height: 14px;
+}
+
+.tray-audio .tray-audio-x,
+.tray-audio.is-muted .tray-audio-waves {
+    display: none;
+}
+
+.tray-audio.is-muted .tray-audio-x {
+    display: inline;
+}
+
+.tray-audio.is-muted {
+    color: var(--cos-alarm);
 }
 
 /* Windows */
@@ -2617,6 +2661,80 @@ body.resizing-window {
     font-size: 10px;
     color: #666;
     font-style: italic;
+}
+
+/* ── Sound settings: a trackbar cut into the vellum, a brass slider cap ── */
+.audio-settings {
+    margin: 15px 0;
+}
+
+.setting-range {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    min-width: 90px;
+    max-width: 240px;
+    height: 20px;
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
+.setting-range::-webkit-slider-runnable-track {
+    height: 4px;
+    background: var(--cos-vellum-200);
+    border: 1px solid;
+    border-color: var(--win-border-dark) var(--win-border-light) var(--win-border-light) var(--win-border-dark);
+}
+
+.setting-range::-moz-range-track {
+    height: 4px;
+    background: var(--cos-vellum-200);
+    border: 1px solid;
+    border-color: var(--win-border-dark) var(--win-border-light) var(--win-border-light) var(--win-border-dark);
+}
+
+.setting-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 11px;
+    height: 19px;
+    margin-top: -9px;
+    background: linear-gradient(180deg, var(--cos-brass-100), var(--cos-brass-300));
+    border: 1px solid;
+    border-color: var(--cos-halo) var(--cos-brass-700) var(--cos-brass-700) var(--cos-halo);
+    box-shadow: 1px 1px 0 var(--cos-brass-900);
+}
+
+.setting-range::-moz-range-thumb {
+    width: 9px;
+    height: 17px;
+    border-radius: 0;
+    background: linear-gradient(180deg, var(--cos-brass-100), var(--cos-brass-300));
+    border: 1px solid;
+    border-color: var(--cos-halo) var(--cos-brass-700) var(--cos-brass-700) var(--cos-halo);
+    box-shadow: 1px 1px 0 var(--cos-brass-900);
+}
+
+.setting-range:focus-visible {
+    outline: 1px dotted var(--cos-ink);
+    outline-offset: 2px;
+}
+
+.setting-range:disabled {
+    cursor: default;
+    opacity: 0.45;
+}
+
+/* Keeps the master trackbar in line with the two that carry a toggle. */
+.setting-checkbox-spacer {
+    flex: 0 0 18px;
+}
+
+.setting-value {
+    min-width: 34px;
+    font: 10px var(--cos-font-machine);
+    color: var(--cos-ink-dim);
+    text-align: right;
 }
 
 .system-actions {
