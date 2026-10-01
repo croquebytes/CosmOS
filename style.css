@@ -1103,6 +1103,19 @@ body.resizing-window {
 }
 
 /* Achievement Toast Notifications */
+.achievement-overflow {
+    position: fixed;
+    right: 20px;
+    z-index: 11000;
+    padding: 4px 10px;
+    color: var(--cos-brass-100);
+    background: var(--cos-iron-900);
+    border: 1px solid var(--cos-brass-500);
+    font: 11px/1.4 var(--cos-font-machine);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
 .achievement-toast {
     position: fixed;
     top: auto;

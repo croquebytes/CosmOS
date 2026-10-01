@@ -1623,7 +1623,20 @@ const ui = {
         }
     },
 
+    /* A reboot can unlock half a dozen achievements in one tick, and every
+       toast used to stack up the full height of the screen at once, each
+       with its own stinger. At most TOAST_LIMIT show; the rest queue and
+       slide in as earlier ones leave, with a plaque saying how many wait.
+       Sound and pulse fire when a toast is shown, not when it is queued. */
+    TOAST_LIMIT: 3,
+    toastQueue: [],
+
     showAchievementToast(achievement) {
+        if (document.querySelectorAll('.achievement-toast').length >= this.TOAST_LIMIT) {
+            this.toastQueue.push(achievement);
+            this.updateToastOverflow();
+            return;
+        }
         const toast = document.createElement('div');
         toast.className = `achievement-toast tier-${achievement.tier?.toLowerCase() || 'bronze'}`;
 
@@ -1634,9 +1647,9 @@ const ui = {
             <div class="achievement-icon">${tierIcon}</div>
             <div class="achievement-content">
                 <div class="achievement-title">Achievement Unlocked!</div>
-                <div class="achievement-name">${achievement.name}</div>
-                ${achievement.tier ? `<div class="achievement-tier">${achievement.tier}</div>` : ''}
-                <div class="achievement-desc">${achievement.flavor || achievement.description || ''}</div>
+                <div class="achievement-name">${this.escapeHtml(achievement.name)}</div>
+                ${achievement.tier ? `<div class="achievement-tier">${this.escapeHtml(achievement.tier)}</div>` : ''}
+                <div class="achievement-desc">${this.escapeHtml(achievement.flavor || achievement.description || '')}</div>
             </div>
         `;
 
@@ -1653,6 +1666,9 @@ const ui = {
             setTimeout(() => {
                 toast.remove();
                 this.repositionAchievementToasts();
+                const next = this.toastQueue.shift();
+                this.updateToastOverflow();
+                if (next) this.showAchievementToast(next);
             }, 500);
         }, 6000);
 
@@ -1694,9 +1710,25 @@ const ui = {
     },
 
     repositionAchievementToasts() {
-        document.querySelectorAll('.achievement-toast').forEach((toast, index) => {
+        const toasts = document.querySelectorAll('.achievement-toast');
+        toasts.forEach((toast, index) => {
             toast.style.bottom = `${50 + (index * 112)}px`;
         });
+        const plaque = document.getElementById('achievement-overflow');
+        if (plaque) plaque.style.bottom = `${50 + (toasts.length * 112)}px`;
+    },
+
+    updateToastOverflow() {
+        let plaque = document.getElementById('achievement-overflow');
+        const waiting = this.toastQueue.length;
+        if (!waiting) { plaque?.remove(); return; }
+        if (!plaque) {
+            plaque = Object.assign(document.createElement('div'), { id: 'achievement-overflow', className: 'achievement-overflow' });
+            plaque.setAttribute('role', 'status');
+            document.body.appendChild(plaque);
+        }
+        plaque.textContent = `+${waiting} more achievement${waiting === 1 ? '' : 's'} filed`;
+        this.repositionAchievementToasts();
     },
 
     /* ── Authored engine art ──────────────────────────────────────────────
