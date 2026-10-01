@@ -460,6 +460,11 @@ const game = {
         }
     },
 
+    /* A production line's output scale. See the note in getProductionRates. */
+    lineScale(value) {
+        return Number.isFinite(value) ? value : 1;
+    },
+
     getProductionRates(now = Date.now(), includeTransient = true) {
         this.ensureLoopState();
         const achievementBonuses = State.achievementBonuses || {};
@@ -473,8 +478,14 @@ const game = {
         const totalProductionBonus = divineInterventionBonus * automationSpeedBonus *
             streakProductionBonus * overclockProductionBonus;
 
-        const seraphBaseProduction = State.automatons.seraphProduction || 1;
-        const cherubBaseProduction = State.automatons.cherubProduction || 1;
+        /* lineScale, not `|| 1`. A SEV-1 outage halts a line by folding its
+           output scalar to 0, and `0 || 1` read that as "unset" and ran the
+           line at full speed — an outage that changed nothing. lineScale
+           keeps the old fallback for undefined and NaN and lets a real zero
+           through. Identical for every finite non-zero value, which is every
+           value the simulator produces. */
+        const seraphBaseProduction = this.lineScale(State.automatons.seraphProduction);
+        const cherubBaseProduction = this.lineScale(State.automatons.cherubProduction);
         const drillBonus = this.getDrillBonus();
         const dominionBonus = this.getDominionBonus();
         /* Two tiers of bonus, deliberately.
@@ -508,7 +519,7 @@ const game = {
             : (hasBankedPraise ? 1 : Math.min(1, praiseGross / throneDraw));
 
         const offeringsGross = throneCount * Economy.throneOfferingYield * throneActivity *
-            (State.automatons.throneProduction || 1) * State.offeringMultiplier * hierarchyBonus *
+            this.lineScale(State.automatons.throneProduction) * State.offeringMultiplier * hierarchyBonus *
             (achievementBonuses.offeringValue || 1) * globalGainBonus;
 
         const rates = {
@@ -533,7 +544,7 @@ const game = {
                 (achievementBonuses.voidGain || 1) *
                 (achievementBonuses.voidStability || 1) * globalGainBonus;
 
-            const darknessGross = vd.dps * (vd.automatons.wraithProduction || 1) *
+            const darknessGross = vd.dps * this.lineScale(vd.automatons.wraithProduction) *
                 vd.darknessMultiplier * this.getVoidRefinementBonus() * voidBonus;
 
             /* Revenants are the Void's Throne: they burn Darkness to condense
@@ -552,8 +563,8 @@ const game = {
             rates.revenantDraw = revenantDraw * revenantActivity;
             rates.darkness = darknessGross - (revenantDraw * revenantActivity);
             rates.shadows = revenantCount * Economy.revenantShadowYield * revenantActivity *
-                (vd.automatons.revenantProduction || 1) * vd.shadowMultiplier * voidBonus;
-            rates.echoes = vd.eps * (vd.automatons.phantomProduction || 1) *
+                this.lineScale(vd.automatons.revenantProduction) * vd.shadowMultiplier * voidBonus;
+            rates.echoes = vd.eps * this.lineScale(vd.automatons.phantomProduction) *
                 vd.echoMultiplier * voidBonus;
         }
 
@@ -688,6 +699,10 @@ const game = {
             /* Before production is read, so a tier change throttles the tick
                that crossed into it rather than the one after. */
             if (attended) this.accrueInstability(deltaSeconds, now);
+            /* Same gate, same reason, same position: incidents spawn and
+               escalate on attended time only, and before the rates are read
+               so an outage halts the tick that caused it. See js/incidents.js. */
+            if (attended && this.incidentsLive()) Incidents.tick(deltaSeconds, now);
 
             const rates = this.getProductionRates(now, true);
             const praiseGain = rates.praise * deltaSeconds;
@@ -785,6 +800,19 @@ const game = {
        to 1Hz stays "attended" — because the cost of guessing wrong is only
        that a few seconds of degradation are forgiven. */
     ATTENDED_GAP_SECONDS: 5,
+
+    /* Incidents (js/incidents.js) are on in the game and OFF in
+       tools/balance_sim.mjs, which has no incident policy yet: a simulated
+       player who never triages would measure an economy nobody plays, and
+       one who always pays would measure a different one. The flag keeps the
+       golden master byte-identical until a policy is chosen. Harnesses that
+       do not load incidents.js see `Incidents` undefined and are unaffected
+       either way. */
+    incidentsEnabled: true,
+
+    incidentsLive() {
+        return this.incidentsEnabled === true && typeof Incidents !== 'undefined';
+    },
 
     loop() {
         const now = Date.now();
@@ -1419,6 +1447,17 @@ const game = {
         this.syncCascade(now);
 
         ui.log(`Patched: ${entry.note.split('.')[0]}.`);
+        /* The superseded module goes to the Recycle Bin, where it can be fed
+           to an open incident. Gated: the simulator patches constantly and
+           must not grow a Bin. */
+        if (this.incidentsLive()) {
+            Incidents.fileArtifact({
+                key: `patch_${entryId}_${State.prestigeLevel || 0}`,
+                name: `${entryId.replace(/^iss_/, '').toUpperCase()}.bak`,
+                type: 'backup',
+                description: `Superseded module, replaced by your patch. "${entry.note.split('.')[0]}." Retained per policy.`,
+            });
+        }
         ui.screenPulse('rgba(66, 144, 125, 0.3)');
         ui.renderRealityPanel?.();
         return true;
@@ -1464,6 +1503,9 @@ const game = {
         this.bootstrapCertification();
         this.applyCertification(now);
         this.applyScars(now);
+        /* Open incidents and deferrals are derived the same way: normalised
+           from the save, then reconciled in place under scope 'incident'. */
+        if (this.incidentsLive()) Incidents.bootstrap(now);
 
         /* Reconcile the build against the log rather than inferring from which
            branch ran.
@@ -2548,6 +2590,8 @@ const game = {
         // included, since that is a record of the build that caused it.
         Modifiers.dropScope('build');
         Modifiers.commit(Date.now());
+        // Tickets and deferrals belong to the outgoing build too.
+        if (this.incidentsLive()) Incidents.clearForReboot(Date.now());
 
         /* Certify for the run about to start. Ordered after the drops and
            before the re-grant loop, because the grants below are only issued
@@ -3307,7 +3351,14 @@ window.render_game_to_text = () => {
             target: progress.target,
             complete: progress.completed
         } : null,
-        openApps: Object.keys(system.windows)
+        openApps: Object.keys(system.windows),
+        // The false-alarm flag is deliberately absent, as it is from the UI.
+        incidents: game.incidentsLive()
+            ? Incidents.state().open.map((inc) => ({
+                id: inc.id, severity: inc.severity, template: inc.template,
+                remaining: Math.ceil(inc.remaining), labour: inc.labour ? inc.labour.hits : null,
+            }))
+            : []
     });
 };
 

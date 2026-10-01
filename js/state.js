@@ -245,6 +245,27 @@ const State = {
         history: [],         // path per reboot, newest last — for the UI and the lore
     },
 
+    /* ── Incidents ────────────────────────────────────────────────────────
+       The maintenance loop. See js/incidents.js. Open tickets and deferrals
+       name a template and a severity; their effects are DERIVED into the
+       modifier registry under scope 'incident', never stored here as values.
+       Timers are attended seconds remaining, so nothing escalates while the
+       console is closed. Normalised on every boot — mergeInto does no type
+       checking. No migration needed: mergeInto deep-merges these defaults
+       under any save that predates them. */
+    incidents: {
+        open: [],             // { id, template, severity, remaining, sector, falseAlarm, alerted, prophet, prophetRemaining }
+        debts: [],            // { id, template, severity } — run-scoped, cleared on reboot
+        nextNumber: 1,
+        attendedSeconds: 0,   // lifetime attended play; the onboarding quiet period reads it
+        spawnClock: 0,
+        quietUntil: 0,
+        stats: {
+            filed: 0, resolved: 0, labour: 0, resources: 0, debt: 0, sacrifice: 0,
+            prophet: 0, falseAlarmsCleared: 0, outages: 0, outagesSacrificed: 0,
+        },
+    },
+
     // System Settings
     epoch: 0,
     startTime: Date.now(),
@@ -2707,6 +2728,17 @@ const AchievementList = [
       reward: () => { State.achievementBonuses.startingResources *= 1.10; }, flavor: 'Your signature is on every reboot.' },
     { id: 'ACH-032', name: 'Stability Engineer', tier: 'Platinum', condition: () => State.achievementProgress.stability_metric >= 0.95,
       reward: () => { State.achievementBonuses.globalGain *= 1.10; }, flavor: "You made a gentle universe. It's suspicious." },
+
+    // INCIDENTS (4 achievements) — js/incidents.js. No rewards: the loop is
+    // the reward, and a bonus here would be an economy change.
+    { id: 'ACH-033', name: 'First Responder', tier: 'Bronze', condition: () => (State.incidents?.stats?.resolved || 0) >= 1,
+      reward: null, flavor: 'Ticket closed. Root cause: the universe.' },
+    { id: 'ACH-034', name: 'No Fault Found', tier: 'Silver', condition: () => (State.incidents?.stats?.falseAlarmsCleared || 0) >= 3,
+      reward: null, flavor: 'You read the ticket. Nobody reads the ticket.' },
+    { id: 'ACH-035', name: 'Hands-On Divinity', tier: 'Gold', condition: () => (State.incidents?.stats?.labour || 0) >= 15,
+      reward: null, flavor: 'Fifteen faults, fifteen times the Operator came down to the floor.' },
+    { id: 'ACH-S-009', name: 'Burnt Offering', tier: 'Secret', condition: () => (State.incidents?.stats?.outagesSacrificed || 0) >= 1,
+      reward: null, flavor: 'You fed a deleted file to an outage. It accepted.' },
 
     // SECRET (8 achievements)
     { id: 'ACH-S-001', name: 'I Can Fix Her', tier: 'Secret', condition: () => State.achievementProgress.attempt_repair_sector7g >= 1,
