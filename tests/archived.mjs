@@ -213,6 +213,16 @@ check('hostile history shapes are validated, not defaulted', () => {
     assert.equal(env.State.reality.channel, 'stable',
         'a save cannot select Archived before reboot 12');
     assert.equal(env.State.achievementProgress.view_archived_branch, 0);
+
+    // An integer pick is still only a pick if it names an original on file.
+    for (const pick of [9, 4.5, -1]) {
+        env.State.reality.replay = pick;
+        env.game.normaliseArchive();
+        assert.equal(env.State.reality.replay, null, `a pick of ${pick} survived normalisation`);
+    }
+    env.State.reality.replay = 4;
+    env.game.normaliseArchive();
+    assert.equal(env.State.reality.replay, 4, 'a valid pick was thrown away');
 });
 
 /* ── The replay ────────────────────────────────────────────────────────── */
