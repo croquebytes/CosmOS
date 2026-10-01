@@ -4981,3 +4981,378 @@ tr.is-focus td { background: rgba(212, 85, 58, 0.08); }
 @media (prefers-reduced-motion: reduce) {
     .breakdown-panel { animation: none; }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   INCIDENTS — js/incidents.js, drawn by ui.renderIncidentTriage.
+
+   The queue lives inside Task Manager, which is a LIGHT vellum surface, and
+   the SEV-1 dialog is a .system-dialog, which is light too — so both read in
+   --cos-ink / --cos-ink-dim. The dark-panel inks are only for the two pieces
+   that sit on iron: the tray lamp and the operator panel line. The one dark
+   object inside the vellum is the stabilisation scope, on purpose: it is an
+   instrument, and instruments are glass.
+   ════════════════════════════════════════════════════════════════════════ */
+
+.taskmgr-incidents {
+    margin-bottom: 6px;
+    padding: 7px 8px 8px;
+    border: 2px solid;
+    border-color: var(--cos-abyss) var(--cos-iron-600) var(--cos-iron-600) var(--cos-abyss);
+    background: var(--cos-vellum-100);
+    color: var(--cos-ink);
+    max-height: 58%;
+    overflow-y: auto;
+    flex: none;
+}
+
+.taskmgr-incidents[hidden] { display: none; }
+
+.incident-queue-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+}
+
+.incident-queue-count {
+    color: var(--cos-ink-dim);
+    font: 10px var(--cos-font-machine);
+}
+
+.incident-queue-note {
+    margin: 5px 0 7px;
+    color: var(--cos-ink-dim);
+    font: italic 11px/1.45 var(--cos-font-display);
+}
+
+.incident-row {
+    margin-top: 6px;
+    padding: 7px 9px 8px;
+    border: 1px solid var(--cos-vellum-400);
+    border-left: 3px solid var(--cos-brass-500);
+    background: rgba(180, 145, 74, 0.07);
+}
+
+.incident-row.sev-2 {
+    border-left-color: var(--cos-alarm);
+    background: rgba(212, 85, 58, 0.06);
+}
+
+/* An outage breathes. Slowly — a lamp on a console, not a siren. */
+.incident-row.sev-1 {
+    border-left-color: var(--cos-alarm);
+    background: rgba(212, 85, 58, 0.11);
+    animation: incidentOutage 2.4s ease-in-out infinite;
+}
+
+.incident-row.has-prophet {
+    border-left-color: var(--cos-verd-500);
+    background: rgba(66, 144, 125, 0.08);
+}
+
+@keyframes incidentOutage {
+    0%, 100% { box-shadow: inset 3px 0 0 rgba(212, 85, 58, 0); }
+    50% { box-shadow: inset 3px 0 0 rgba(212, 85, 58, 0.55); }
+}
+
+.incident-row-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    font: 10px var(--cos-font-machine);
+}
+
+.incident-row.sev-3 .incident-sev {
+    border-color: var(--cos-brass-700);
+    color: var(--cos-brass-700);
+}
+
+.incident-process {
+    color: var(--cos-ink);
+    font-weight: bold;
+}
+
+.incident-status {
+    color: var(--cos-alarm);
+    font-weight: bold;
+}
+
+.incident-row.has-prophet .incident-status { color: var(--cos-verd-600); }
+
+.incident-clock {
+    margin-left: auto;
+    color: var(--cos-ink-dim);
+    font-variant-numeric: tabular-nums;
+}
+
+.incident-row.sev-1 .incident-clock {
+    color: var(--cos-alarm);
+    font-weight: bold;
+}
+
+.incident-title {
+    margin-top: 5px;
+    color: var(--cos-ink);
+    font: 700 13px/1.3 var(--cos-font-display);
+}
+
+.incident-id {
+    margin-right: 4px;
+    color: var(--cos-ink-dim);
+    font: 10px var(--cos-font-machine);
+}
+
+.incident-desc {
+    margin: 3px 0 0;
+    color: var(--cos-ink);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.incident-effect {
+    margin: 3px 0 0;
+    color: var(--cos-ink-dim);
+    font: 10px var(--cos-font-machine);
+}
+
+.incident-actions {
+    margin-top: 7px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+/* A struck vellum key, bevelled the way the rest of the chrome is. */
+.incident-btn {
+    padding: 4px 9px;
+    background: var(--win-bg);
+    border: 2px solid;
+    border-color: var(--win-border-light) var(--win-border-dark) var(--win-border-dark) var(--win-border-light);
+    color: var(--cos-ink);
+    font: bold 10px var(--cos-font-machine);
+    cursor: pointer;
+}
+
+.incident-btn:hover:not(:disabled) { background: var(--cos-brass-100); }
+
+.incident-btn:active:not(:disabled) {
+    border-color: var(--win-border-dark) var(--win-border-light) var(--win-border-light) var(--win-border-dark);
+}
+
+.incident-btn:disabled {
+    color: var(--cos-ink-dim);
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.incident-btn:focus-visible {
+    outline: 1px dotted var(--cos-ink);
+    outline-offset: -4px;
+}
+
+.incident-btn.is-labour { background: linear-gradient(var(--cos-brass-100), var(--cos-brass-300)); }
+.incident-btn.is-debt { color: var(--cos-brass-900); }
+.incident-btn.is-sacrifice { color: var(--cos-ichor-700); }
+
+/* ── The stabilisation scope ── */
+.incident-labour {
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid var(--cos-vellum-500);
+    background: rgba(255, 255, 255, 0.35);
+}
+
+.labour-track {
+    position: relative;
+    height: 22px;
+    overflow: hidden;
+    border: 2px solid;
+    border-color: var(--cos-abyss) var(--cos-iron-500) var(--cos-iron-500) var(--cos-abyss);
+    background:
+        repeating-linear-gradient(90deg, rgba(138, 200, 182, 0.08) 0 1px, transparent 1px 10%),
+        radial-gradient(ellipse at 50% 120%, rgba(144, 99, 219, 0.28), transparent 70%),
+        var(--cos-abyss);
+}
+
+.labour-band {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-left: 1px solid var(--cos-verd-300);
+    border-right: 1px solid var(--cos-verd-300);
+    background: linear-gradient(180deg, rgba(138, 200, 182, 0.85), rgba(66, 144, 125, 0.6));
+    box-shadow: 0 0 12px rgba(138, 200, 182, 0.7), inset 0 0 8px rgba(244, 239, 228, 0.35);
+}
+
+.labour-marker {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 3px;
+    margin-left: -1px;
+    background: var(--cos-brass-100);
+    box-shadow: 0 0 6px var(--cos-brass-300), 0 0 14px rgba(222, 196, 131, 0.6);
+}
+
+.labour-track.is-hit { animation: labourHit 260ms ease-out; }
+.labour-track.is-miss { animation: labourMiss 260ms ease-out; }
+
+@keyframes labourHit {
+    0% { box-shadow: inset 0 0 0 40px rgba(138, 200, 182, 0.35); }
+    100% { box-shadow: inset 0 0 0 40px rgba(138, 200, 182, 0); }
+}
+
+@keyframes labourMiss {
+    0% { box-shadow: inset 0 0 0 40px rgba(212, 85, 58, 0.45); transform: translateX(-2px); }
+    50% { transform: translateX(2px); }
+    100% { box-shadow: inset 0 0 0 40px rgba(212, 85, 58, 0); transform: none; }
+}
+
+.labour-readout {
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.labour-pips { display: flex; flex-wrap: wrap; gap: 3px; }
+
+.labour-pips i {
+    width: 9px;
+    height: 9px;
+    border: 1px solid var(--cos-ink-dim);
+    background: var(--cos-vellum-100);
+}
+
+.labour-pips i.is-set {
+    border-color: var(--cos-verd-700);
+    background: var(--cos-verd-500);
+    box-shadow: 0 0 4px rgba(66, 144, 125, 0.6);
+}
+
+.labour-align { min-width: 92px; padding: 6px 14px; }
+
+.labour-hint {
+    margin: 5px 0 0;
+    color: var(--cos-ink-dim);
+    font: 10px var(--cos-font-machine);
+}
+
+/* ── Tray lamp: sits on iron, so dark-panel inks ── */
+.tray-incident-led {
+    margin-right: 10px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: none;
+    border: 0;
+    color: var(--cos-ink-inv-dim);
+    font: 10px var(--cos-font-machine);
+    letter-spacing: 0.07em;
+    cursor: pointer;
+}
+
+.tray-incident-led[hidden] { display: none; }
+
+.led-lamp {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--cos-iron-600);
+    box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.6);
+}
+
+.tray-incident-led.is-lit { color: #f2b8a8; }
+
+.tray-incident-led.is-lit .led-lamp {
+    background: var(--cos-alarm);
+    box-shadow: 0 0 6px var(--cos-alarm), 0 0 12px rgba(212, 85, 58, 0.5);
+}
+
+.tray-incident-led.is-outage .led-lamp { animation: blink 1s steps(2, start) infinite; }
+
+/* ── Operator panel line: also on iron ── */
+.operator-incidents {
+    width: 100%;
+    margin-top: 10px;
+    padding: 6px 9px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    background: rgba(16, 26, 37, 0.8);
+    border: 1px solid #405369;
+    color: #9eb0c0;
+    font: bold 10px 'Courier New', monospace;
+    cursor: pointer;
+}
+
+.operator-incidents[hidden] { display: none; }
+.operator-incidents.is-alarm { border-color: var(--cos-alarm); color: #f2b8a8; }
+.operator-incidents.is-alarm .operator-kicker { color: #f2b8a8; }
+
+/* ── The unsolicited SEV-1 dialog: light vellum ── */
+.incident-alert { max-width: 540px; }
+.incident-alert-body { padding: 16px 18px 4px; color: var(--cos-ink); }
+
+.incident-alert-stamps {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+}
+
+.incident-alert-id {
+    color: var(--cos-ink-dim);
+    font: 10px var(--cos-font-machine);
+}
+
+.incident-alert-body h2 {
+    margin: 10px 0 8px;
+    color: var(--cos-ink);
+    font: 700 19px/1.25 var(--cos-font-display);
+}
+
+.incident-alert-body p {
+    margin: 0 0 8px;
+    color: var(--cos-ink);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.incident-alert-impact {
+    padding: 8px 10px;
+    border-left: 3px solid var(--cos-alarm);
+    background: rgba(212, 85, 58, 0.09);
+}
+
+.incident-alert-body .incident-alert-advice { color: var(--cos-ink-dim); }
+
+.incident-alert-actions { flex-wrap: wrap; }
+
+.incident-alert-actions button[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* ── Recycle Bin artifacts ── */
+.recyclebin-item.item-artifact { border-left: 3px solid var(--cos-brass-500); }
+
+@media (max-width: 520px) {
+    .taskmgr-incidents { max-height: none; }
+    .incident-clock { margin-left: 0; width: 100%; }
+    .incident-actions .incident-btn { flex: 1 1 100%; text-align: left; }
+    .incident-alert-actions button { flex: 1 1 100%; }
+    /* The ritual first: on a phone the primary is the one under the thumb. */
+    .incident-alert-actions .dialog-primary { order: -1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .incident-row.sev-1,
+    .tray-incident-led.is-outage .led-lamp,
+    .labour-track.is-hit,
+    .labour-track.is-miss { animation: none; }
+}

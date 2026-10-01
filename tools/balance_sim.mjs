@@ -69,7 +69,7 @@ function makeSandbox() {
 }
 
 const ctx = makeSandbox();
-for (const file of ['js/state.js', 'js/modifiers.js', 'js/reality.js', 'js/game.js']) {
+for (const file of ['js/state.js', 'js/modifiers.js', 'js/reality.js', 'js/incidents.js', 'js/game.js']) {
     vm.runInContext(readFileSync(resolve(ROOT, file), 'utf8'), ctx, { filename: file });
 }
 
@@ -146,6 +146,20 @@ const PUSH = Number((args.find((a) => a.startsWith('--push')) || '').split('=')[
    It is the only policy under which the cascade is currently reachable, and
    it exists so that is measurable rather than assumed. */
 const NO_PATCH = args.includes('--no-patch');
+
+/* Incidents are OFF in the simulator, deliberately and for now.
+
+   The loop is attention-driven — labour, payment or deferral, chosen by
+   reading a ticket — and the simulator has no policy for any of it. A
+   simulated player who never triages measures an economy with permanent
+   outages; one who always pays measures a resource sink nobody has tuned.
+   Either would move the golden master for a reason that is not the economy.
+
+   The file is still LOADED so the switch below is the only thing standing
+   between the simulator and the feature: when the storage/prestige re-tune
+   lands, the lead adds an incident policy here (spawn at the real rate,
+   resolve by a chosen rule) and recaptures, on purpose and in one commit. */
+game.incidentsEnabled = false;
 
 // The registry has to be seeded before any rate is read, exactly as
 // game.initializeSession() does it in the browser.
