@@ -5732,6 +5732,93 @@ tr.is-focus td { background: rgba(212, 85, 58, 0.08); }
     font-size: 10px;
 }
 
+/* ── The dealer's strip: Fate, the house ──
+   A sunken plate under the toolbar, the same bevel as the status panes. Its
+   height is FIXED so a line arriving never moves a card under the pointer;
+   long lines clamp, and the full text is in the title. Ink on vellum. */
+.pt-dealer {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    height: 42px;
+    margin: 6px 8px 0;
+    padding: 3px 10px 3px 4px;
+    border: 1px solid;
+    border-color: var(--cos-vellum-500) var(--cos-vellum-100) var(--cos-vellum-100) var(--cos-vellum-500);
+    background: linear-gradient(180deg, var(--cos-vellum-200), var(--cos-vellum-100));
+    overflow: hidden;
+    cursor: default;
+}
+
+.pt-dealer[hidden] {
+    display: none;
+}
+
+.pt-dealer-plate {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 0 8px 0 4px;
+    border-right: 1px solid var(--cos-vellum-500);
+    box-shadow: 1px 0 0 var(--cos-vellum-100);
+    color: var(--cos-brass-700);
+    font: bold 8px var(--cos-font-machine);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.pt-dealer-sigil {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+}
+
+.pt-dealer-line {
+    display: -webkit-box;
+    margin: 0;
+    overflow: hidden;
+    color: var(--cos-ink);
+    font: italic 13px/1.3 var(--cos-font-display);
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.pt-dealer-aside {
+    color: var(--cos-ink-dim);
+    font: 10px var(--cos-font-machine);
+    font-style: normal;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.pt-dealer.is-fresh .pt-dealer-line {
+    animation: pt-dealer-in 0.45s ease-out;
+}
+
+/* After a while the line stays, dimmed, rather than vanishing: she said it. */
+.pt-dealer.is-stale .pt-dealer-line {
+    color: var(--cos-ink-dim);
+}
+
+/* A lore whisper: the house leans in, and the light changes. */
+.pt-dealer.is-whisper {
+    background: linear-gradient(180deg, var(--cos-vellum-200), color-mix(in srgb, var(--cos-ichor-300) 22%, var(--cos-vellum-100)));
+}
+
+.pt-dealer.is-whisper .pt-dealer-plate,
+.pt-dealer.is-whisper .pt-dealer-line {
+    color: var(--cos-ichor-700);
+}
+
+@keyframes pt-dealer-in {
+    0% { opacity: 0; transform: translateX(-6px); }
+    100% { opacity: 1; transform: none; }
+}
+
 /* ── The well ── */
 .pt-felt {
     position: relative;
@@ -6116,10 +6203,15 @@ body.performance-mode .pt-flourish {
     display: none;
 }
 
+body.performance-mode .pt-dealer.is-fresh .pt-dealer-line {
+    animation: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .pt-flourish { display: none; }
     .pt-banner.is-won { animation: none; }
     button.pt-card:hover { transform: none; }
+    .pt-dealer.is-fresh .pt-dealer-line { animation: none; }
 }
 
 @media (max-width: 520px) {
@@ -6136,6 +6228,20 @@ body.performance-mode .pt-flourish {
     .pt-felt {
         margin: 4px;
         padding: 10px 6px 8px;
+    }
+
+    .pt-dealer {
+        margin: 4px 4px 0;
+        padding-right: 6px;
+        gap: 6px;
+    }
+
+    .pt-dealer-plate b {
+        display: none;
+    }
+
+    .pt-dealer-line {
+        font-size: 12px;
     }
 
     .pt-lower {

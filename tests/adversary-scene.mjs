@@ -370,22 +370,20 @@ check('exactly the known-dead bark lines are unreachable', () => {
        Pinned by ID rather than asserted empty, because these nine are
        deliberately dead: a TENTH line silently falling out of the hook table
        must fail, and re-hooking one of these must force this list to be
-       pruned. */
+       pruned — as ADV-BARK-04, ADV-L-15 and ADV-L-16 were, when Patience.exe
+       became Fate's table (tests/fate.mjs fires them from that table). */
     const env = boot();
     const hooked = new Set(env.AdversaryHookedTriggers);
     const dead = env.AdversaryBarks.filter((b) => !hooked.has(b.trigger)).map((b) => b.id);
     sameSet(dead, [
-        'ADV-BARK-04',  // casino_enter — no Casino app
         'ADV-L-01',     // idle_60s — deliberately not hooked, see the policy
         'ADV-L-03',     // toggle_music — the game ships silent
         'ADV-L-05',     // warning_popup — no such event
-        'ADV-L-15',     // casino_win_streak_5 — no Casino app
-        'ADV-L-16',     // casino_lose_streak_5 — no Casino app
         'ADV-L-18',     // seraph_self_awareness_event — no such event
         'ADV-L-19',     // void_depth_50 — no such event
         'ADV-L-20',     // attempt_resign — no such event
     ], 'the set of unreachable bark lines changed');
-    assert.equal(env.AdversaryBarks.length - dead.length, 16,
+    assert.equal(env.AdversaryBarks.length - dead.length, 19,
         'the reachable-line count moved; update the tally in js/state.js');
 });
 
@@ -393,7 +391,7 @@ check('the declared hook list matches what game.js really calls', () => {
     /* Guards the honesty of AdversaryHookedTriggers: it is hand-maintained, so
        a hook added without updating it, or removed without pruning it, would
        otherwise pass the two set-equality tests above while being a lie. */
-    const src = ['js/game.js', 'js/ui.js', 'js/system.js', 'js/state.js']
+    const src = ['js/game.js', 'js/ui.js', 'js/system.js', 'js/state.js', 'js/solitaire.js']
         .map((f) => readFileSync(resolve(ROOT, f), 'utf8')).join('\n');
     const called = new Set();
     const re = /triggerAdversaryBark\(\s*'([a-z0-9_]+)'/g;
