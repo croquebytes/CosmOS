@@ -1163,7 +1163,7 @@ ${row('Breakdown', ['praise', 'offerings', 'souls', 'darkness', 'shadows', 'echo
                 reboot: State.prestigeLevel, rebootCount: State.achievementProgress.prestige_count,
                 channel: State.reality.channel, instability: Number((State.reality.instability || 0).toFixed(2)),
                 cascadeTier: State.reality.cascadeTier, standing: State.adversary.standing,
-                relationship: safely(() => game.adversaryRelationship()), finaleBlocker: safely(() => game.finaleBlocker()),
+                relationship: safely(() => game.adversaryRelationship()), nudgeTotals: State.adversary.nudgeTotals, finaleBlocker: safely(() => game.finaleBlocker()),
                 endings: (State.endings.history || []).map((e) => e.ending), archivedShips: State.endings.archivedShips,
             };
             core.apps = State.unlockedApps.slice();

@@ -1,8 +1,11 @@
 # NULL.OPERATOR's standing: where it actually lands at the finale gate
 
-**Written 2026-10-02.** A recheck of the drift the handoff was worried about ("toward
-hostile, now that Mail and Choir add levers"). It is not drifting toward hostile. It
-**saturates in both directions**, and the opening answer is erased either way.
+**Written 2026-10-02. Status: built** (lifetime caps per act, ship drift capped at -6;
+`game.ADVERSARY_NUDGE_CAPS`, `State.adversary.nudgeTotals`, `tests/standing.mjs`). A recheck
+of the drift the handoff was worried about ("toward hostile, now that Mail and Choir add
+levers"). It was not drifting toward hostile. It **saturated in both directions**, and the
+opening answer was erased either way. The tables below up to "The rule, as built" are the
+game **before** the fix.
 
 `tools/standing_sim.mjs` drives the real game code (`performPrestige`, the archived replay,
 `nudgeAdversaryStanding` with its per-reason cooldown, `Mail.reply`) through a full climb to
@@ -27,7 +30,7 @@ finale is presented, so only standing at the gate matters.
 | Mail `null-01`, `null-02` | -1 / 0 / +1 each | once per message (`end-curious` arrives after an ending) |
 | Execute the patch | +5 | exempt, once ever |
 
-## What the sim found (current rules)
+## What the sim found (before the fix)
 
 Final standing and band at reboot 14:
 
@@ -49,10 +52,12 @@ Final standing and band at reboot 14:
 - Weakening the drift or the cooldown does not help: "each act once per reboot", "-1 every
   second ship" and "no ship drift" all keep the cliff (run `node tools/standing_sim.mjs --curve`).
 
-## A rule that does
+## The rule, as built
 
-Cap each *act* for the whole run, so what you did counts and how often does not, and cap the
-ship drift at -6:
+Cap each *act* for the whole save, so what you did counts and how often does not, and cap the
+ship drift at -6 (`game.ADVERSARY_NUDGE_CAPS`; what each kind of act has added so far is
+`State.adversary.nudgeTotals`, a schema default with no `SAVE_VERSION` bump, read defensively
+because a save is pasted text):
 
 | lever | lifetime cap |
 |---|---|
@@ -63,7 +68,9 @@ ship drift at -6:
 | ship drift | -6 in total |
 | patch, archived replay, mail | as now |
 
-Final standing at reboot 14 under that rule:
+A spent act moves nothing **and burns no cooldown**; a delta that only partly fits is trimmed,
+not refused; the patch, the archived replay and Mail are outside the table. Final standing at
+reboot 14 under the rule, as built and confirmed by `tests/standing.mjs`:
 
 | Play style | from OP-A (-4) | from OP-B (0) | from OP-C (+4) |
 |---|---|---|---|
@@ -79,15 +86,18 @@ ship cap (-4) moves the ordinary player from OP-B from curious to complicit and 
 and cold rows hostile (`--curve` has the full sweep), so the -6 cap is the one that gives
 curious a real place.
 
-**Needs a decision before it is built:** it changes what repeating an act is worth, adds
-per-lever counters to `State.adversary` (a schema default, no `SAVE_VERSION` bump), and moves
-the caps/cooldowns that `tests/endings.mjs`, `tests/mail.mjs` and `tests/choir.mjs` lean on.
-Nothing in the economy reads standing, so `test:golden` is unaffected.
+It changes what repeating an act is worth, and the existing suites that lean on the cooldown
+(`tests/adversary-scene.mjs`, `tests/mail.mjs`, `tests/choir.mjs`, `tests/endings.mjs`) are
+unchanged and green. Nothing in the economy reads standing, so `test:golden` is unaffected.
+Notepad and the Void are exhausted in the first three reboots, so an ordinary player reads
+as complicit around reboot 3 and settles back toward curious as the ships drift; only the
+standing at the gate matters, because the band is locked when the finale is presented.
 
 ## Reproduce
 
 ```bash
-node tools/standing_sim.mjs                 # the tables above, current rules
+node tools/standing_sim.mjs                 # before the caps, then as shipped
+node tests/standing.mjs                     # the caps, persistence, and the climb, pinned
 node tools/standing_sim.mjs --variants      # every rule, per play style
 node tools/standing_sim.mjs --curve         # standing along the cold-to-warm dial, per rule
 node tools/standing_sim.mjs --trace=ordinary:OP-B   # standing after each ship
