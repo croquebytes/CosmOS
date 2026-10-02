@@ -48,4 +48,7 @@ Constraints: pixel art throughout; no text, no letters, no captions, no watermar
 | t6 shot4 | 8.5→9 | MIRROR,SHEET | dark featureless silhouette standing exactly where the Instructor stood, void core behind, corrupted | silhouette motionless, tilts head a frame early, pixel rows shift | small push-in |
 | t6 shot5 | 8.5→9 | MIRROR,CORE | silhouette close, leaning toward lens, background rings drifting off-axis | leans toward camera, symmetry breaks | small pull back |
 
-> **Cost approval required.** Before resuming any generation from this plan, quote the batch (jobs x estimated units; a Seedance 2.5 720p 8s clip is about 1,370 units) to the user and wait for explicit approval of that cost. See the user decision of 2026-10-02.
+> **Before resuming generation from this plan (user rule, 2026-10-02):**
+> 1. Ask which model to use, with the price per job for each option. Do not default to the most expensive: Seedance 2.5 at 720p is about 1,370 units per 8s clip. Offer cheaper or draft tiers.
+> 2. Generate ONE shot as a test and get the user's approval of the direction.
+> 3. Quote the batch (number of jobs × units per job) and wait for explicit approval of that cost. Give any agent a credit cap equal to the approved amount.
