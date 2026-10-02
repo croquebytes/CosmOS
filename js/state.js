@@ -487,6 +487,26 @@ const State = {
         archivedShips: 0    // archived replays shipped — the gate's measure of depth
     },
 
+    /* === CHOIR (js/choir.js) ===
+       The status board. Posts are indexes into content — an id, a kind, a
+       reboot, a time and a few validated ids — and their text is
+       regenerated from the tables on every render, so a content edit
+       reaches a feed already on disk. `wm` is the watch's watermark over
+       State; `pending` holds events recorded while the player was away.
+       Normalised by Choir.normalise on first read. Added without a
+       SAVE_VERSION bump: mergeInto deep-merges these defaults. */
+    choir: {
+        seed: 0,
+        posts: [],
+        pending: [],
+        wm: { init: false },
+        lastReadAt: 0,
+        offer: null,
+        blessings: 0,
+        amb: 0,
+        ambN: 0
+    },
+
     // === TASK MANAGER ===
     taskManager: {
         opened: false,
@@ -3106,6 +3126,16 @@ const AchievementList = [
     { id: 'ACH-041', name: 'Every Branch Signed', tier: 'Platinum',
       condition: () => game.endingsSeen().length >= 3,
       reward: null, flavor: 'Fought him, shared him, became him. All three handovers on file.' },
+
+    // CHOIR (2 achievements) — js/choir.js. A blessing is a like, not a
+    // lever: no rewards, and the count only moves the first time a post is
+    // blessed, so toggling cannot farm it.
+    { id: 'ACH-042', name: 'Hallelujah', tier: 'Bronze',
+      condition: () => Number.isInteger(State.choir?.blessings) && State.choir.blessings >= 1,
+      reward: null, flavor: 'You blessed a post. Somewhere a Throne felt seen.' },
+    { id: 'ACH-043', name: 'Amen Corner', tier: 'Silver',
+      condition: () => Number.isInteger(State.choir?.blessings) && State.choir.blessings >= 25,
+      reward: null, flavor: 'Twenty-five blessings. The Choir has started saving you a seat.' },
 
     // SECRET (8 achievements)
     { id: 'ACH-S-001', name: 'I Can Fix Her', tier: 'Secret', condition: () => State.achievementProgress.attempt_repair_sector7g >= 1,

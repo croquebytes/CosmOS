@@ -3321,6 +3321,11 @@ const ui = {
         if (mediaIcon) {
             mediaIcon.style.display = State.unlockedApps.includes('mediaplayer') ? 'block' : 'none';
         }
+
+        const choirIcon = document.getElementById('icon-choir');
+        if (choirIcon) {
+            choirIcon.style.display = State.unlockedApps.includes('choir') ? 'block' : 'none';
+        }
     },
 
     // === DOCUMENT SYSTEM UI ===
