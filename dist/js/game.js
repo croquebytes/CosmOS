@@ -3365,98 +3365,151 @@ const game = {
     },
 
     // === CASINO HOST BARK SYSTEM ===
-    selectHostBark(trigger, context = null) {
-        // Filter barks by trigger and context
-        let eligibleBarks = CasinoHostBarks.filter(bark => {
-            if (bark.trigger !== trigger) return false;
-            if (context && bark.context !== context) return false;
-            return this.canBarkPlay(bark);
-        });
+    /* Fate — "the house" — deals Patience.exe. There is no casino venue
+       (DESIGN_DIRECTION.md §7 cut it); the CasinoHostBarks are spoken from
+       inside the Patience window, and PatienceDealer in js/solitaire.js maps
+       each one to a real moment at that table. This section is only the
+       router: eligibility, cooldowns, weighting and the record of what was
+       said. It never grants anything — CAS-HOST-042 declares an `effect`
+       (five Fate Tokens) and it is deliberately never executed here. */
+    HOST_GLOBAL_COOLDOWN_MS: 2000,
 
-        if (eligibleBarks.length === 0) {
-            return null; // No barks available
-        }
-
-        // Weighted random selection
-        const totalWeight = eligibleBarks.reduce((sum, bark) => sum + (bark.weight || 1), 0);
-        let random = Math.random() * totalWeight;
-
-        for (const bark of eligibleBarks) {
-            random -= (bark.weight || 1);
-            if (random <= 0) {
-                return bark;
-            }
-        }
-
-        return eligibleBarks[0]; // Fallback
+    /* State.settings.dealerChatter. A save is pasted text decoded straight
+       into State, so anything that is not a real boolean — "false", 0, null —
+       is put back to the schema default rather than read for truthiness. */
+    dealerChatterOn() {
+        const s = State.settings;
+        if (!s || typeof s !== 'object' || Array.isArray(s)) return true;
+        if (typeof s.dealerChatter !== 'boolean') s.dealerChatter = true;
+        return s.dealerChatter;
     },
 
-    canBarkPlay(bark) {
-        const now = Date.now();
+    /* State.casino.hostDialogue, normalised by type and range. A cooldown
+       stamped in the future would mute a line forever (or the whole dealer,
+       for lastBarkTime), so timestamps are clamped to now; ids the table
+       does not know are dropped; `x || default` would keep every truthy
+       wrong value, so nothing here is read that way. */
+    normaliseHostDialogue(raw, now = Date.now()) {
+        const plain = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+        const src = plain(raw) ? raw : {};
+        const stamp = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0) ? Math.min(v, now) : 0;
+        const count = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0) ? Math.floor(v) : 0;
+        const known = new Set(CasinoHostBarks.map((b) => b.id));
+        const whispers = new Set(CasinoHostBarks.filter((b) => b.context === 'LoreWhisper').map((b) => b.id));
 
-        // Check global cooldown (minimum 2 seconds between ANY barks)
-        const lastBarkTime = State.casino.hostDialogue.lastBarkTime || 0;
-        if (now - lastBarkTime < 2000) {
-            return false;
+        const barkCooldowns = {};
+        if (plain(src.barkCooldowns)) {
+            for (const [id, at] of Object.entries(src.barkCooldowns)) {
+                const t = stamp(at);
+                if (known.has(id) && t) barkCooldowns[id] = t;
+            }
         }
+        const loreWhispersHeard = [];
+        for (const id of Array.isArray(src.loreWhispersHeard) ? src.loreWhispersHeard : []) {
+            if (whispers.has(id) && !loreWhispersHeard.includes(id)) loreWhispersHeard.push(id);
+        }
+        return {
+            lastBarkId: known.has(src.lastBarkId) ? src.lastBarkId : null,
+            lastBarkTime: stamp(src.lastBarkTime),
+            barkCooldowns,
+            loreWhispersHeard,
+            // Added for Patience.exe: when the table was last in view, how
+            // many times it has been opened, and the run of rounds under par.
+            lastSeenAt: stamp(src.lastSeenAt),
+            visits: count(src.visits),
+            loseStreak: count(src.loseStreak),
+        };
+    },
 
-        // Check individual bark cooldown
-        const barkCooldowns = State.casino.hostDialogue.barkCooldowns || {};
-        const lastPlayed = barkCooldowns[bark.id] || 0;
-        const cooldownMs = (bark.cooldown || 10) * 1000;
+    /* Normalises once per object identity, like PatienceApp.ledger(): a save
+       load or import replaces the object, which is when it needs checking. */
+    _hostClean: null,
+    hostDialogue() {
+        if (!State.casino || typeof State.casino !== 'object' || Array.isArray(State.casino)) State.casino = {};
+        if (State.casino.hostDialogue !== this._hostClean || !this._hostClean) {
+            State.casino.hostDialogue = this.normaliseHostDialogue(State.casino.hostDialogue);
+            this._hostClean = State.casino.hostDialogue;
+        }
+        return State.casino.hostDialogue;
+    },
 
-        return (now - lastPlayed) >= cooldownMs;
+    selectHostBark(trigger, context = null, accept = null) {
+        return this.pickHostBark(CasinoHostBarks.filter((bark) => {
+            if (bark.trigger !== trigger) return false;
+            if (context && bark.context !== context) return false;
+            return !accept || accept(bark);
+        }));
+    },
+
+    /* Weighted pick among the lines that may play right now. */
+    pickHostBark(lines, now = Date.now()) {
+        const eligible = (lines || []).filter((bark) => this.canBarkPlay(bark, now));
+        if (!eligible.length) return null;
+        const totalWeight = eligible.reduce((sum, bark) => sum + (bark.weight || 1), 0);
+        let random = Math.random() * totalWeight;
+        for (const bark of eligible) {
+            random -= (bark.weight || 1);
+            if (random <= 0) return bark;
+        }
+        return eligible[0];
+    },
+
+    canBarkPlay(bark, now = Date.now()) {
+        // Dealer chatter off: the one gate every line, whispers included, passes.
+        if (!bark || !this.dealerChatterOn()) return false;
+        const memo = this.hostDialogue();
+
+        // Global: at least two seconds between ANY two of her lines.
+        if (now - memo.lastBarkTime < this.HOST_GLOBAL_COOLDOWN_MS) return false;
+
+        /* Per line, in seconds, as authored. This read `(bark.cooldown || 10)`,
+           which turned every authored cooldown of 0 into ten seconds. */
+        const seconds = (typeof bark.cooldown === 'number' && Number.isFinite(bark.cooldown) && bark.cooldown >= 0)
+            ? bark.cooldown : 10;
+        return (now - (memo.barkCooldowns[bark.id] || 0)) >= seconds * 1000;
     },
 
     triggerHostBark(trigger, context = null, forceDisplay = false) {
         const bark = this.selectHostBark(trigger, context);
+        return bark ? this.playHostBark(bark, forceDisplay) : null;
+    },
 
-        if (!bark) {
-            return null; // No bark available
-        }
-
-        // Update bark state
-        const now = Date.now();
-        State.casino.hostDialogue.lastBarkId = bark.id;
-        State.casino.hostDialogue.lastBarkTime = now;
-        State.casino.hostDialogue.barkCooldowns = State.casino.hostDialogue.barkCooldowns || {};
-        State.casino.hostDialogue.barkCooldowns[bark.id] = now;
+    /* Records and shows a line the caller has already chosen. */
+    playHostBark(bark, forceDisplay = false, now = Date.now()) {
+        if (!bark) return null;
+        const memo = this.hostDialogue();
+        memo.lastBarkId = bark.id;
+        memo.lastBarkTime = now;
+        memo.barkCooldowns[bark.id] = now;
 
         // Track lore whispers (rare lines). The data says 'LoreWhisper'; this
-        // compared against 'Lore Whisper' and so never recorded one, leaving
-        // DOC-NEW-12's `loreWhispersHeard.length >= 1` unlock permanently shut.
-        if (bark.context === 'LoreWhisper') {
-            State.casino.hostDialogue.loreWhispersHeard = State.casino.hostDialogue.loreWhispersHeard || [];
-            if (!State.casino.hostDialogue.loreWhispersHeard.includes(bark.id)) {
-                State.casino.hostDialogue.loreWhispersHeard.push(bark.id);
-            }
+        // once compared against 'Lore Whisper' and so never recorded one,
+        // leaving DOC-NEW-09's `loreWhispersHeard.length >= 1` unlock shut.
+        if (bark.context === 'LoreWhisper' && !memo.loreWhispersHeard.includes(bark.id)) {
+            memo.loreWhispersHeard.push(bark.id);
         }
 
-        // Display bark (will be handled by UI when casino is open)
-        if (forceDisplay || State.casino.visited) {
-            ui.displayHostBark(bark);
-        }
-
+        // She speaks at her table; State.casino.visited is set the first time
+        // it opens (PatienceDealer.onOpen).
+        if (forceDisplay || State.casino.visited === true) ui.displayHostBark(bark);
         return bark;
     },
 
-    /* Attempt to trigger a lore whisper (1% chance).
+    /* A lore whisper, at `chance` (1% unless the caller says otherwise).
 
-       This asked for trigger 'casino_idle_30s' and context 'Lore Whisper'; the
-       twelve whisper lines declare trigger 'casino_rare_whisper' and context
-       'LoreWhisper'. Both strings were wrong, so the filter in selectHostBark
-       matched zero lines every time.
-
-       The strings are fixed, but this function is STILL UNCALLED: there is no
-       Casino app, so all 80 CasinoHostBarks and all 12 lore whispers remain
-       unreachable, and State.casino.visited is never written (which also
-       leaves DOC-NEW-12 permanently locked). Hook this to a Casino idle tick
-       when that app exists. See the note beside AdversaryHookedTriggers in
-       js/state.js and the openApp trigger table in js/system.js. */
-    attemptLoreWhisper() {
-        if (Math.random() < 0.01) {
-            this.triggerHostBark('casino_rare_whisper', 'LoreWhisper');
-        }
+       This once asked for trigger 'casino_idle_30s' and context 'Lore
+       Whisper'; both strings were wrong, so it matched nothing — and it was
+       never called. PatienceDealer.onSettle now calls it as a round ends,
+       the only place it is called. Unheard whispers are preferred, so twelve
+       rare lines are a set that can be completed rather than a lottery that
+       repeats itself. Returns the line, or null. */
+    attemptLoreWhisper(chance = 0.01, now = Date.now()) {
+        if (!(Math.random() < chance)) return null;
+        const memo = this.hostDialogue();
+        const whispers = CasinoHostBarks.filter((b) => b.trigger === 'casino_rare_whisper');
+        const unheard = whispers.filter((b) => !memo.loreWhispersHeard.includes(b.id));
+        const bark = this.pickHostBark(unheard.length ? unheard : whispers, now);
+        return bark ? this.playHostBark(bark, false, now) : null;
     },
 
     /* ════════════════════════════════════════════════════════════════════
