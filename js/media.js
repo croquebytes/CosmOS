@@ -333,6 +333,9 @@ const MediaCatalog = (() => {
         loops,
         scene: (id) => (Object.prototype.hasOwnProperty.call(scenes, id) ? scenes[id] : null),
         loop: (id) => (Object.prototype.hasOwnProperty.call(loops, id) ? loops[id] : null),
+        /* Any other stem — Etherscape's web__<slug>__720 clips — as the same
+           three files. null for anything that could leave assets/video/. */
+        clip: (stem) => (typeof stem === 'string' && /^[a-z0-9][a-z0-9_-]{0,80}$/.test(stem) ? files(stem) : null),
         tape: (id) => tapes.find((t) => t.id === id) || null,
         SPEAKERS: { I: 'INSTRUCTOR', N: 'NULL.OPERATOR', S: '' },
     };
@@ -764,6 +767,48 @@ const media = (() => {
         return true;
     }
 
+    /* Mounts a clip (MediaCatalog.clip) at the end of `host`: its reel,
+       muted and looping, or — under reduced motion — its .webp poster as a
+       still. The attachLoop promises: probed first, so a dev server's
+       index.html is a miss; mounted only if installed and only while `host`
+       is still on the page; nothing at all, not even a probe, under
+       Cinematics: Off. Resolves true when it mounted. */
+    async function attachClip(host, stem, opts = {}) {
+        const entry = MediaCatalog.clip(stem);
+        if (!hasDOM || !entry || !host) return false;
+        if (settings().cinematics === 'off') return false;
+        if (host.querySelector('.media-clip')) return false;
+        const reduced = reducedMotion();
+        let el;
+        if (reduced) {
+            if (!(await probeUrl(entry.poster, 'image'))) return false;
+            el = document.createElement('img');
+            el.alt = '';
+            el.src = entry.poster;
+        } else {
+            const src = await sourceFor(entry);
+            if (!src) return false;
+            el = document.createElement('video');
+            Object.assign(el, { src, muted: true, loop: true, autoplay: true, playsInline: true });
+            el.setAttribute('muted', '');
+            el.setAttribute('playsinline', '');
+            if (resolved.get(entry.poster) === true) el.poster = entry.poster;
+        }
+        if (!host.isConnected || host.querySelector('.media-clip')) return false;
+        const frame = document.createElement('div');
+        frame.className = `media-clip${reduced ? ' is-still' : ''}`;
+        if (opts && opts.label) {
+            frame.setAttribute('role', 'img');
+            frame.setAttribute('aria-label', String(opts.label));
+        } else {
+            frame.setAttribute('aria-hidden', 'true');
+        }
+        frame.appendChild(el);
+        host.appendChild(frame);
+        if (!reduced) el.play?.()?.catch?.(() => {});
+        return true;
+    }
+
     /* ── The cinematic stage ──────────────────────────────────────────── */
     let current = null;   // { skip(), id } while a reel is on screen
 
@@ -1027,6 +1072,7 @@ const media = (() => {
         queued: () => director.queued(),
         deferUntilClear: (fn) => director.deferUntilClear(fn),
         attachLoop,
+        attachClip,
         skip: () => { if (current) current.skip(); },
 
         probeUrl,
