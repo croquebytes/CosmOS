@@ -858,6 +858,7 @@ const PatienceDealer = {
     setChatter(on) {
         if (!State.settings || typeof State.settings !== 'object') return;
         State.settings.dealerChatter = on === true;
+        if (!State.settings.dealerChatter && typeof fateVoice !== 'undefined' && fateVoice) fateVoice.stop();
         if (typeof PatienceView !== 'undefined') PatienceView.syncDealer();
         this.syncSettingsUI();
         if (typeof State.save === 'function') State.save();
@@ -974,6 +975,7 @@ const PatienceView = {
         clearTimeout(this.staleTimer);
         this.staleTimer = null;
         PatienceDealer.onClose();
+        if (typeof fateVoice !== 'undefined' && fateVoice) fateVoice.stop();   // the table is gone; so is her line
     },
 
     /* ── The dealer's strip ──────────────────────────────────────────────
@@ -1026,6 +1028,8 @@ const PatienceView = {
         clearTimeout(this.staleTimer);
         this.staleTimer = setTimeout(() => strip.classList.add('is-stale'), 15000);
         if (whisper) this.cue('eventAppear');
+        // Her voice, when vo__fate__<id> is installed (js/audiofiles.js).
+        if (typeof fateVoice !== 'undefined' && fateVoice) fateVoice.speak(bark);
         return true;
     },
 

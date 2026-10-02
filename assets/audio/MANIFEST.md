@@ -9,22 +9,57 @@ here is optional: with it absent the game behaves exactly as it did without it.
 |---|---|---|
 | Music | `music__<id>.ogg` + `.mp3` | `music__primordial-shift.ogg` |
 | Voice | `vo__<speaker>__<line-id>.ogg` + `.mp3` | `vo__instructor__t1-s2-0.ogg` |
+| Foley | `sfx__<cue>.ogg` + `.mp3` | `sfx__purchase.ogg` |
 
 - **Music ids** are the keys of `AudioFiles.MUSIC`: `primordial-shift` (M1),
   `void-breach` (M2), `cascade` (M3), `release-day` (M4), `fates-table` (M5),
   `media-player` (M6), `mirror-login` (M7), `ending-hostile` / `ending-curious` /
   `ending-complicit` (M8–M10), `boot` (M11). Every id is already wired; dropping
   its file in is all it takes.
-- **Speakers** are `instructor` (caption speaker `I`), `null-operator` (`N`) and
-  `sys` (`S`); later `fate`.
-- **Tape line ids** are `<tape>-s<shot>-<caption>`: the tape id from
-  `MediaCatalog.tapes`, the 1-based shot number (as in the shot code `T1-S2`),
-  and the 0-based index of the caption within that shot. The id names a place,
-  not the words: if a caption is reworded, regenerate its file and update its
-  text below. `tests/audio-files.mjs` fails when the text here and the caption
-  disagree.
+- **Speakers** are `instructor` (caption speaker `I`), `null-operator` (`N` on
+  the tapes, `ADV` in the scenes), `sys` (`S` on the tapes, `SYS` in the scenes)
+  and `fate` (Patience.exe's dealer, and `HOST` in the scenes). One voice ID
+  per speaker everywhere: the tape SYS and the scene SYS are the same voice.
+- **Line ids**, by where the line lives. Every one is the content id the line
+  already has, so the id names the line, not the words:
+
+  | Where | Line id | Speaker | Example |
+  |---|---|---|---|
+  | Training tapes (`MediaCatalog.tapes`) | `<tape>-s<shot>-<caption>` | caption speaker | `vo__instructor__t1-s2-0` |
+  | Fate at Patience.exe (`CasinoHostBarks`) | `CAS-HOST-<nnn>` | `fate` | `vo__fate__CAS-HOST-051` |
+  | Mirror Login, SCN-ADV-001 (`AdversaryScene.dialogue`) | `ADV-<nnn>` | beat speaker | `vo__null-operator__ADV-010`, `vo__sys__ADV-001`, `vo__fate__ADV-027` |
+  | End of Shift, SCN-ADV-002 (`AdversaryFinale`) | `FIN-…` | beat speaker | `vo__null-operator__FIN-H-01`, `vo__sys__FIN-H-03`, `vo__null-operator__FIN-R-C` |
+
+  A tape line id is the tape id, the 1-based shot number (as in the shot
+  code `T1-S2`) and the 0-based index of the caption within that shot.
+  The choice prompt (`ADV-022`) is never spoken, and neither is a beat whose
+  text carries a placeholder (`{REBOOTS}`, `{BAND}`: `ADV-011B`, `FIN-011`,
+  `FIN-012`): its words change per save, and voice must say what the
+  caption says. If a line is reworded, regenerate its file and update its
+  text here. `tests/audio-files.mjs` fails when a tape caption and its row
+  below disagree.
+- **Foley** is named by the synth cue it layers on, verbatim: the keys of
+  `audio.SOUNDS` (`purchase`, `windowOpen`, `document`, `ship`, ...). It
+  plays through that cue's own voice at about −6 dB (`AudioFiles.FOLEY_GAIN`),
+  rate-limited per cue. Master one-shots dry, peaking around −12 dBFS.
 - `.ogg` (Opus) is preferred where the browser decodes it; `.mp3` is the fallback.
   Both are 48 kHz.
+
+## What a file does when it lands
+
+- **Tape lines** play at their caption, and the tape clock waits at the next
+  caption until the line is done. Pausing mid-line and playing again says the
+  line again from its start.
+- **Fate** says the line her strip shows, when Dealer Chatter and Voices are
+  on. Her lines already pass the router's cooldowns, so she is never heard
+  more often than the strip changes. Her next line replaces her last one; she
+  never talks over a tape or a scene, and closing the table stops her.
+- **Scene beats** play when drawn. The beat's dwell timer waits for the line,
+  then moves on 0.35 s after it ends. A click still moves the scene on.
+  Escape cuts the line, then does what it always did. An act beat waits on
+  its button, as before.
+- **Foley** layers on its synth cue from the second play on (the first play
+  probes for the file, and a sample is never started late).
 
 ## Music
 
@@ -91,3 +126,29 @@ follow `docs/AUDIO_PLAN.md` §6:
 - **The process**: master and encode with two-pass linear `loudnorm`, then Opus and
   MP3 at 48 kHz. Check with `ffprobe` and `ebur128`. Add a row above with the exact
   text, and run `npm run test:audio-files`.
+
+### Next lines to generate (none generated yet)
+
+Every hook below is wired and inert until its file lands. Generating any of
+them costs credits, so it needs the user's approval of a quoted cost first.
+In `docs/AUDIO_PLAN.md` §6 order:
+
+1. **Fate's 12 lore whispers**: `vo__fate__CAS-HOST-051` to `-062`. Short,
+   rare, high charm per second. Whisper them dry, and drop the `(whisper)`
+   stage direction from the text sent.
+2. **The Mirror Login, NULL.OPERATOR** (14 lines): `vo__null-operator__ADV-010`,
+   `-011`, `-012`, `-014`, `-015`, `-016`, `-018`, `-019`, `-021`, `-023A`,
+   `-023B`, `-023C`, `-024`, `-026`. Each holds its beat, so these set the
+   scene's pace.
+3. **The Mirror Login, SYS** (7 lines): `vo__sys__ADV-001`, `-002`, `-006`,
+   `-007`, `-008`, `-009`, `-013`. Leave out the chrome beats `ADV-003` to
+   `-005` (field labels and "…"). Then `-017`, `-020`, `-025`, `-028`, `-029`,
+   and the T1 copyright notice `vo__sys__t1-s1-0`.
+4. **The house, from far away**: `vo__fate__ADV-027`, then the finales'
+   `FIN-H-08`, `FIN-C-08` and `FIN-X-08`, in Fate's voice.
+5. **End of Shift**: `FIN-010`, the three re-entries `FIN-R-H/C/X`, then each
+   ending's beats. Skip `FIN-011` and `FIN-012` (placeholders).
+6. **Foley**, one-shots per §4: `sfx__windowOpen` / `sfx__windowClose`
+   (relay clunks), `sfx__document` (drive seek), `sfx__ship` (rubber stamp).
+   The coin on felt and the pneumatic tube have no synth cue of their own
+   yet, so they wait for one.
