@@ -164,18 +164,23 @@ try {
     await page.evaluate(() => MailView.select('hr-welcome', { open: true }));
     step('a picture dropped in at assets/mail/<message id>.webp appears in its message; a missing one is never drawn');
 
-    /* ── 5. Cross-links ────────────────────────────────────────────────── */
-    assert.equal(await page.locator('#win-mail .ml-text .ml-link').count(), 0, 'no links without Etherscape');
+    /* ── 5. Cross-links, against the real browser ──────────────────────
+       Before Etherscape is installed (it arrives with the first Seraph) an
+       address is plain text; once installed it is a live link, and clicking
+       it opens the real Etherscape window on that page. (This step used to
+       stub a fake Etherscape on window; the real one is a top-level const
+       now, which a window property cannot shadow.) */
+    assert.equal(await page.evaluate(() => Etherscape.knows('cms://intranet')), false, 'fixture: Etherscape not installed yet');
+    assert.equal(await page.locator('#win-mail .ml-text .ml-link').count(), 0, 'no links before Etherscape is installed');
     assert.equal(await page.locator('#win-mail .ml-text .ml-url', { hasText: 'cms://intranet' }).count(), 1);
-    await page.evaluate(() => {
-        window.Etherscape = { knows: (u) => u === 'cms://intranet', open: (u) => { window.__opened = u; } };
-        MailView.render();
-    });
-    await page.evaluate(() => MailView.select('hr-welcome', { open: true }));
+    await page.evaluate(() => { game.applyAutomatonPurchase('seraph', 1); });
+    await page.waitForFunction(() => Etherscape.knows('cms://intranet'), null, { timeout: 4000 });
+    await page.evaluate(() => { MailView.render(); MailView.select('hr-welcome', { open: true }); });
     await page.locator('#win-mail .ml-text .ml-link', { hasText: 'cms://intranet' }).click();
-    assert.equal(await page.evaluate(() => window.__opened), 'cms://intranet');
-    await page.evaluate(() => { delete window.Etherscape; });
-    step('a cms:// address is plain text without Etherscape and a link when it knows the page');
+    await page.locator('#win-etherscape').waitFor({ timeout: 4000 });
+    assert.equal(await page.evaluate(() => document.getElementById('es-address')?.value), 'cms://intranet');
+    await page.evaluate(() => { system.closeApp('etherscape'); system.focusWindow('mail'); });
+    step('a cms:// address is plain text before Etherscape installs, and a live link that opens it after');
 
     /* ── 6. Keyboard: move, open, archive ──────────────────────────────── */
     await moreMail(page);

@@ -67,6 +67,18 @@ try {
        machine itself is only exercised here. It caught a real soft-lock —
        after a choice was made, advanceAdversaryScene was still parked on the
        choice beat and refused to move, so the modal never closed. */
+    /* ACH-012 "Void Tourist" read a counter nothing ever wrote. Entering the
+       Void through the real dimension switch must now earn it. */
+    const tourist = await page.evaluate(() => {
+        State.dimensions.void.unlocked = true;
+        ui.switchDimension('void');
+        const earned = !!State.achievements['ACH-012'];
+        ui.switchDimension('primordial');
+        return { earned, count: State.achievementProgress.enter_void };
+    });
+    assert.equal(tourist.earned, true, 'entering the Void did not earn Void Tourist');
+    assert.ok(tourist.count >= 1);
+
     const scenePage = await page.context().newPage();
     scenePage.on('pageerror', (error) => runtimeErrors.push(String(error)));
     scenePage.on('console', (m) => { if (m.type() === 'error') runtimeErrors.push(m.text()); });

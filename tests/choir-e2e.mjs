@@ -86,8 +86,19 @@ async function scenario({ width, height, tag }) {
     assert.match(await news.innerText(), new RegExp(`v${shipped.version.replace(/\./g, '\\.')}`));
     assert.match(await news.innerText(), /Stable/);
     assert.match(await news.locator('.ch-name').first().innerText(), /The Celestial Times/);
-    assert.equal(await win.locator('.ch-link').count(), 0, 'no Etherscape installed: links are text');
-    assert.ok(await win.locator('.ch-linktext').count() >= 1, 'their labels stay');
+    /* Etherscape is in the tree now, and installs by the first reboot: the
+       board's addresses are live links, and one opens the browser on its
+       own page. (Before the browser merged, these rendered as plain text.) */
+    const links = win.locator('.ch-link');
+    assert.ok(await links.count() >= 1, 'Etherscape is installed: addresses should be live links');
+    const linkUrl = await links.first().getAttribute('data-url');
+    assert.equal(await page.evaluate((u) => Etherscape.knows(u), linkUrl), true, `${linkUrl} is linked but Etherscape does not know it`);
+    await links.first().click();
+    await page.locator('#win-etherscape').waitFor({ timeout: 4000 });
+    const opened = await page.evaluate(() => document.getElementById('es-address')?.value || '');
+    assert.ok(String(opened).toLowerCase().includes(linkUrl.toLowerCase().replace(/\/+$/, '')), `clicked ${linkUrl}, Etherscape shows ${opened}`);
+    await page.evaluate(() => system.closeApp('etherscape'));
+    await win.click({ position: { x: 20, y: 12 } });
     assert.equal(await page.locator('#icon-choir .choir-badge').count(), 0, 'opening the board reads it');
     assert.equal(await win.locator('.ch-avatar.has-art').count(), 0, 'no avatar files: Vite\'s index.html is not an image');
     step(`[${tag}] the feed renders the release, the welcome and the reactions`);
