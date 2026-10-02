@@ -961,6 +961,7 @@ const system = {
                                 <textarea id="import-save-text" class="save-textarea" placeholder="Paste save code here"></textarea>
                                 <button class="win-btn" onclick="game.importSave()">Import Save</button>
                             </div>
+                            <div id="save-status" class="save-status" role="status" aria-live="polite"></div>
                         </div>
 
                         <h3>Display Settings</h3>

@@ -1475,3 +1475,31 @@ three further runs — watch for it.
   `docs/PERFORMANCE.md` "Not covered" predates the audio-timer fix; `state.js` says
   the finale's earliest reboot is 13 (it is 14); a letter typed on a focused
   `<select>` anywhere in the game can fire a desktop shortcut.
+
+### Session 9, part 2 (2026-10-02): Export Save, and the console's leak into `dist/`
+- **`exportSave` fixed** (`js/game.js`). It was `btoa(JSON.stringify(State))`, and
+  `btoa` throws above U+00FF. The save carries such characters in ordinary play
+  (the cascade throttle label, incident labels, ending "Handover — …" and patch
+  labels all hold an em dash), so at a cascade tier Export failed, and only
+  `ui.log` said so, which writes into the Engine's log and is invisible from
+  Settings.
+  - New `game.encodeSaveText` / `decodeSaveText`: UTF-8, base64, chunked. A
+    plain-ASCII export is byte-identical to the old one (a build from before the
+    fix still imports it); an old export with Latin-1 characters (× é) is not valid
+    UTF-8 and is read back as Latin-1, exactly.
+  - Settings has a **status line** under the save boxes (`#save-status`,
+    `role="status"`, AA in both tones); a failed export clears the box instead of
+    leaving the last text under an error.
+  - Tests: `tests/save-export.mjs` (14, vm; 11 fail against the old code) and
+    `tests/save-export-e2e.mjs` (6, browser: export, import in a second browser,
+    a bad paste, contrast).
+- **Bug in the console I had just merged:** the copy plugin's `closeBundle` also
+  fires when the **dev server** closes, so a config edit or Ctrl-C copied `js/`,
+  `devtools.js` included, into the committed `dist/`. Both plugins are now
+  `apply: 'build'`; `release-build.mjs` starts and closes a dev server and checks
+  `dist/` did not move (it fails against the old config: devtools.js written, 20
+  files rewritten).
+- **Dev Console contrast:** a scan of the open panel (728 text boxes, all 11 groups)
+  found headings in the dimmed ink at 4.27:1; they are full ink now. Lines the
+  window's edge cuts to a sliver are skipped (their background includes the chrome).
+- `npm test` is green: 37 suites; golden still "Economy unchanged".
