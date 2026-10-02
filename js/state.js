@@ -579,6 +579,15 @@ const State = {
         clock: 0
     },
 
+    /* === RECOVERED FOOTAGE === js/footage.js. The ids of the [REDACTED]
+       reels and the Omniscient's addresses that have been found, and the
+       ones played to the end. Validated by FootageLogic.normalise on every
+       access; added without a SAVE_VERSION bump, like mail. */
+    footage: {
+        found: [],
+        watched: []
+    },
+
     // === ACHIEVEMENTS (Tracked) ===
     achievementProgress: {
         // Counters for achievement conditions

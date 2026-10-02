@@ -139,12 +139,15 @@ const MediaPlayerView = (() => {
         scrub.addEventListener('input', () => seek(Number(scrub.value)));
         el.querySelector('.mp-vhs-toggle').addEventListener('change', (e) => media.setVhs(e.target.checked));
         syncVhs();
+        // Recovered footage and the Omniscient's addresses (js/footage.js): inert until one is on file.
+        if (typeof FootageView !== 'undefined' && FootageView) FootageView.mount(el);
     }
 
     /* ── Tape loading ─────────────────────────────────────────────────── */
     function loadTape(id, autoplay = false) {
         const tp = MediaCatalog.tape(id);
         if (!tp || !settings().tapes.includes(id)) return false;
+        if (typeof FootageView !== 'undefined' && FootageView && FootageView.active()) FootageView.close();
         st.tapeId = id;
         st.t = 0;
         st.ended = false;
@@ -468,6 +471,7 @@ const MediaPlayerView = (() => {
     /* Space plays and pauses, the arrows step between shots, while the
        player is the top window — the same arrangement as Patience.exe. */
     function handleKey(e, topWindowId) {
+        if (typeof FootageView !== 'undefined' && FootageView && FootageView.handleKey(e, topWindowId)) return true;
         if (topWindowId !== 'mediaplayer' || !root() || !tape()) return false;
         if (e.altKey || e.metaKey || e.ctrlKey) return false;
         if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) toggle(); return true; }

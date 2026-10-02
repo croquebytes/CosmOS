@@ -37,7 +37,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const noop = () => {};
 const read = (f) => ({ name: f, code: readFileSync(resolve(ROOT, f), 'utf8') });
 const SOURCES = ['js/state.js', 'js/modifiers.js', 'js/reality.js', 'js/incidents.js', 'js/game.js',
-    'js/solitaire.js', 'js/media.js', 'js/mail.js'].map(read);
+    'js/solitaire.js', 'js/media.js', 'js/footage.js', 'js/mail.js'].map(read);
 
 function boot(store = {}) {
     const calls = { sfx: [], log: [] };
@@ -62,7 +62,8 @@ function boot(store = {}) {
     });
     for (const src of SOURCES) vm.runInContext(src.code, ctx, { filename: src.name });
     const env = vm.runInContext(`({ State, game, Reality, Incidents, PatienceDealer, Modifiers,
-        DocumentManifest, AdversaryFinale, MediaCatalog, MailCatalog, MailLogic, Mail })`, ctx);
+        DocumentManifest, AdversaryFinale, MediaCatalog, MailCatalog, MailLogic, Mail,
+        FootageCatalog, Footage })`, ctx);
     env.ctx = ctx;
     env.calls = calls;
     // game.sfx is the one door to audio; count what goes through it.
@@ -184,6 +185,14 @@ function answered(env, parent, choice, setup) {
     assert.ok(res.ok, `fixture check: replied to ${parent} with ${choice}`);
 }
 
+/* A reel's file is installed and the footage watch has run: what puts a
+   reel on file in the browser (js/footage.js), with the probe answered. */
+function reels(env, ...list) {
+    for (const id of list) env.Footage.setInstalled(id, true);
+    env.Footage.tick();
+    for (const id of list) assert.ok(env.Footage.isFound(id), `fixture check: ${id} was filed`);
+}
+
 const welcome = (env) => { directive(env); run(env, 1); };
 const prev = (env) => { welcome(env); offerings(env); run(env, 1); };
 const nullMail = (env) => { contact(env); run(env, 1); };
@@ -216,6 +225,10 @@ const FIXTURES = {
     'prev-06': (env) => { prev(env); ending(env, 'curious'); },
     'daemon-bounce': (env) => { answered(env, 'prev-01', 'who', prev); run(env, 5); },
     'daemon-archived': (env) => { answered(env, 'prev-06', 'me', (e) => { prev(e); ending(e, 'complicit'); }); run(env, 5); },
+    'omni-01': (env) => { welcome(env); reels(env, 'omni-successor'); },
+    'omni-02': (env) => { ship(env, 1); reels(env, 'omni-reboot'); },
+    'omni-03': (env) => { breach(env); reels(env, 'omni-void'); },
+    'omni-04': (env) => { ending(env, 'curious'); reels(env, 'omni-ending'); },
     'seraph-01': (env) => seraphs(env),
     'seraph-02': (env) => { seraphs(env); run(env, 1); seraphs(env, 25); },
     'seraph-03': (env) => { seraphs(env); run(env, 1); ship(env, 1); },
@@ -317,11 +330,12 @@ check('every attachment names a real document, tape or cross-link', () => {
     for (const msg of CATALOG) {
         for (const a of msg.attach || []) {
             attachments++;
-            const kinds = ['doc', 'tape', 'url'].filter((k) => k in a);
+            const kinds = ['doc', 'tape', 'url', 'reel'].filter((k) => k in a);
             assert.equal(kinds.length, 1, `${msg.id}: one kind per attachment`);
             if (a.doc) assert.ok(docs.has(a.doc), `${msg.id}: no document ${a.doc}`);
             if (a.tape) assert.ok(tapes.has(a.tape), `${msg.id}: no tape ${a.tape}`);
             if (a.url) assert.ok(MailLogic.isMailUrl(a.url), `${msg.id}: ${a.url} is outside the shared namespace`);
+            if (a.reel) assert.ok(probe.FootageCatalog.reel(a.reel), `${msg.id}: no reel ${a.reel}`);
         }
         for (const url of MailLogic.urlsOf(msg)) {
             assert.ok(MailCatalog.URL_SCHEMES.includes(url.split(':')[0]), `${msg.id}: scheme of ${url}`);

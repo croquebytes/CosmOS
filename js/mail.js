@@ -83,6 +83,7 @@ const MailCatalog = (() => {
         infernal: { name: 'Infernal Systems Pro', address: 'sales@infernal.systems' },
         warranty: { name: 'Reality Warranty Services', address: 'renewals@extended-eternity.biz' },
         prince: { name: 'Archangel Barachiel (Disbarred)', address: 'barachiel.esq@fallen-trust.org' },
+        retired: { name: 'The Omniscient (Retired)', address: 'everything@cosmos.local', via: 'every channel at once' },
     };
 
     /* The shared cross-link namespace (the Etherscape browser). */
@@ -95,13 +96,14 @@ const MailCatalog = (() => {
     /* ── The messages ────────────────────────────────────────────────────
        when(S, m): the trigger. Pure; reads State and the mail helpers
          (m.delivered, m.since, m.replied, m.sinceReply, m.endings,
-         m.watched, m.hasDoc). Must be monotonic in practice — counts and
+         m.watched, m.hasDoc, m.reel). Must be monotonic in practice — counts and
          flags that only ever go up — because delivery waits for presence.
        after: { id, choice, delay }: a follow-up to a reply. `choice` is one
          id, a list, or absent for any; `delay` is attended seconds.
        replies: [{ id, label, text, nudge }]: canned replies. `nudge` is
          { delta, reason } for game.nudgeAdversaryStanding.
-       attach: [{ doc } | { tape } | { url }].
+       attach: [{ doc } | { tape } | { url } | { reel }]. A reel (js/footage.js)
+         shows only once it is on file, so it is invisible until installed.
        Bodies: blank lines split paragraphs; **bold**, *em*, `code`;
          "- " lists, "> " quotes, ``` blocks. */
     const messages = [
@@ -495,7 +497,7 @@ void://forum
 
 — the previous Operator
 *(scheduled send)*`,
-            attach: [{ url: 'void://forum' }],
+            attach: [{ url: 'void://forum' }, { reel: 'rec-last-shift' }],
             replies: [
                 { id: 'looked', label: 'Something looked back.', text: 'Something looked back. What was it?' },
             ],
@@ -602,6 +604,55 @@ Your message was delivered.
 \`\`\`
 
 The message will be kept for as long as the archive is kept. The archive is kept.`,
+        },
+
+        /* ═══ The Omniscient (Retired) ═════════════════════════════════
+           Video addresses from the deity whose post you hold. Each one is
+           due when its reel (js/footage.js) is on file, and its reel is
+           filed only once the file is installed — so with no reels these
+           never arrive. No replies: there is nobody at that address who
+           does not already know what you would say. */
+        {
+            id: 'omni-01', folder: 'inbox', from: 'retired',
+            subject: 'A message for the Successor',
+            when: (S, m) => m.reel('omni-successor'),
+            body: `This message has no text. The attachment is the message.
+
+It is optional. I know whether you will open it.
+
+*(retired)*`,
+            attach: [{ reel: 'omni-successor' }],
+        },
+        {
+            id: 'omni-02', folder: 'inbox', from: 'retired',
+            subject: 'On your first reboot',
+            when: (S, m) => m.reel('omni-reboot'),
+            body: `You shipped. It reset. You did not.
+
+Attached.
+
+*(retired)*`,
+            attach: [{ reel: 'omni-reboot' }],
+        },
+        {
+            id: 'omni-03', folder: 'inbox', from: 'retired',
+            subject: 'On the Void',
+            when: (S, m) => m.reel('omni-void'),
+            body: `You opened the Veil. I did not follow you in.
+
+Attached.
+
+*(retired)*`,
+            attach: [{ reel: 'omni-void' }],
+        },
+        {
+            id: 'omni-04', folder: 'inbox', from: 'retired',
+            subject: 'On the end of a shift',
+            when: (S, m) => m.reel('omni-ending'),
+            body: `Somebody signed. Attached is what I would have said at the door.
+
+*(retired)*`,
+            attach: [{ reel: 'omni-ending' }],
         },
 
         /* ═══ SERAPH-0001 ═══════════════════════════════════════════════
@@ -1193,6 +1244,9 @@ const MailLogic = {
             watched: (tape) => list(media.watched).includes(tape),
             filed: (tape) => list(media.tapes).includes(tape),
             hasDoc: (doc) => list(S?.documents?.collected).includes(doc),
+            // A reel on file (State.footage, js/footage.js). A read of State,
+            // so triggers stay pure; footage files a reel only once installed.
+            reel: (id) => (this.isPlain(S?.footage) ? list(S.footage.found) : []).includes(id),
         };
     },
 
