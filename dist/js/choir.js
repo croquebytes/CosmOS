@@ -789,12 +789,15 @@ const Choir = (() => {
         }
         w.end = endings.length;
 
-        // Achievements, a few per pass.
+        /* Achievements, a few per pass. One over the cap is NOT marked seen:
+           it waits for the next pass (a second later) instead of being
+           dropped. It used to be marked and skipped, so a reboot that
+           unlocked five at once lost two posts for good. */
         let posted = 0;
         for (const id of read.achievements()) {
             if (w.ach.includes(id)) continue;
+            if (posted >= ACH_PER_PASS) break;
             w.ach.push(id);
-            if (posted >= ACH_PER_PASS) continue;
             const secret = achievement(id).tier === 'Secret';
             n += record(s, `ach:${id}`, secret ? 'ach.secret' : 'ach', { id }, level);
             posted++;
@@ -1125,12 +1128,14 @@ const Choir = (() => {
        the page it waits for system.init to start presence tracking, so the
        boot (before anyone has touched anything) never counts as present. */
     if (typeof document !== 'undefined' && typeof document.createElement === 'function' && typeof setInterval === 'function') {
-        setInterval(() => {
+        // On the desktop's shared 1 Hz clock (js/heartbeat.js), which rests in a hidden tab.
+        const watch = () => {
             try {
                 if (typeof game === 'undefined' || game.presenceTracking !== true) return;
                 observe(Date.now());
             } catch (e) { /* the watch never breaks the page */ }
-        }, 1000);
+        };
+        if (typeof Heartbeat !== 'undefined') Heartbeat.every(watch); else setInterval(watch, 1000);
     }
 
     return {
@@ -1377,11 +1382,22 @@ const ChoirView = (() => {
         st.openedAt = Choir.state().lastReadAt || 0;
         st.nodes = new Map();
         render();
+        /* "3 min ago" goes stale slowly: every thirtieth beat of the shared
+           clock, which rests in a hidden tab. Unsubscribes itself once the
+           window is gone. */
         clearInterval(st.timer);
-        st.timer = setInterval(() => {
-            if (!root()) { clearInterval(st.timer); return; }
+        if (st.off) st.off();
+        st.off = null;
+        const refresh = () => {
+            if (!root()) { clearInterval(st.timer); if (st.off) st.off(); st.off = null; return; }
             render();
-        }, 30000);
+        };
+        if (typeof Heartbeat !== 'undefined') {
+            let beats = 0;
+            st.off = Heartbeat.every(() => { if (++beats % 30 === 0 || !root()) refresh(); });
+        } else {
+            st.timer = setInterval(refresh, 30000);
+        }
         updateBadge();
     }
 

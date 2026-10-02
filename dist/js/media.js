@@ -1051,7 +1051,9 @@ const media = (() => {
             e.stopImmediatePropagation();
             current.skip();
         }, true);
-        setInterval(() => { try { checkTapes(); } catch (err) { /* the watch never breaks the page */ } }, 1000);
+        // On the desktop's shared 1 Hz clock (js/heartbeat.js), which rests in a hidden tab.
+        const watch = () => { try { checkTapes(); } catch (err) { /* the watch never breaks the page */ } };
+        if (typeof Heartbeat !== 'undefined') Heartbeat.every(watch); else setInterval(watch, 1000);
     }
 
     return {
