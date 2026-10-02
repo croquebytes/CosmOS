@@ -41,7 +41,7 @@ function boot() {
     });
     for (const src of SOURCES) vm.runInContext(src.code, ctx, { filename: src.name });
     return vm.runInContext(
-        '({ State, Modifiers, ModifierTargets, Reality, RealityPool, RealityChannels, game })',
+        '({ State, Modifiers, ModifierTargets, Reality, RealityPool, RealityChannels, game, Economy, UpgradeList })',
         ctx,
     );
 }
@@ -504,6 +504,325 @@ check('a hydrated log does not double-apply build modifiers', () => {
     game.bootstrapModifiers(0);
     const actual = Modifiers.records.filter((r) => r.scope === 'build').length;
     assert.equal(actual, expected, 'build records were duplicated on rehydrate');
+});
+
+/* ── The Void's entries ────────────────────────────────────────────────── */
+
+const POOL_KINDS = { improvements: 'improvement', issues: 'issue', regressions: 'regression', deprecations: 'deprecation' };
+const VOID_CURRENCIES = ['darkness', 'shadows', 'echoes'];
+const voidEntriesOf = (RealityPool) => Object.entries(POOL_KINDS).flatMap(([list, kind]) =>
+    RealityPool[list].filter((e) => e.dimension === 'void').map((e) => ({ ...e, kind })));
+const voidIdsOf = (RealityPool) => new Set(voidEntriesOf(RealityPool).map((e) => e.id));
+
+/* A Void in motion: unlocked, every rank staffed, Darkness banked so the
+   Revenants run flat out, and a primordial line for Nemesis to lift. The
+   build scope is cleared, so the only build records are the ones a test adds. */
+function voidFixture() {
+    const env = boot();
+    const { State, Modifiers, game } = env;
+    State.reality = { runSeed: 5, channel: 'stable', build: null, shipped: 0 };
+    State.prestigeLevel = 4;
+    game.bootstrapModifiers(0);
+    Modifiers.dropScope('build');
+    Modifiers.commit(0);
+    const vd = State.dimensions.void;
+    vd.unlocked = true;
+    Object.assign(vd.automatons, { wraithCount: 40, revenantCount: 12, phantomCount: 24, nemesisCount: 10 });
+    vd.dps = 40;
+    vd.eps = 24;
+    Object.assign(vd.resources, { darkness: 400, shadows: 20, echoes: 300 });
+    State.pps = 50;
+    State.sps = 5;
+    return env;
+}
+
+/* What each Void target DOES, read from the game rather than from the
+   target's own fold — so "Wraith output x1.6" is checked as "more Darkness
+   per second", not as "the number is 1.6". `up` means more is better. */
+const rates = (env) => env.game.getProductionRates(0, false);
+const VOID_PROBES = {
+    'void.automaton.wraith.output': { read: (env) => rates(env).darknessGross, better: 'up', what: 'Darkness/s gross' },
+    'void.darkness.multiplier': { read: (env) => rates(env).darknessGross, better: 'up', what: 'Darkness/s gross' },
+    'void.revenant.draw': { read: (env) => rates(env).darkness, better: 'up', what: 'Darkness/s net of Revenants' },
+    'void.automaton.revenant.output': { read: (env) => rates(env).shadows, better: 'up', what: 'Shadows/s' },
+    'void.shadow.multiplier': { read: (env) => rates(env).shadows, better: 'up', what: 'Shadows/s' },
+    'void.automaton.phantom.output': { read: (env) => rates(env).echoes, better: 'up', what: 'Echoes/s' },
+    'void.echo.multiplier': { read: (env) => rates(env).echoes, better: 'up', what: 'Echoes/s' },
+    'void.automaton.nemesis.bonusScale': { read: (env) => rates(env).praiseGross, better: 'up', what: 'primordial Praise/s' },
+    'void.automaton.wraith.cost': { read: (env) => env.game.getAutomatonCost('wraith'), better: 'down', what: 'next Wraith price' },
+    'void.automaton.revenant.cost': { read: (env) => env.game.getAutomatonCost('revenant'), better: 'down', what: 'next Revenant price' },
+    'void.automaton.phantom.cost': { read: (env) => env.game.getAutomatonCost('phantom'), better: 'down', what: 'next Phantom price' },
+    'void.automaton.nemesis.cost': { read: (env) => env.game.getAutomatonCost('nemesis'), better: 'down', what: 'next Nemesis price' },
+    'void.caps.darkness': { read: (env) => env.State.dimensions.void.resourceCaps.darkness, better: 'up', what: 'Darkness capacity' },
+    'void.caps.shadows': { read: (env) => env.State.dimensions.void.resourceCaps.shadows, better: 'up', what: 'Shadow capacity' },
+    'void.caps.echoes': { read: (env) => env.State.dimensions.void.resourceCaps.echoes, better: 'up', what: 'Echo capacity' },
+    'void.click.power': { read: (env) => env.State.dimensions.void.manualClickPower, better: 'up', what: 'Void click power' },
+};
+
+/* Builds that carry the Void, found by search rather than pinned to a seed,
+   so a pool change re-finds them instead of silently testing nothing. */
+function findBuild(Reality, RealityPool, channel, level, accept) {
+    const ids = voidIdsOf(RealityPool);
+    for (let seed = 1; seed < 5000; seed++) {
+        const build = Reality.generate(seed, level, channel);
+        const v = build.entries.filter((e) => ids.has(e.id));
+        if (accept(v, build)) return { seed, build, voidEntries: v };
+    }
+    return null;
+}
+
+check('Void entries are flagged by what they touch, and every pool kind has some', () => {
+    /* The flag is what eligibility reads, so it has to be the truth: an
+       entry that touches the Void without the flag would roll where the
+       Void cannot matter, and a flagged entry that touched the primordial
+       chain would be withheld from it for no reason. */
+    const { RealityPool, ModifierTargets } = boot();
+    for (const [list] of Object.entries(POOL_KINDS)) {
+        for (const entry of RealityPool[list]) {
+            const targets = (entry.mods || []).map((m) => m.target);
+            const touches = targets.some((t) => t.startsWith('void.'));
+            assert.equal(touches, entry.dimension === 'void',
+                `${entry.id}: touches the Void ${touches}, flagged ${entry.dimension === 'void'}`);
+            if (entry.dimension === 'void') {
+                for (const t of targets) {
+                    assert.ok(t.startsWith('void.') && ModifierTargets[t], `${entry.id} targets "${t}"`);
+                }
+            }
+        }
+    }
+    const v = voidEntriesOf(RealityPool);
+    for (const kind of Object.values(POOL_KINDS)) {
+        assert.ok(v.some((e) => e.kind === kind), `no Void ${kind} in the pool`);
+    }
+    assert.ok(v.length >= 10, `only ${v.length} Void entries — the Void is still barely covered`);
+});
+
+check('Void entries only roll where they are eligible', () => {
+    const { Reality, RealityPool, RealityChannels } = boot();
+    const ids = voidIdsOf(RealityPool);
+    const below = Reality.VOID_FIRST_RELEASE - 1;
+    assert.ok(below >= 0, 'fixture check: there is an ineligible level to roll at');
+
+    for (const channel of Object.keys(RealityChannels)) {
+        const spec = RealityChannels[channel];
+        for (let seed = 1; seed <= 300; seed++) {
+            const build = Reality.generate(seed, below, channel);
+            const leaked = build.entries.filter((e) => ids.has(e.id)).map((e) => e.id);
+            assert.equal(leaked.length, 0, `${channel}/${seed} at level ${below} rolled ${leaked.join(', ')}`);
+            /* Filtered before the draw, so the channel's counts still hold:
+               an ineligible entry takes no slot. */
+            const n = build.entries.filter((e) => e.kind === 'improvement').length;
+            assert.ok(n >= spec.improvements[0] && n <= spec.improvements[1],
+                `${channel}/${seed}: ${n} improvements, outside ${spec.improvements}`);
+        }
+    }
+
+    // And where they are eligible, the Void is no longer a rare guest.
+    const share = (channel, level) => {
+        let hit = 0;
+        for (let seed = 1; seed <= 300; seed++) {
+            if (Reality.generate(seed, level, channel).entries.some((e) => ids.has(e.id))) hit++;
+        }
+        return hit / 300;
+    };
+    const stable = share('stable', Reality.VOID_FIRST_RELEASE);
+    const nightly = share('nightly', 9);
+    assert.ok(stable > 0.4, `only ${Math.round(stable * 100)}% of first-release Stable builds touch the Void`);
+    assert.ok(nightly > 0.85, `only ${Math.round(nightly * 100)}% of Nightly builds touch the Void`);
+
+    const seen = new Set();
+    for (let seed = 1; seed <= 400; seed++) {
+        for (const e of Reality.generate(seed, 9, 'nightly').entries) if (ids.has(e.id)) seen.add(e.id);
+    }
+    assert.equal(seen.size, ids.size, `never rolled: ${[...ids].filter((id) => !seen.has(id)).join(', ')}`);
+});
+
+check('the eligibility premise: a run that can ship has walked past the Veil, which a reboot reseals', () => {
+    /* Reality.eligible() reads the prestige level, not the save. That is
+       only honest while (a) any run that can ship can afford Breach the Veil
+       many times over, and (b) a roll never sees an unlocked Void. Both are
+       read from the live tables here, so moving either fails this test. */
+    const { State, game, Reality, UpgradeList } = boot();
+    const veil = UpgradeList.find((u) => u.id === 'void_unlock');
+    assert.ok(veil?.cost?.souls > 0, 'fixture check: Breach the Veil is priced in Souls');
+
+    State.totalDivinityPoints = 0;
+    const floor = game.getPrestigeThreshold();
+    assert.ok(floor >= veil.cost.souls * 1000,
+        `the lowest reboot bar (${floor}) is within 1000x of the Veil (${veil.cost.souls})`);
+    State.totalDivinityPoints = 40;
+    assert.ok(game.getPrestigeThreshold() > floor, 'the bar should only rise from its floor');
+    State.totalDivinityPoints = 0;
+
+    State.reality = { runSeed: 77, channel: 'stable', build: null, shipped: 0 };
+    State.prestigeLevel = 0;
+    game.bootstrapModifiers(0);
+    veil.effect();
+    assert.equal(State.dimensions.void.unlocked, true, 'fixture check: the Veil was breached');
+
+    State.totalStats.soulsGained = (Number(State.runSoulsBaseline) || 0) + game.getPrestigeThreshold() * 2;
+    game.performPrestige();
+    assert.equal(State.prestigeLevel, 1, 'fixture check: the reboot happened');
+    assert.equal(State.dimensions.void.unlocked, false, 'the reboot left the Void open for the next roll');
+    assert.ok(State.prestigeLevel >= Reality.VOID_FIRST_RELEASE, 'the first release is not eligible for Void lines');
+});
+
+check('every Void entry moves the Void the way its note says', () => {
+    /* Improvements help, known issues, regressions and deprecations hurt —
+       measured as the game's own consequence (a rate, a price, a capacity)
+       with the entry applied against the same fixture without it. */
+    const { RealityPool } = boot();
+    const entries = voidEntriesOf(RealityPool);
+    assert.ok(entries.length > 0, 'fixture check: there are Void entries to test');
+    for (const entry of entries) {
+        const env = voidFixture();
+        const probes = entry.mods.map((m) => {
+            const probe = VOID_PROBES[m.target];
+            assert.ok(probe, `${entry.id}: no consequence probe for "${m.target}" — add one to VOID_PROBES`);
+            return probe;
+        });
+        const before = probes.map((p) => p.read(env));
+        env.Reality.apply({ entries: [entry] }, 0);
+        assert.ok(env.Modifiers.records.some((r) => r.source?.id === entry.id),
+            `fixture check: ${entry.id} registered no records`);
+        const after = probes.map((p) => p.read(env));
+
+        probes.forEach((probe, i) => {
+            assert.ok(Number.isFinite(before[i]) && Number.isFinite(after[i]),
+                `${entry.id}: ${probe.what} is not a number (${before[i]} -> ${after[i]})`);
+            assert.notEqual(after[i], before[i], `${entry.id} did not move ${probe.what}`);
+            const improved = probe.better === 'up' ? after[i] > before[i] : after[i] < before[i];
+            const wanted = entry.kind === 'improvement';
+            assert.equal(improved, wanted,
+                `${entry.kind} ${entry.id} ${improved ? 'improved' : 'worsened'} ${probe.what}: ${before[i]} -> ${after[i]}`);
+        });
+    }
+});
+
+check('Void patch costs are priced off Void capacity excluding the build', () => {
+    const env = voidFixture();
+    const { State, Reality, Modifiers, RealityPool } = env;
+    const entries = voidEntriesOf(RealityPool);
+    const priced = entries.filter((e) => e.kind === 'issue' && VOID_CURRENCIES.includes(e.patchCost?.resource));
+    assert.ok(priced.length >= 3, `only ${priced.length} Void issues are priced in Void currencies`);
+
+    // A vault rank's worth of capacity, so the reference is not the pristine base.
+    for (const res of VOID_CURRENCIES) {
+        Modifiers.add({ target: `void.caps.${res}`, op: 'add', value: 1200, scope: 'run', source: { kind: 'test', id: `vault_${res}` } });
+    }
+    Modifiers.commit(0);
+    const capsWithout = { ...State.dimensions.void.resourceCaps };
+
+    // Every Void entry at once: issues that shrink a Void cap, improvements that grow one.
+    const build = { entries: entries.map((e) => ({ ...e })) };
+    Reality.apply(build, 0);
+    const capsWith = { ...State.dimensions.void.resourceCaps };
+    const moved = VOID_CURRENCIES.filter((r) => capsWith[r] !== capsWithout[r]);
+    assert.ok(moved.length >= 2, `fixture check: the build moved only ${moved.join(', ') || 'no'} Void caps`);
+
+    const withBuild = Object.fromEntries(priced.map((e) => [e.id, Reality.patchCostOf(build, e.id)]));
+    for (const e of priced) {
+        const cost = withBuild[e.id];
+        assert.equal(cost.resource, e.patchCost.resource);
+        assert.equal(cost.bag, State.dimensions.void.resources, `${e.id} is billed against the wrong bag`);
+        assert.ok(cost.amount > 0, `${e.id} is free`);
+    }
+
+    Modifiers.dropScope('build');
+    Modifiers.commit(0);
+    for (const e of priced) {
+        assert.equal(Reality.patchCostOf(build, e.id).amount, withBuild[e.id].amount,
+            `the build moved the price of its own patch (${e.id})`);
+    }
+});
+
+check('a Void-priced patch waits for the Veil, then lands and drops its records', () => {
+    const env = voidFixture();
+    const { State, Reality, RealityPool, Modifiers, game } = env;
+    const entry = voidEntriesOf(RealityPool).find((e) => e.kind === 'issue' && e.patchCost?.resource === 'darkness');
+    assert.ok(entry, 'fixture check: a Void issue priced in Darkness');
+    State.reality.build = { version: 'test', channel: 'stable', seed: 1, prestigeLevel: 4, entries: [{ ...entry }] };
+    State.reality.instability = 0;
+    Reality.apply(State.reality.build, 0);
+
+    // A fresh run: the Veil resealed, nothing banked.
+    State.dimensions.void.unlocked = false;
+    State.dimensions.void.resources.darkness = 0;
+    assert.equal(game.patchKnownIssue(entry.id, 0), false, 'patched with the Veil sealed and no Darkness');
+
+    State.dimensions.void.unlocked = true;
+    const cost = Reality.patchCostOf(State.reality.build, entry.id);
+    State.dimensions.void.resources.darkness = cost.amount;
+    assert.equal(game.patchKnownIssue(entry.id, 0), true);
+    assert.equal(Math.round(State.dimensions.void.resources.darkness), 0, 'the Darkness was not spent');
+    assert.equal(Modifiers.records.filter((r) => r.source?.id === entry.id).length, 0, 'records survived the patch');
+});
+
+check('a Void-carrying build re-derives identically on reload, patched flags and all', () => {
+    const { Reality, RealityPool } = boot();
+    const found = findBuild(Reality, RealityPool, 'nightly', 6,
+        (v) => v.length >= 2 && v.some((e) => e.kind === 'issue'));
+    assert.ok(found, 'fixture check: a Nightly build with a Void issue');
+
+    const first = boot();
+    first.State.reality = { runSeed: found.seed, channel: 'nightly', build: null, shipped: 0 };
+    first.State.prestigeLevel = 6;
+    first.game.bootstrapModifiers(0);
+    const issue = first.State.reality.build.entries.find((e) => e.kind === 'issue' && e.dimension === 'void');
+    const cost = first.Reality.patchCostOf(first.State.reality.build, issue.id);
+    cost.bag[cost.resource] = cost.amount;
+    assert.equal(first.game.patchKnownIssue(issue.id, 0), true, 'fixture check: the Void issue was patched');
+    const records = (env) => env.Modifiers.records.filter((r) => r.scope === 'build')
+        .map((r) => `${r.source.id}:${r.target}:${r.op}:${r.value}`).sort();
+    const expected = records(first);
+
+    // The save, as it reaches disk and comes back.
+    const saved = JSON.parse(JSON.stringify(first.State.reality));
+    const reload = boot();
+    reload.State.reality = saved;
+    reload.State.prestigeLevel = 6;
+    reload.game.bootstrapModifiers(0);
+
+    assert.equal(JSON.stringify(reload.State.reality.build.entries), JSON.stringify(first.State.reality.build.entries));
+    assert.equal(reload.State.reality.build.entries.find((e) => e.id === issue.id).patched, true);
+    // As JSON: vm-built arrays carry another realm's prototype.
+    assert.equal(JSON.stringify(records(reload)), JSON.stringify(expected), 'the reloaded build applied a different set of records');
+    assert.ok(!records(reload).some((r) => r.startsWith(`${issue.id}:`)), 'the patched Void issue came back');
+});
+
+check('an Archived replay of a Void-heavy build is exact', () => {
+    const { Reality, RealityPool } = boot();
+    const LEVEL = 9;
+    const found = findBuild(Reality, RealityPool, 'nightly', LEVEL,
+        (v) => v.length >= 3 && v.some((e) => e.kind === 'issue') &&
+            v.some((e) => e.kind === 'regression' || e.kind === 'deprecation'));
+    assert.ok(found, 'fixture check: a Void-heavy Nightly build exists');
+
+    const { State, game } = boot();
+    State.reality = { runSeed: found.seed, channel: 'nightly', build: null, shipped: 0, history: [] };
+    State.prestigeLevel = LEVEL;
+    game.bootstrapModifiers(0);
+    const original = JSON.stringify(State.reality.build.entries);
+    assert.equal(original, JSON.stringify(found.build.entries), 'fixture check: the game rolled the build searched for');
+
+    // Ship it, so it is on file the way a player's would be.
+    State.totalStats.soulsGained = (Number(State.runSoulsBaseline) || 0) + game.getPrestigeThreshold() * 2;
+    game.performPrestige();
+    assert.equal(State.prestigeLevel, LEVEL + 1, 'fixture check: the reboot happened');
+    assert.ok(game.archivedBuilds().some((r) => r.level === LEVEL), 'the Void-heavy build was not recorded');
+
+    // Much later, and through a save round trip, replay it.
+    State.prestigeLevel = 20;
+    State.reality = JSON.parse(JSON.stringify(State.reality));
+    game.normaliseArchive();
+    assert.equal(game.selectArchivedBuild(LEVEL), true, 'fixture check: the archive offered the build');
+    const replay = game.rollNextBuild(0);
+    assert.equal(replay.channel, 'archived');
+    assert.equal(JSON.stringify(replay.entries), original, 'the replay is not the build that shipped');
+
+    // And the replay itself survives a reload at the CURRENT level unchanged.
+    const again = Reality.rematerialise(JSON.parse(JSON.stringify(State.reality)), State.prestigeLevel);
+    assert.equal(JSON.stringify(again.entries), original, 'the replay re-derived differently on reload');
 });
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

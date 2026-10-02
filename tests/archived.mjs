@@ -401,8 +401,12 @@ check('every known issue and regression has a line, and lines are stable per bui
         assert.ok(ArchiveAnnotations.lines[id]?.length, `${id} has no annotation`);
         assert.equal(Reality.annotationLine(id, 1234), Reality.annotationLine(id, 1234));
     }
+    /* Bounded relative to the pool rather than as a fixed range: the Void's
+       entries added six annotatable ids, and a fixed 16-24 would have read
+       as "write fewer lines" rather than "do not flood him". */
     const total = Object.values(ArchiveAnnotations.lines).reduce((n, l) => n + l.length, 0);
-    assert.ok(total >= 16 && total <= 24, `${total} annotation lines`);
+    assert.ok(total >= ids.length && total <= ids.length * 2,
+        `${total} annotation lines for ${ids.length} annotatable ids`);
 });
 
 check('hostile annotation records are dropped, and duplicates collapse to one', () => {

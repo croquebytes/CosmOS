@@ -2,46 +2,46 @@
  "hours": 2,
  "clicksPerMin": 40,
  "resources": {
-  "praise": 26006203923.19801,
-  "offerings": 1757852.8915677741,
-  "souls": 1668705.6734525922
+  "praise": 47169246269.09404,
+  "offerings": 3337658.614374843,
+  "souls": 4422014.639996526
  },
  "caps": {
-  "praise": 60771627962,
-  "offerings": 5641953,
-  "souls": 2640966
+  "praise": 118694591210,
+  "offerings": 11019838,
+  "souls": 10091404
  },
- "lifetimeSouls": 117034587.0392633,
+ "lifetimeSouls": 158082559.00580776,
  "rates": {
-  "praise": 893323924.2428637,
-  "praiseGross": 893324060.7428637,
-  "offerings": 44033.41975095798,
-  "souls": 20947.3268243843,
-  "darkness": 256190.301726016,
-  "shadows": 2963.357092836,
-  "echoes": 18416.3435148
+  "praise": 3101271260.6166496,
+  "praiseGross": 3101271401.9916496,
+  "offerings": 147054.4595745779,
+  "souls": 118657.73634638355,
+  "darkness": 447525.435619084,
+  "shadows": 8280.1716305724,
+  "echoes": 54265.531590192004
  },
  "automatons": {
-  "seraphCount": 160,
+  "seraphCount": 166,
   "seraphCostMultiplier": 0.765,
   "seraphProduction": 6,
-  "throneCount": 112,
+  "throneCount": 116,
   "throneCostMultiplier": 0.85,
   "throneProduction": 6,
-  "cherubCount": 74,
+  "cherubCount": 78,
   "cherubCostMultiplier": 0.7200000000000001,
-  "cherubProduction": 0.72,
-  "dominionCount": 23,
+  "cherubProduction": 1.2000000000000002,
+  "dominionCount": 28,
   "dominionCostMultiplier": 0.8,
-  "dominionProduction": 2
+  "dominionProduction": 6
  },
  "repeatables": {
-  "praise_vault": 70,
-  "offering_vault": 41,
-  "soul_vault": 26,
-  "praise_refinement": 49,
-  "automaton_drill": 26,
-  "offline_capacitor": 15
+  "praise_vault": 73,
+  "offering_vault": 44,
+  "soul_vault": 32,
+  "praise_refinement": 51,
+  "automaton_drill": 28,
+  "offline_capacitor": 17
  },
  "multipliers": {
   "praise": 531.3,
@@ -52,13 +52,13 @@
   "offlineEfficiency": 1
  },
  "bonuses": {
-  "drill": 4.9,
-  "dominion": 2.38,
-  "refinement": 13.25,
+  "drill": 5.2,
+  "dominion": 6.04,
+  "refinement": 13.75,
   "doctrine": 1,
-  "nemesis": 2.92,
+  "nemesis": 3.496,
   "nullDoctrine": 3.6399999999999997,
-  "voidDrill": 4,
+  "voidDrill": 4.15,
   "voidRefinement": 7.25
  },
  "prestige": {
@@ -71,35 +71,35 @@
  "void": {
   "unlocked": true,
   "resources": {
-   "darkness": 5036522.98640363,
-   "shadows": 157480.12357353783,
-   "echoes": 999478.1625041405
+   "darkness": 11236905.518750392,
+   "shadows": 369224.5973614133,
+   "echoes": 1745267.2084849337
   },
   "caps": {
    "darkness": 17330254,
-   "shadows": 363183,
-   "echoes": 2824964
+   "shadows": 567654,
+   "echoes": 5519712
   },
   "automatons": {
    "wraithCount": 99,
    "wraithCostMultiplier": 0.85,
-   "wraithProduction": 3.2,
+   "wraithProduction": 2,
    "revenantCount": 59,
    "revenantCostMultiplier": 1,
    "revenantProduction": 2,
-   "phantomCount": 55,
+   "phantomCount": 58,
    "phantomCostMultiplier": 1,
    "phantomProduction": 3,
-   "nemesisCount": 24,
+   "nemesisCount": 26,
    "nemesisCostMultiplier": 1,
-   "nemesisProduction": 2
+   "nemesisProduction": 2.4
   },
   "repeatables": {
    "darkness_vault": 38,
-   "shadow_vault": 31,
-   "echo_vault": 31,
+   "shadow_vault": 33,
+   "echo_vault": 34,
    "void_refinement": 25,
-   "entropy_drill": 20
+   "entropy_drill": 21
   }
  },
  "reality": {
@@ -109,11 +109,11 @@
   "version": "4.2.0",
   "entries": [
    "improvement:imp_praise_throughput",
-   "improvement:imp_wraith_efficiency",
-   "improvement:imp_elevated_privileges",
-   "issue:iss_cherub_warnings"
+   "improvement:imp_nemesis_reach",
+   "improvement:imp_anomaly_sensitivity",
+   "issue:iss_unattended_flaky:patched"
   ],
-  "instability": 0.08504166666666561,
+  "instability": 0,
   "cascadeTier": 0,
   "scars": [
    "iss_sector_7g"
@@ -131,6 +131,7 @@
   "cherub_cost_1",
   "cherub_cost_2",
   "dominion_boost_1",
+  "dominion_boost_2",
   "dominion_cost_1",
   "globe_unlock",
   "manual_click_1",
@@ -172,7 +173,7 @@
  "mandatesOwned": [
   "creation_root"
  ],
- "lastPurchaseSecond": 7184,
+ "lastPurchaseSecond": 7192,
  "prestigeLog": [
   {
    "t": 5158,

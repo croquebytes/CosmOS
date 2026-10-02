@@ -2,43 +2,43 @@
  "hours": 2,
  "clicksPerMin": 2,
  "resources": {
-  "praise": 18836127786.597656,
-  "offerings": 348878.4104555495,
-  "souls": 414763.2424476108
+  "praise": 8948907761.054144,
+  "offerings": 1102896.4876034854,
+  "souls": 1202962.745284056
  },
  "caps": {
   "praise": 31115070780,
-  "offerings": 3610700,
-  "souls": 1688055
+  "offerings": 2888477,
+  "souls": 2111571
  },
- "lifetimeSouls": 110257622.09966718,
+ "lifetimeSouls": 115212050.60250534,
  "rates": {
-  "praise": 712629638.713798,
-  "praiseGross": 712629771.557548,
-  "offerings": 36205.27451730738,
-  "souls": 16979.94159013535,
-  "darkness": 202764.00159042995,
-  "shadows": 2492.009844092999,
-  "echoes": 15426.727606289995
+  "praise": 812466406.1958884,
+  "praiseGross": 812466537.8208884,
+  "offerings": 41160.977281781044,
+  "souls": 32014.093441385266,
+  "darkness": 111196.32995231247,
+  "shadows": 2341.9336277609996,
+  "echoes": 15312.642950744996
  },
  "automatons": {
-  "seraphCount": 157,
+  "seraphCount": 156,
   "seraphCostMultiplier": 0.765,
   "seraphProduction": 6,
-  "throneCount": 109,
+  "throneCount": 108,
   "throneCostMultiplier": 0.85,
   "throneProduction": 6,
-  "cherubCount": 71,
+  "cherubCount": 70,
   "cherubCostMultiplier": 0.7200000000000001,
-  "cherubProduction": 0.72,
-  "dominionCount": 21,
+  "cherubProduction": 1.2000000000000002,
+  "dominionCount": 23,
   "dominionCostMultiplier": 0.8,
   "dominionProduction": 2
  },
  "repeatables": {
   "praise_vault": 67,
-  "offering_vault": 39,
-  "soul_vault": 24,
+  "offering_vault": 38,
+  "soul_vault": 25,
   "praise_refinement": 47,
   "automaton_drill": 25,
   "offline_capacitor": 15
@@ -53,13 +53,13 @@
  },
  "bonuses": {
   "drill": 4.75,
-  "dominion": 2.26,
+  "dominion": 2.38,
   "refinement": 12.75,
   "doctrine": 1,
-  "nemesis": 2.6799999999999997,
+  "nemesis": 2.92,
   "nullDoctrine": 3.6399999999999997,
-  "voidDrill": 3.85,
-  "voidRefinement": 6.75
+  "voidDrill": 3.6999999999999997,
+  "voidRefinement": 6.25
  },
  "prestige": {
   "level": 1,
@@ -71,35 +71,35 @@
  "void": {
   "unlocked": true,
   "resources": {
-   "darkness": 6104391.882352708,
-   "shadows": 71273.89930599686,
-   "echoes": 615819.6807858712
+   "darkness": 1225737.0516780673,
+   "shadows": 84862.00519851458,
+   "echoes": 849303.3483808469
   },
   "caps": {
-   "darkness": 11090242,
-   "shadows": 232321,
-   "echoes": 1807145
+   "darkness": 4540726,
+   "shadows": 148570,
+   "echoes": 1155741
   },
   "automatons": {
-   "wraithCount": 95,
+   "wraithCount": 89,
    "wraithCostMultiplier": 0.85,
-   "wraithProduction": 3.2,
-   "revenantCount": 56,
+   "wraithProduction": 2,
+   "revenantCount": 52,
    "revenantCostMultiplier": 1,
    "revenantProduction": 2,
-   "phantomCount": 52,
+   "phantomCount": 51,
    "phantomCostMultiplier": 1,
    "phantomProduction": 3,
-   "nemesisCount": 21,
+   "nemesisCount": 20,
    "nemesisCostMultiplier": 1,
-   "nemesisProduction": 2
+   "nemesisProduction": 2.4
   },
   "repeatables": {
-   "darkness_vault": 36,
-   "shadow_vault": 29,
-   "echo_vault": 29,
-   "void_refinement": 23,
-   "entropy_drill": 19
+   "darkness_vault": 32,
+   "shadow_vault": 27,
+   "echo_vault": 27,
+   "void_refinement": 21,
+   "entropy_drill": 18
   }
  },
  "reality": {
@@ -109,11 +109,11 @@
   "version": "4.2.0",
   "entries": [
    "improvement:imp_praise_throughput",
-   "improvement:imp_wraith_efficiency",
-   "improvement:imp_elevated_privileges",
-   "issue:iss_cherub_warnings"
+   "improvement:imp_nemesis_reach",
+   "improvement:imp_anomaly_sensitivity",
+   "issue:iss_unattended_flaky:patched"
   ],
-  "instability": 0.07437500000000012,
+  "instability": 0,
   "cascadeTier": 0,
   "scars": [
    "iss_sector_7g"
@@ -136,6 +136,7 @@
   "manual_click_1",
   "offering_unlock",
   "offline_efficiency_1",
+  "offline_efficiency_2",
   "overclock_duration_1",
   "overclock_potency_1",
   "praise_multi_1",
