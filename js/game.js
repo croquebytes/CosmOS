@@ -4169,12 +4169,57 @@ const game = {
     },
 
     // === SAVE MANAGEMENT ===
-    exportSave() {
-        try {
-            const saveData = JSON.stringify(State);
-            const compressed = btoa(saveData); // Base64 encode
+    /* Save text: the save as JSON, UTF-8, base64.
 
-            const textarea = document.getElementById('export-save-text');
+       This used to be btoa(JSON.stringify(State)), and btoa throws on any
+       character above U+00FF. The save carries them in ordinary play — the
+       cascade throttle label, incident labels, the ending "Handover — …"
+       labels and the patch labels all hold an em dash — so once any of those
+       existed the Export button failed, and only ui.log said so, which writes
+       into the Engine's log and is invisible from Settings.
+
+       UTF-8 first, so nothing is lost. An export that is plain ASCII is
+       byte-identical to the old one (a build from before this fix still
+       imports it); an old export holding Latin-1 characters (U+0080–U+00FF,
+       such as "×") has them as single bytes, which is not valid UTF-8, so
+       decoding falls back to reading the bytes as Latin-1. Chunked, because a
+       save runs to hundreds of kilobytes and a single apply() would not. */
+    encodeSaveText(json) {
+        const bytes = new TextEncoder().encode(json);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        }
+        return btoa(binary);
+    },
+
+    decodeSaveText(text) {
+        const binary = atob(String(text).trim());
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        try {
+            return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+        } catch (err) {
+            return binary;   // an export from before this fix: the JSON as Latin-1
+        }
+    },
+
+    /* The Save Management panel's own status line. ui.log writes only into
+       the Engine's log, so a failure shown there is invisible from Settings. */
+    saveStatus(message, isError = false) {
+        const line = document.getElementById('save-status');
+        if (line) {
+            line.textContent = message;
+            line.dataset.tone = isError ? 'error' : 'ok';
+        }
+        ui.log(message);
+    },
+
+    exportSave() {
+        const textarea = document.getElementById('export-save-text');
+        try {
+            const compressed = this.encodeSaveText(JSON.stringify(State));
+
             if (textarea) {
                 textarea.value = compressed;
                 textarea.select();
@@ -4182,23 +4227,24 @@ const game = {
                 // Use modern Clipboard API
                 if (navigator.clipboard) {
                     navigator.clipboard.writeText(compressed).then(() => {
-                        ui.log('Save exported and copied to clipboard!');
+                        this.saveStatus('Save exported and copied to clipboard!');
                     }).catch(() => {
-                        ui.log('Save exported (copy manually from text box).');
+                        this.saveStatus('Save exported (copy manually from text box).');
                     });
                 } else {
-                    ui.log('Save exported (copy manually from text box).');
+                    this.saveStatus('Save exported (copy manually from text box).');
                 }
             }
         } catch (error) {
-            ui.log('Error exporting save: ' + error.message);
+            if (textarea) textarea.value = '';
+            this.saveStatus('Error exporting save: ' + error.message, true);
         }
     },
 
     importSave() {
         const textarea = document.getElementById('import-save-text');
         if (!textarea || !textarea.value) {
-            ui.log('Please paste a save string first.');
+            this.saveStatus('Please paste a save string first.', true);
             return;
         }
 
@@ -4207,8 +4253,7 @@ const game = {
         }
 
         try {
-            const compressed = textarea.value.trim();
-            const saveData = atob(compressed); // Base64 decode
+            const saveData = this.decodeSaveText(textarea.value);
             const parsed = JSON.parse(saveData);
 
             /* Validate shape, not progress. The old check required
@@ -4225,7 +4270,7 @@ const game = {
             localStorage.setItem('cosmos_save', saveData);
             location.reload(); // Reload to apply the imported save
         } catch (error) {
-            ui.log('Error importing save: Invalid or corrupted save data.');
+            this.saveStatus('Error importing save: Invalid or corrupted save data.', true);
         }
     },
 
