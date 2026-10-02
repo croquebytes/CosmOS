@@ -1372,3 +1372,31 @@ three further runs — watch for it.
 2. Wire the audio drop-in contract (`docs/AUDIO_PLAN.md` §5).
 3. PR `session-7/world-and-media` → `main`.
 4. Re-check hostile drift with the new standing levers.
+
+### Session 7, part 2 (2026-10-02): more footage, audio, and the Krea wall
+- **Audio (merged):** drop-in music and voice through `js/audiofiles.js`,
+  with music and voice buses, ducking, and Music/Voices settings. M1
+  *Primordial Shift* is generated: a 120s seamless loop at −20 LUFS. The
+  Instructor (ElevenLabs voice `cjVigY5qzO86Huf0OWal`, "Eric") reads all 10
+  T1 lines, and the tape clock waits for each line. The other cues
+  (M2–M11) are wired and inert until their files exist.
+  `assets/audio/MANIFEST.md` has the prompts, line text and job ids.
+- **Recovered Footage and the Omniscient (merged):** `js/footage.js`.
+  - Five [REDACTED] archive reels, found in the Recycle Bin, the previous
+    Operator's mail, `void://forum`, `null://` and the archive annotations.
+    Redaction bars, timecode and the CLASSIFIED framing are CSS.
+  - Four "Welcome from the Omniscient" video addresses by mail (first
+    directive, first reboot, Void, any ending).
+  - Etherscape `web__` clip prompts are recorded.
+  - Everything is inert until its reel exists.
+  - 20 + 29 tests, 20/20 mutants.
+- **Krea balance hit 0** (402 on every request) partway through.
+  - Done: the Instructor character sheet, T1 keyframes, T2 shot 2 (real
+    footage), and 2 footage keyframes.
+  - Not generated: 28 tape reels, 5 recovered reels, 4 Omniscient
+    addresses, 3 web clips.
+  - Resume kit: `docs/krea-resume/` and the MANIFEST sections. About 38k
+    units for the tapes alone.
+- **Patience e2e flake fixed:** the icon wait went from 2.5s to 8s (it
+  appears on a 1 Hz refresh).
+- **Verification:** `npm test` green, 19 node suites + golden + 10 browser.
