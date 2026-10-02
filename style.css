@@ -49,6 +49,13 @@
     --cos-ink-inv: #dbe2ee;
     --cos-ink-inv-dim: #8c99ad;
     --cos-alarm: #d4553a;
+    /* Text versions of the two accents, for writing ON vellum. --cos-alarm
+       and --cos-brass-700 are edge and ornament colours: as 10px text on
+       --cos-vellum-300 they read at 2.5:1 and 4.0:1. These clear WCAG AA
+       (4.5:1) on every vellum tone a window uses, down to the alarm-tinted
+       stamp fill. */
+    --cos-alarm-ink: #832a19;  /* 5.65:1 on --cos-vellum-300, 4.58:1 on the tinted stamp */
+    --cos-brass-ink: #5e4620;  /* 5.50:1 on --cos-vellum-300 */
 
     /* ── Type: the institution and the machine ── */
     --cos-font-display: Georgia, 'Times New Roman', serif;
@@ -279,7 +286,7 @@ html {
     border: 1px solid var(--cos-brass-700);
     border-radius: 1px;
     background: rgba(180, 145, 74, 0.12);
-    color: var(--cos-brass-700);
+    color: var(--cos-brass-ink);
     font: bold 10px var(--cos-font-machine);
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -289,7 +296,7 @@ html {
 .code-stamp.is-alarm {
     border-color: var(--cos-alarm);
     background: rgba(212, 85, 58, 0.14);
-    color: var(--cos-alarm);
+    color: var(--cos-alarm-ink);
 }
 
 /* Struck rank medallion, standing in for the old medal emoji. */
@@ -2756,13 +2763,13 @@ body.resizing-window {
 }
 
 .danger-btn {
-    background: linear-gradient(180deg, #ff6b6b, #c92a2a);
+    background: linear-gradient(180deg, #b52f2f, #8a1f1f);
     color: white;
     font-weight: bold;
 }
 
 .danger-btn:hover {
-    background: linear-gradient(180deg, #ff5252, #b71c1c);
+    background: linear-gradient(180deg, #c23434, #7a1a1a);
 }
 
 .danger-btn:active {
@@ -2898,7 +2905,7 @@ body.performance-mode .crt-overlay {
 }
 
 .critical-text {
-    color: #d32f2f;
+    color: var(--cos-alarm-ink);
 }
 
 .process-cpu,
@@ -2913,15 +2920,15 @@ body.performance-mode .crt-overlay {
 }
 
 .status-running {
-    color: #2e7d32;
+    color: var(--cos-verd-600);
 }
 
 .status-not-responding {
-    color: #d32f2f;
+    color: var(--cos-alarm-ink);
 }
 
 .status-idle {
-    color: #757575;
+    color: var(--cos-ink-dim);
 }
 
 .process-desc {
@@ -2937,7 +2944,7 @@ body.performance-mode .crt-overlay {
 .btn-end-process {
     padding: 3px 8px;
     font-size: 9px;
-    background: linear-gradient(180deg, #ff6b6b, #c92a2a);
+    background: linear-gradient(180deg, #b52f2f, #8a1f1f);
     color: white;
     border: 1px solid #a00;
     cursor: pointer;
@@ -2945,7 +2952,7 @@ body.performance-mode .crt-overlay {
 }
 
 .btn-end-process:hover {
-    background: linear-gradient(180deg, #ff5252, #b71c1c);
+    background: linear-gradient(180deg, #c23434, #7a1a1a);
 }
 
 .btn-end-process:active {
@@ -2954,7 +2961,7 @@ body.performance-mode .crt-overlay {
 }
 
 .no-action {
-    color: #999;
+    color: var(--cos-ink-dim);
     font-size: 12px;
 }
 
@@ -2965,11 +2972,11 @@ body.performance-mode .crt-overlay {
     padding: 8px 10px;
     margin-top: 5px;
     font-size: 9px;
-    color: #856404;
+    color: var(--cos-brass-ink);
 }
 
 .taskmgr-warning strong {
-    color: #d32f2f;
+    color: var(--cos-alarm-ink);
     font-weight: bold;
 }
 
@@ -3017,14 +3024,14 @@ body.performance-mode .crt-overlay {
 .btn-empty-bin {
     padding: 4px 8px;
     font-size: 10px;
-    background: linear-gradient(180deg, #ff6b6b, #c92a2a);
+    background: linear-gradient(180deg, #b52f2f, #8a1f1f);
     color: white;
     border: 1px solid #a00;
     cursor: pointer;
 }
 
 .btn-empty-bin:hover {
-    background: linear-gradient(180deg, #ff5252, #b71c1c);
+    background: linear-gradient(180deg, #c23434, #7a1a1a);
 }
 
 .btn-empty-bin:active {
@@ -3152,13 +3159,13 @@ body.performance-mode .crt-overlay {
 }
 
 .btn-delete-permanent {
-    background: linear-gradient(180deg, #ff6b6b, #c92a2a);
+    background: linear-gradient(180deg, #b52f2f, #8a1f1f);
     color: white;
     border-color: #a00;
 }
 
 .btn-delete-permanent:hover {
-    background: linear-gradient(180deg, #ff5252, #b71c1c);
+    background: linear-gradient(180deg, #c23434, #7a1a1a);
 }
 
 .btn-sacrifice {
@@ -3184,7 +3191,7 @@ body.performance-mode .crt-overlay {
 
 .no-action {
     font-size: 9px;
-    color: #999;
+    color: var(--cos-ink-dim);
     font-style: italic;
 }
 
@@ -5038,7 +5045,7 @@ body.start-menu-open .adversary-bark-layer { z-index: 9000; }
     text-transform: uppercase;
 }
 .bd-total {
-    color: var(--cos-brass-700);
+    color: var(--cos-ink);
     font: 700 17px var(--cos-font-display);
     white-space: nowrap;
 }
@@ -5079,7 +5086,7 @@ body.start-menu-open .adversary-bark-layer { z-index: 9000; }
 
 .bd-section th {
     padding: 7px 0 2px;
-    color: var(--cos-brass-700);
+    color: var(--cos-ink-dim);
     border-bottom: 1px solid var(--cos-vellum-400);
     font: bold 9px var(--cos-font-machine);
     letter-spacing: 0.1em;
@@ -5103,11 +5110,11 @@ body.start-menu-open .adversary-bark-layer { z-index: 9000; }
 .bd-table .bd-item td.bd-factor { color: var(--cos-ink-dim); }
 
 .bd-table .bd-group.is-alarm td.bd-label,
-.bd-table .bd-group.is-alarm td.bd-factor { color: var(--cos-alarm); }
+.bd-table .bd-group.is-alarm td.bd-factor { color: var(--cos-alarm-ink); }
 .bd-group.is-residue .bd-label { color: var(--cos-ink-dim); font-style: italic; }
 
 /* "Why?" lands here: the throttle rows are marked, not just scrolled to. */
-.bd-section.is-focus th { color: var(--cos-alarm); border-bottom-color: var(--cos-alarm); }
+.bd-section.is-focus th { color: var(--cos-alarm-ink); border-bottom-color: var(--cos-alarm); }
 tr.is-focus td { background: rgba(212, 85, 58, 0.08); }
 
 .bd-final th,
@@ -5118,7 +5125,7 @@ tr.is-focus td { background: rgba(212, 85, 58, 0.08); }
     font: bold 11px var(--cos-font-machine);
     text-align: left;
 }
-.bd-final td { text-align: right; color: var(--cos-brass-700); }
+.bd-final td { text-align: right; color: var(--cos-ink); }
 
 .bd-stamp {
     min-width: 0;
@@ -5279,7 +5286,7 @@ tr.is-focus td { background: rgba(212, 85, 58, 0.08); }
 }
 
 .incident-status {
-    color: var(--cos-alarm);
+    color: var(--cos-alarm-ink);
     font-weight: bold;
 }
 
@@ -5292,7 +5299,7 @@ tr.is-focus td { background: rgba(212, 85, 58, 0.08); }
 }
 
 .incident-row.sev-1 .incident-clock {
-    color: var(--cos-alarm);
+    color: var(--cos-alarm-ink);
     font-weight: bold;
 }
 
@@ -6882,7 +6889,7 @@ body:has(#system-modal-layer .cine-stage:not(.is-hosted)) :is(.document-notifica
     justify-content: space-between;
     gap: 8px;
     padding: 4px 10px;
-    color: var(--cos-ink-dim);
+    color: var(--cos-ink);
     border-top: 1px solid var(--cos-vellum-500);
     box-shadow: inset 0 1px 0 var(--cos-vellum-100);
     font: 10px var(--cos-font-machine);
@@ -7394,7 +7401,7 @@ body:has(#system-modal-layer .cine-stage:not(.is-hosted)) :is(.document-notifica
     justify-content: space-between;
     gap: 8px;
     padding: 4px 10px;
-    color: var(--cos-ink-dim);
+    color: var(--cos-ink);
     border-top: 1px solid var(--cos-vellum-500);
     box-shadow: inset 0 1px 0 var(--cos-vellum-100);
     font: 10px var(--cos-font-machine);
@@ -7923,7 +7930,7 @@ button.ml-attach:hover:not(:disabled) { border-color: var(--cos-brass-700); back
     justify-content: space-between;
     gap: 8px;
     padding: 4px 10px;
-    color: var(--cos-ink-dim);
+    color: var(--cos-ink);
     border-top: 1px solid var(--cos-vellum-500);
     box-shadow: inset 0 1px 0 var(--cos-vellum-100);
     font: 10px var(--cos-font-machine);
@@ -8752,7 +8759,7 @@ button.ml-attach:hover:not(:disabled) { border-color: var(--cos-brass-700); back
 }
 
 .es-theme-status .es-sign { color: var(--cos-verd-600); }
-.es-theme-status .es-sign.is-alarm { color: var(--cos-alarm); }
+.es-theme-status .es-sign.is-alarm { color: var(--cos-alarm-ink); }
 
 .es-theme-wiki .es-masthead {
     color: var(--cos-ink);
