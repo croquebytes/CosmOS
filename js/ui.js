@@ -55,6 +55,17 @@ const ui = {
        removed when this landed. */
     PANEL_INTERVAL: 100,
 
+    /* prefers-reduced-motion, read live: the CSS honours it in one rule
+       (style.css), the canvases ask here. */
+    reducedMotion() {
+        try {
+            this.motionQuery = this.motionQuery || window.matchMedia('(prefers-reduced-motion: reduce)');
+            return this.motionQuery.matches;
+        } catch (err) {
+            return false;
+        }
+    },
+
     /* Does anything on screen need the loop at frame rate? The core wells
        (renderCoreView advances per call) and a stabilisation ritual's needle.
        Everything else is text on the panel tick. See game.nextFrame. */
@@ -2311,7 +2322,7 @@ const ui = {
         const magnitude = Math.min(1, Math.log10(Math.max(1, intensity)) / 5);
         view.impact = Math.min(1.35, 0.85 + magnitude * 0.45);
 
-        if (!State.settings?.performanceMode) {
+        if (!State.settings?.performanceMode && !this.reducedMotion()) {
             view.bursts.push({ life: 1, magnitude, spin: Math.random() * Math.PI * 2 });
             if (view.bursts.length > 3) view.bursts.shift();
         }
@@ -2374,7 +2385,10 @@ const ui = {
         const spare = !!State.settings?.performanceMode;
 
         // Production raises the tempo without allowing runaway animation speeds.
-        view.pulse += 0.03 + energy * 0.06;
+        // Under prefers-reduced-motion the machine holds still: no breathing,
+        // no turning sigil, no shimmer. A strike still lights it (the halo
+        // fades in place), so a Miracle is still visibly accepted.
+        if (!this.reducedMotion()) view.pulse += 0.03 + energy * 0.06;
         const impact = view.impact || 0;
 
         ctx.clearRect(0, 0, width, height);
@@ -3808,7 +3822,7 @@ Title on file: ${esc(doc.endTitle)}</pre>
         this.drawDimensionRegion(ctx, centerX, centerY - 60, 40, 'primordial', '#ffd700');
         this.drawDimensionRegion(ctx, centerX, centerY + 60, 40, 'void', '#9c27b0');
 
-        this.globeRotation += 0.005;
+        if (!this.reducedMotion()) this.globeRotation += 0.005;
         this.globeRafId = requestAnimationFrame(() => this.animateGlobe());
     },
 

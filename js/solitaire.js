@@ -936,8 +936,14 @@ const PatienceView = {
         `;
         root.addEventListener('click', (event) => this.onClick(event));
         // A focused card button fires on Space KEYUP; Space is "draw" here.
+        // Only the cards: they are tabindex=-1 and the arrows drive them. A
+        // control in the tab order (Deal, the stock, a banner's button) is
+        // the keyboard's, and Space activates it (system.ownsActivationKey).
         root.addEventListener('keyup', (event) => {
-            if (event.code === 'Space') event.preventDefault();
+            if (event.code !== 'Space') return;
+            const t = event.target;
+            if (t && t.closest && t.closest('button') && t.tabIndex >= 0 && !t.disabled) return;
+            event.preventDefault();
         });
         // Resting on the Grace pane is reading the odds, and she notices.
         root.addEventListener('mouseover', (event) => {
@@ -1322,6 +1328,13 @@ const PatienceView = {
         if (target && target !== document.body && win && !win.contains(target)) return false;
         const state = PatienceApp.current();
         const code = event.code;
+        /* A focused button in the tab order (Deal, Undo, Reshuffle, the
+           stock, a banner's button) keeps its own Enter, as it keeps its own
+           Space (system.ownsActivationKey). The cards are tabindex=-1: the
+           arrows-and-Enter model is theirs. Returning true without
+           preventDefault lets the browser click the button. */
+        if ((code === 'Enter' || code === 'NumpadEnter' || code === 'Space')
+            && target && target.closest && target.closest('button') && target.tabIndex >= 0) return true;
 
         if (code === 'ArrowLeft' || code === 'ArrowRight' || code === 'ArrowUp' || code === 'ArrowDown') {
             event.preventDefault();

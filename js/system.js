@@ -64,6 +64,13 @@ const system = {
         else setInterval(() => this.updateClock(), 1000);
         this.initKeyboardShortcuts();
         this.initDesktopIcons();
+        /* Tabbing into a window brings it forward, as a click does: focus in
+           a window buried under another is a focus ring nobody can see. */
+        document.addEventListener('focusin', (event) => {
+            const win = event.target && event.target.closest ? event.target.closest('.window') : null;
+            const id = win && win.dataset.appId;
+            if (id && this.windows[id] === win && this.getTopWindowId() !== id) this.focusWindow(id);
+        });
         this.renderStartMenu();
         this.updateTaskbar();
         window.addEventListener('resize', () => this.handleViewportResize());
@@ -207,6 +214,14 @@ const system = {
                 return;
             }
 
+            /* Space belongs to the control that has focus. A Bless button, a
+               tape on the shelf, a Patience toolbar button, a desktop plaque:
+               Space activates it, the way it does everywhere else, and is
+               never also a Miracle. Only Space with focus on nothing in
+               particular (the desktop, a window's body) is the shortcut — and
+               the Miracle button itself, which keeps the one keyboard path. */
+            if (e.code === 'Space' && this.ownsActivationKey(e.target)) return;
+
             // Patience.exe claims arrows, Enter and Space while it is on top.
             if (typeof PatienceView !== 'undefined' && PatienceView.handleKey(e, this.getTopWindowId())) {
                 return;
@@ -260,15 +275,11 @@ const system = {
                 }
             }
 
-            // Escape: Close top window
+            // Escape: close the top layer — a system dialog, the Genesis
+            // menu, then the top window. See escapeTopLayer.
             if (e.code === 'Escape') {
                 e.preventDefault();
-                const menu = document.getElementById('start-menu');
-                if (menu && !menu.hidden) {
-                    this.toggleStartMenu(false);
-                    return;
-                }
-                this.closeTopWindow();
+                this.escapeTopLayer(e.target);
             }
 
             // F: Toggle fullscreen
@@ -385,6 +396,55 @@ const system = {
         if (topWindow) {
             this.closeApp(topWindow);
         }
+    },
+
+    /* Escape, layer by layer. The reel, a Breakdown sheet, the Adversary
+       scene and an open Etherscape menu catch it before it gets here.
+
+       A system dialog is above every window: Escape used to close the window
+       BEHIND it and leave the dialog up. It now goes through the dialog's own
+       title-bar button, so each dialog closes by its own rules (the briefing
+       marks itself seen, the ship dialog cancels, the SEV-1 alert is "Later").
+
+       Then the top window — which is the one the keyboard is in, since
+       tabbing into a window raises it (the focusin listener in init). When
+       the keyboard was in it, focus goes back to that app's plaque on the
+       desktop, so the next Tab starts somewhere instead of at the top of the
+       document. */
+    escapeTopLayer(target = null) {
+        const layer = document.getElementById('system-modal-layer');
+        if (layer && layer.classList.contains('active')) {
+            const close = layer.querySelector('.system-dialog-titlebar button');
+            if (close) close.click();
+            else if (typeof ui !== 'undefined') ui.dismissSystemModal();
+            return 'dialog';
+        }
+        const menu = document.getElementById('start-menu');
+        if (menu && !menu.hidden) {
+            this.toggleStartMenu(false);
+            document.getElementById('start-button')?.focus({ preventScroll: true });
+            return 'menu';
+        }
+        const id = this.getTopWindowId();
+        if (!id) return null;
+        const host = target && target.closest ? target.closest('.window') : null;
+        const hadFocus = !!(host && host === this.windows[id]);
+        this.closeApp(id);
+        const plaque = document.getElementById(`icon-${id}`);
+        if (hadFocus && plaque && plaque.getClientRects().length) plaque.focus({ preventScroll: true });
+        return id;
+    },
+
+    /* Does Space belong to the focused element? Yes for anything in the tab
+       order (a button, a link, a plaque, a list) — except the Miracle button,
+       whose Space stays a Miracle through the keyboard path. Patience's
+       cards are tabindex=-1 and are driven by the arrows, so a card that took
+       focus from a mouse click does not swallow Space: it still draws. */
+    ownsActivationKey(target) {
+        if (!target || !target.closest || target === document.body || target === document.documentElement) return false;
+        if (target.closest('.divine-btn')) return false;
+        if (target.disabled) return false;
+        return target.tabIndex >= 0;
     },
 
     updateClock() {
@@ -694,14 +754,18 @@ const system = {
 
         const appConfig = this.getAppConfig(id);
 
+        // A window is a labelled region the keyboard can find; its controls
+        // say what they do (a bare "X" or "<" reads as nothing).
+        win.setAttribute('role', 'dialog');
+        win.setAttribute('aria-labelledby', `title-${id}`);
         win.innerHTML = `
             <div class="window-title-bar" onmousedown="system.startDrag(event, '${id}')">
-                <div class="window-title">${appConfig.title}</div>
+                <div class="window-title" id="title-${id}">${appConfig.title}</div>
                 <div class="window-controls">
-                    <button data-action="snap-left" title="Snap Left" onclick="system.snapWindow('${id}', 'left')">&lt;</button>
-                    <button data-action="maximize" title="Maximize" onclick="system.toggleMaximize('${id}')">O</button>
-                    <button data-action="snap-right" title="Snap Right" onclick="system.snapWindow('${id}', 'right')">&gt;</button>
-                    <button onclick="system.closeApp('${id}')">X</button>
+                    <button type="button" data-action="snap-left" title="Snap Left" aria-label="Snap left" onclick="system.snapWindow('${id}', 'left')">&lt;</button>
+                    <button type="button" data-action="maximize" title="Maximize" aria-label="Maximize" onclick="system.toggleMaximize('${id}')">O</button>
+                    <button type="button" data-action="snap-right" title="Snap Right" aria-label="Snap right" onclick="system.snapWindow('${id}', 'right')">&gt;</button>
+                    <button type="button" data-action="close" title="Close" aria-label="Close ${appConfig.title}" onclick="system.closeApp('${id}')">X</button>
                 </div>
             </div>
             <div class="window-content app-${id}" id="content-${id}">
