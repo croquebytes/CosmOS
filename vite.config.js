@@ -14,6 +14,10 @@ function copyRuntimeAssets({ release }) {
     let outputDir = resolve(rootDir, 'dist');
     return {
         name: 'copy-cosmos-runtime-assets',
+        /* Builds only. closeBundle also fires when the DEV server closes (a
+           config edit restarts it, so does Ctrl-C), and it used to copy js/
+           into the committed dist/ every time — devtools.js included. */
+        apply: 'build',
         configResolved(config) {
             outputDir = resolve(config.root, config.build.outDir);
         },
@@ -55,6 +59,7 @@ function copyRuntimeAssets({ release }) {
 function stripDevScripts({ release }) {
     return {
         name: 'strip-cosmos-dev-scripts',
+        apply: 'build',
         transformIndexHtml(html) {
             if (!release) return html;
             let out = html;

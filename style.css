@@ -2616,6 +2616,17 @@ body.resizing-window {
     margin-bottom: 5px;
 }
 
+.save-status {
+    min-height: 14px;
+    font-size: 10px;
+    color: var(--cos-ink-dim);
+}
+
+.save-status[data-tone="error"] {
+    color: var(--cos-alarm-ink);
+    font-weight: bold;
+}
+
 .save-textarea {
     width: 100%;
     height: 60px;

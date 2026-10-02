@@ -26,6 +26,7 @@
  */
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
+import { measureContrast } from './contrast-probe.mjs';
 
 const baseUrl = process.env.COSMOS_TEST_URL || 'http://localhost:5173';
 const ALL_APPS = ['console', 'settings', 'mandates', 'dimensions', 'notepad', 'taskmgr', 'recyclebin',
@@ -630,6 +631,32 @@ try {
         await page.waitForFunction(() => /\d+ of \d+ installed/.test(document.getElementById('dev-voice-summary')?.textContent || ''), null, { timeout: 30000 });
         assert.ok(await page.locator('#dev-voices li [data-dev="voice"]').count() >= 1, 'an installed narration line has a Play button');
         step('cues play without editing the run; audio.debug() reads; music and narration probe to what is installed');
+    }
+
+    /* ── 7. the panel is text on the vellum like any other: AA ────────── */
+    {
+        const page = await newPage({ allow: [/Failed to load resource/] });
+        await evalIn(page, () => { system.closeApp('console'); system.openApp('settings'); system.toggleMaximize('settings', true); });
+        await page.locator('#win-settings .dev-console').waitFor();
+        await evalIn(page, () => { DevTools.actions.unlockEverything(); document.querySelectorAll('.dev-group, .dev-shots').forEach((d) => { d.open = true; }); });
+        await page.waitForFunction(() => /\d+ of \d+ installed/.test(document.getElementById('dev-probe-summary')?.textContent || ''), null, { timeout: 20000 });
+        await evalIn(page, () => { document.getElementById('dev-status').dataset.tone = 'error'; });
+        const failing = new Set();
+        let measured = 0;
+        const box = await evalIn(page, () => { const c = document.getElementById('content-settings'); return { h: c.scrollHeight, v: c.clientHeight }; });
+        for (let y = 0; y < box.h; y += Math.max(200, Math.floor(box.v * 0.7))) {
+            await evalIn(page, (top) => { document.getElementById('content-settings').scrollTop = top; }, y);
+            const rows = await measureContrast(page, '#win-settings .dev-console');
+            measured += rows.length;
+            for (const r of rows) {
+                // A line cut to a sliver by the window's edge is measured against the window chrome too.
+                if (r.rect.h < 10) continue;
+                if (r.ratio < r.need) failing.add(`${r.sel} "${r.text}" ${r.ratio} (needs ${r.need}) bg=${r.bg}`);
+            }
+        }
+        assert.ok(measured > 200, `the probe measured the panel (${measured} text boxes over ${box.h}px)`);
+        assert.deepEqual([...failing], [], 'Dev Console text below WCAG AA');
+        step(`every text in the panel clears AA, all 11 groups open (${measured} boxes measured)`);
     }
 
     const real = errors.filter((e) => !/Failed to load resource/.test(e));

@@ -940,6 +940,7 @@ const DevTools = (() => {
 .dev-label { flex: none; min-width: 96px; font-weight: bold; color: var(--cos-ink, #1b1712); }
 .dev-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .dev-note { margin: 0; color: var(--cos-ink-dim, #5b5245); line-height: 1.4; }
+.dev-console h4.dev-note { margin: 4px 0 0; font-size: 11px; color: var(--cos-ink, #1b1712); }
 .dev-console .dev-btn { display: inline-block; width: auto; margin: 0; padding: 3px 8px; font-size: 11px; min-width: 0; }
 .dev-field { display: inline-flex; align-items: center; gap: 4px; color: var(--cos-ink, #1b1712); }
 .dev-num { width: 56px; padding: 2px 4px; font-family: inherit; font-size: 11px; background: var(--cos-vellum-100, #f4efe4); color: var(--cos-ink, #1b1712); border: 1px solid var(--cos-ink-dim, #5b5245); }
