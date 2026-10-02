@@ -16,10 +16,21 @@
      voice ─┬─> ui bus ──────┐
             ├─> sfx bus ─────┼─> master ─> limiter ─> speakers
             └─> reverb ─> fx ┘      ^
-     ambient bed ─> ambient bus ────┘
+     ambient bed ─> ambient bus ────┤
+     music files ─> duck ─> music ──┤   (js/audiofiles.js: drop-in files)
+     spoken lines ─> voice bus ─────┘
 
    The ui and fx buses follow the SFX setting (ui sits a little lower), and
    ambient has its own. Mute zeroes the master gain and suspends the context.
+
+   MUSIC AND VOICES (by file; none ship with the synth)
+     The music and voice buses play files from assets/audio/, named and
+     probed by js/audiofiles.js. With no file installed neither bus ever
+     carries a sample, nothing is fetched beyond a HEAD probe, and nothing
+     else in this file behaves differently. Music sits about 12 dB under
+     the cues; a spoken line ducks it by about 8 dB and lets it back up when
+     it ends. Mute zeroes both buses (as well as the master) and cuts the
+     line in progress, so a tape waiting on a line is never left holding.
 
    SOUND TABLE (name — bus — what it is)
      click          ui    Beveled-button tick: a relay contact closing.
@@ -80,11 +91,22 @@ const audio = (() => {
         master: 0.7,
         sfx: 0.8,
         ambient: 0.35,
+        music: 0.6,
+        voice: 0.85,
         sfxEnabled: true,
         ambientEnabled: true,
+        musicEnabled: true,
+        voiceEnabled: true,
         muted: false,
     });
     const UI_TRIM = 0.7;       // ui bus relative to the SFX setting
+    /* File buses relative to their settings, measured against the cues
+       (tests/audio.mjs): music mastered at -20 LUFS lands about 12 dB under
+       the median cue at defaults; voice at -18 LUFS sits level with them. */
+    const MUSIC_TRIM = 0.4;
+    const VOICE_TRIM = 0.65;
+    const MUSIC_XFADE = 3;     // seconds, bed to bed
+    const DUCK = (typeof AudioFiles !== 'undefined') ? AudioFiles.duckGain() : Math.pow(10, -8 / 20);
     /* Bed output into the ambient bus. The offline level check first
        measured the bed at -17 dB RMS, louder than most cues; this trim puts
        it near -40, which is where a sound you live inside for hours belongs. */
@@ -633,6 +655,9 @@ const audio = (() => {
         G.sfx = amp(ctx, G.master, 0);
         G.fx = amp(ctx, G.master, 0);
         G.ambient = amp(ctx, G.master, 0);
+        G.music = amp(ctx, G.master, 0);
+        G.duck = amp(ctx, G.music, 1);       // voice pulls this down
+        G.voice = amp(ctx, G.master, 0);
 
         G.reverb = ctx.createConvolver();
         G.reverb.buffer = makeImpulse(ctx);
@@ -659,6 +684,10 @@ const audio = (() => {
             sfx,
             fx: sfx,
             ambient: s.ambientEnabled ? s.ambient : 0,
+            // Mute zeroes these as well as the master: a file bus is never
+            // left open behind a closed master.
+            music: (s.musicEnabled && !s.muted) ? s.music * MUSIC_TRIM : 0,
+            voice: (s.voiceEnabled && !s.muted) ? s.voice * VOICE_TRIM : 0,
         };
     }
 
@@ -802,14 +831,18 @@ const audio = (() => {
         if (!ctx || !G) return;
         const now = ctx.currentTime;
         const lv = busLevels(settings());
-        for (const bus of ['master', 'ui', 'sfx', 'fx', 'ambient']) {
+        for (const bus of ['master', 'ui', 'sfx', 'fx', 'ambient', 'music', 'voice']) {
             const p = G[bus].gain;
             p.cancelScheduledValues(now);
             p.setValueAtTime(p.value, now);
             // Linear, so mute lands on exactly zero rather than approaching it.
             p.linearRampToValueAtTime(lv[bus], now + Math.max(0.005, fade));
         }
+        G.targets = lv;
         syncAmbient();
+        const s = settings();
+        if (s.muted || !s.voiceEnabled) stopLine();
+        updateMusic();
     }
 
     function syncAmbient() {
@@ -845,7 +878,7 @@ const audio = (() => {
             G = buildGraph(ctx);
             ctx.onstatechange = syncSettingsUI;
             applyLevels(0);
-            setInterval(updateAmbient, AMBIENT_UPDATE_MS);
+            setInterval(() => { updateAmbient(); updateMusic(); }, AMBIENT_UPDATE_MS);
         } catch (err) {
             ctx = null;
             G = null;
@@ -946,11 +979,311 @@ const audio = (() => {
             voices.push(voice);
             setTimeout(() => { try { vg.disconnect(); } catch (_) { /* gone */ } },
                 Math.max(0, (end - ctx.currentTime) * 1000 + 3000));
+            // The release chord and the BIOS beep also ring their music
+            // stinger (M4, M11) when that file is installed; else nothing.
+            if (AF && AF.STINGER_ON_CUE[name]) stinger(AF.STINGER_ON_CUE[name]);
             return true;
         } catch (err) {
             // Sound is presentation. Nothing here may break the game.
             return false;
         }
+    }
+
+    /* ── Files: music and voices (js/audiofiles.js) ───────────────────────
+       Probed with HEAD (an audio content type, or it is a miss), fetched
+       and decoded on first use, cached for the session. Every entry point
+       is a no-op without a window, without fetch or without AudioFiles. */
+    const AF = (typeof AudioFiles !== 'undefined') ? AudioFiles : null;
+    const located = new Map();   // stem -> Promise<url|null>
+    const knownUrl = new Map();  // stem -> url | null, once answered
+    const decoded = new Map();   // stem -> Promise<AudioBuffer|null>
+    let oggOk = null;
+
+    function canOgg() {
+        if (oggOk !== null) return oggOk;
+        try {
+            const a = document.createElement('audio');
+            oggOk = !!(a.canPlayType && (a.canPlayType('audio/ogg; codecs="opus"') || a.canPlayType('audio/ogg; codecs="vorbis"')));
+        } catch (_) { oggOk = false; }
+        return oggOk;
+    }
+
+    const filesUsable = () => !!(AF && hasWindow && AC && typeof fetch === 'function' &&
+        typeof location !== 'undefined' && /^https?:$/.test(location.protocol));
+
+    async function headIsAudio(url) {
+        try {
+            const res = await fetch(url, { method: 'HEAD', cache: 'no-cache' });
+            return AF.responseIsAudio(res.ok, res.headers.get('content-type'));
+        } catch (_) { return false; }
+    }
+
+    /* The first installed file for a stem, or null. One probe per stem. */
+    function locate(stem) {
+        if (!stem || !filesUsable()) return Promise.resolve(null);
+        if (located.has(stem)) return located.get(stem);
+        const p = (async () => {
+            for (const url of AF.urls(stem, canOgg())) {
+                if (await headIsAudio(url)) return url;
+            }
+            return null;
+        })().then((url) => { knownUrl.set(stem, url); return url; }, () => { knownUrl.set(stem, null); return null; });
+        located.set(stem, p);
+        return p;
+    }
+
+    /* true / false, or undefined while the probe is out (or not yet asked). */
+    function stemKnown(stem) {
+        if (!stem || !filesUsable()) return false;
+        if (!knownUrl.has(stem)) return undefined;
+        return !!knownUrl.get(stem);
+    }
+
+    async function fetchDecode(url) {
+        const res = await fetch(url);
+        if (!AF.responseIsAudio(res.ok, res.headers.get('content-type'))) return null;
+        const data = await res.arrayBuffer();
+        return new Promise((resolve) => {
+            try {
+                const p = ctx.decodeAudioData(data, resolve, () => resolve(null));
+                if (p && typeof p.then === 'function') p.then(resolve, () => resolve(null));
+            } catch (_) { resolve(null); }
+        });
+    }
+
+    /* The decoded buffer for a stem, or null. An .ogg this browser claims
+       but cannot decode falls back to the .mp3. */
+    function loadStem(stem) {
+        if (!ctx) return Promise.resolve(null);
+        if (decoded.has(stem)) return decoded.get(stem);
+        const p = (async () => {
+            const url = await locate(stem);
+            if (!url) return null;
+            let buf = null;
+            try { buf = await fetchDecode(url); } catch (_) { buf = null; }
+            if (!buf && url.endsWith('.ogg')) {
+                const mp3 = url.replace(/\.ogg$/, '.mp3');
+                if (await headIsAudio(mp3)) {
+                    try { buf = await fetchDecode(mp3); } catch (_) { buf = null; }
+                }
+            }
+            return buf;
+        })().catch(() => null);
+        decoded.set(stem, p);
+        return p;
+    }
+
+    /* ── Voice: one line at a time, ducking the music ─────────────────── */
+    let line = null;   // { stem, resolve, src, timer, done }
+
+    function duckTo(value, tau) {
+        if (!ctx || !G) return;
+        const p = G.duck.gain;
+        const now = ctx.currentTime;
+        p.cancelScheduledValues(now);
+        p.setValueAtTime(p.value, now);
+        p.setTargetAtTime(value, now, tau);
+    }
+
+    function finishLine(token, outcome) {
+        if (!token || token.done) return;
+        token.done = true;
+        clearTimeout(token.timer);
+        if (token.src) {
+            const src = token.src;
+            src.onended = null;
+            try { src.stop(); } catch (_) { /* already ended */ }
+            setTimeout(() => { try { src.disconnect(); } catch (_) { /* gone */ } }, 200);
+        }
+        if (line === token) {
+            line = null;
+            duckTo(1, 0.35);
+        }
+        try { token.resolve(outcome); } catch (_) { /* a caller's then() */ }
+    }
+
+    function stopLine() {
+        if (line) finishLine(line, 'stopped');
+    }
+
+    function voiceOn() {
+        const s = settings();
+        return !!(ctx && G && !s.muted && s.voiceEnabled && s.voice > 0 && s.master > 0);
+    }
+
+    /* Speak one line. Always resolves, never rejects, with:
+       played | stopped | missing | off | error. opts.onPresent runs once
+       the file is known to be installed, before it is decoded. */
+    function say(speaker, lineId, opts = {}) {
+        return new Promise((resolve) => {
+            const stem = AF ? AF.voiceStem(speaker, lineId) : null;
+            if (!stem || !filesUsable()) { resolve('off'); return; }
+            if (!voiceOn()) { resolve('off'); return; }
+            if (stemKnown(stem) === false) { resolve('missing'); return; }
+            stopLine();
+            const token = { stem, resolve, src: null, timer: null, done: false };
+            line = token;
+            locate(stem).then((url) => {
+                if (token.done) return null;
+                if (!url) { finishLine(token, 'missing'); return null; }
+                try { if (opts && typeof opts.onPresent === 'function') opts.onPresent(); } catch (_) { /* */ }
+                return loadStem(stem).then((buf) => {
+                    if (token.done) return;
+                    if (!buf || !voiceOn()) { finishLine(token, buf ? 'off' : 'error'); return; }
+                    const src = ctx.createBufferSource();
+                    src.buffer = buf;
+                    src.connect(G.voice);
+                    src.onended = () => finishLine(token, 'played');
+                    token.src = src;
+                    src.start(ctx.currentTime + 0.02);
+                    duckTo(DUCK, 0.08);
+                    // A suspended context never fires onended; nothing may
+                    // hang a tape on a line that cannot finish.
+                    token.timer = setTimeout(() => finishLine(token, 'played'), buf.duration * 1000 + 2500);
+                });
+            }).catch(() => finishLine(token, 'error'));
+        });
+    }
+
+    /* ── Music: a bed, a layer, stingers ──────────────────────────────── */
+    const mus = { want: null, bed: null, bedLoading: null, layerWant: null, layer: null, layerLoading: null, stingers: 0 };
+
+    function musicOn() {
+        const s = settings();
+        return !!(ctx && G && !s.muted && s.musicEnabled && s.music > 0 && s.master > 0);
+    }
+
+    function startTrack(id, buf, { loop = true, fade = MUSIC_XFADE, level = 1 } = {}) {
+        const now = ctx.currentTime;
+        const gain = amp(ctx, G.duck, 0);
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.linearRampToValueAtTime(level, now + Math.max(0.05, fade));
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.loop = loop;
+        src.connect(gain);
+        src.start(now + 0.02);
+        const track = { id, src, gain, level };
+        return track;
+    }
+
+    function fadeOutTrack(track, fade = MUSIC_XFADE) {
+        if (!track || !ctx) return;
+        const now = ctx.currentTime;
+        const p = track.gain.gain;
+        p.cancelScheduledValues(now);
+        p.setValueAtTime(p.value, now);
+        p.linearRampToValueAtTime(0, now + Math.max(0.05, fade));
+        track.src.onended = null;
+        try { track.src.stop(now + fade + 0.1); } catch (_) { /* stopped */ }
+        setTimeout(() => { try { track.gain.disconnect(); } catch (_) { /* gone */ } }, (fade + 0.5) * 1000);
+    }
+
+    /* Crossfade a slot ('bed' or 'layer') to `id`, or out to nothing. A
+       bed that does not loop (an ending) plays once and is not restarted
+       while the same scene is still asking for it. */
+    function setTrack(slot, id, opts) {
+        const wantKey = slot === 'bed' ? 'want' : 'layerWant';
+        const loadingKey = `${slot}Loading`;
+        if (mus[wantKey] === id && (id === null || (mus[slot] && mus[slot].id === id) || mus[loadingKey] === id)) return;
+        mus[wantKey] = id;
+        if (mus[slot] && mus[slot].id !== id) {
+            fadeOutTrack(mus[slot]);
+            mus[slot] = null;
+        }
+        if (!id || (mus[slot] && mus[slot].id === id)) return;
+        mus[loadingKey] = id;
+        loadStem(AF.musicStem(id)).then((buf) => {
+            if (mus[loadingKey] === id) mus[loadingKey] = null;
+            if (!buf || mus[wantKey] !== id || mus[slot] || !musicOn()) {
+                // Asked for and not started: let a later update try again.
+                if (mus[wantKey] === id && !mus[slot]) mus[wantKey] = null;
+                return;
+            }
+            const def = AF.MUSIC[id] || {};
+            mus[slot] = startTrack(id, buf, { loop: def.loop !== false, ...(opts || {}) });
+        });
+    }
+
+    function topWindow() {
+        try {
+            if (typeof system === 'undefined' || !system || typeof system.getTopWindowId !== 'function') return null;
+            const id = system.getTopWindowId();
+            const win = id && system.windows ? system.windows[id] : null;
+            if (!win || win.style.display === 'none' || win.classList.contains('minimized')) return null;
+            return id;
+        } catch (_) { return null; }
+    }
+
+    /* What the game is showing, for AudioFiles.bedCandidates. */
+    function musicContext() {
+        const c = { desktop: false, dimension: 'primordial', focus: null, tapePlaying: false, adversary: false, ending: null, cascadeTier: 0 };
+        try {
+            c.desktop = !document.getElementById('boot-overlay');
+            if (typeof State !== 'undefined' && State) {
+                c.dimension = State.currentDimension === 'void' ? 'void' : 'primordial';
+                c.cascadeTier = (State.reality && State.reality.cascadeTier) || 0;
+            }
+            c.focus = topWindow();
+            if (typeof MediaPlayerView !== 'undefined' && MediaPlayerView && MediaPlayerView.state) {
+                c.tapePlaying = !!MediaPlayerView.state().playing;
+            }
+            if (typeof ui !== 'undefined' && ui && typeof ui.isAdversarySceneOpen === 'function') c.adversary = !!ui.isAdversarySceneOpen();
+            const fin = document.querySelector('.fin-phase-credits');
+            if (fin) c.ending = ['hostile', 'curious', 'complicit'].find((b) => fin.classList.contains(`fin-${b}`)) || null;
+        } catch (_) { /* music is decoration; never let it throw */ }
+        return c;
+    }
+
+    /* Twice a second, and on every settings change: pick the bed and the
+       layer, probe what they might be, crossfade when the answer changes. */
+    function updateMusic() {
+        if (!AF || !ctx || !G) return;
+        if (!musicOn()) {
+            setTrack('bed', null);
+            setTrack('layer', null);
+            return;
+        }
+        if (ctx.state !== 'running') return;
+        const c = musicContext();
+        const known = (id) => {
+            const stem = AF.musicStem(id);
+            const k = stemKnown(stem);
+            if (k === undefined) locate(stem);
+            return k;
+        };
+        setTrack('bed', AF.chooseBed(AF.bedCandidates(c), known));
+        const layer = AF.layerFor(c);
+        setTrack('layer', layer && known(layer) === true ? layer : null, { fade: 4, level: 0.8 });
+    }
+
+    /* A one-shot over the bed: the bed dips for its length, then returns. */
+    function stinger(id) {
+        if (!AF || !AF.MUSIC[id] || AF.MUSIC[id].kind !== 'stinger' || !musicOn()) return Promise.resolve(false);
+        const stem = AF.musicStem(id);
+        if (stemKnown(stem) === false) return Promise.resolve(false);
+        return loadStem(stem).then((buf) => {
+            if (!buf || !musicOn()) return false;
+            const track = startTrack(id, buf, { loop: false, fade: 0.05 });
+            const dip = (to, tau) => {
+                for (const t of [mus.bed, mus.layer]) {
+                    if (!t) continue;
+                    const p = t.gain.gain;
+                    const now = ctx.currentTime;
+                    p.cancelScheduledValues(now);
+                    p.setValueAtTime(p.value, now);
+                    p.setTargetAtTime(to * t.level, now, tau);
+                }
+            };
+            mus.stingers += 1;
+            dip(0.15, 0.3);
+            track.src.onended = () => {
+                mus.stingers = Math.max(0, mus.stingers - 1);
+                if (!mus.stingers) dip(1, 1.2);
+                setTimeout(() => { try { track.gain.disconnect(); } catch (_) { /* gone */ } }, 200);
+            };
+            return true;
+        }).catch(() => false);
     }
 
     /* ── Settings surface ───────────────────────────────────────────────── */
@@ -1011,14 +1344,22 @@ const audio = (() => {
         set('audio-master', 'value', String(Math.round(s.master * 100)));
         set('audio-sfx', 'value', String(Math.round(s.sfx * 100)));
         set('audio-ambient', 'value', String(Math.round(s.ambient * 100)));
+        set('audio-music', 'value', String(Math.round(s.music * 100)));
+        set('audio-voice', 'value', String(Math.round(s.voice * 100)));
         set('audio-sfx-enabled', 'checked', s.sfxEnabled);
         set('audio-ambient-enabled', 'checked', s.ambientEnabled);
+        set('audio-music-enabled', 'checked', s.musicEnabled);
+        set('audio-voice-enabled', 'checked', s.voiceEnabled);
         set('audio-muted', 'checked', s.muted);
         set('audio-sfx', 'disabled', !s.sfxEnabled);
         set('audio-ambient', 'disabled', !s.ambientEnabled);
+        set('audio-music', 'disabled', !s.musicEnabled);
+        set('audio-voice', 'disabled', !s.voiceEnabled);
         setText('audio-master-value', pct(s.master));
         setText('audio-sfx-value', s.sfxEnabled ? pct(s.sfx) : 'OFF');
         setText('audio-ambient-value', s.ambientEnabled ? pct(s.ambient) : 'OFF');
+        setText('audio-music-value', s.musicEnabled ? pct(s.music) : 'OFF');
+        setText('audio-voice-value', s.voiceEnabled ? pct(s.voice) : 'OFF');
         const status = document.getElementById('audio-status');
         if (status) {
             status.textContent = !AC ? 'No audio device. The choir is silent on this terminal.'
@@ -1116,6 +1457,7 @@ const audio = (() => {
         document.addEventListener('visibilitychange', () => {
             if (!ctx) return;
             if (document.hidden) {
+                stopLine();
                 ctx.suspend().catch(() => {});
             } else if (unlocked && !settings().muted) {
                 ctx.resume().catch(() => {});
@@ -1155,8 +1497,40 @@ const audio = (() => {
         toggleMute,
         syncSettingsUI,
         renderOffline,
+        /* Bus gains a new player gets, for the level checks in tests/audio.mjs. */
+        defaultLevels: () => busLevels({ ...DEFAULTS }),
         settings,
         state: () => (ctx ? ctx.state : 'none'),
+        /* Drop-in music (docs/AUDIO_PLAN.md §2). Beds and the layer follow
+           the game on their own; stingers ring with their synth cue. */
+        music: {
+            update: updateMusic,
+            stinger,
+            current: () => (mus.bed ? mus.bed.id : null),
+            layer: () => (mus.layer ? mus.layer.id : null),
+            known: (id) => stemKnown(AF ? AF.musicStem(id) : null),
+            has: (id) => locate(AF ? AF.musicStem(id) : null).then((url) => !!url),
+        },
+        /* Drop-in voices (§3). `known` is false whenever a line could not
+           be heard — no file, no device, voices off, muted — so nothing
+           waits on a line that will not play. */
+        voice: {
+            say,
+            stop: stopLine,
+            speaking: () => !!(line && line.src),
+            current: () => (line ? line.stem : null),
+            known: (speaker, lineId) => {
+                const stem = AF ? AF.voiceStem(speaker, lineId) : null;
+                if (!stem || !voiceOn()) return false;
+                return stemKnown(stem);
+            },
+            has: (speaker, lineId) => locate(AF ? AF.voiceStem(speaker, lineId) : null).then((url) => !!url),
+            duration: (speaker, lineId) => (ctx && AF ? loadStem(AF.voiceStem(speaker, lineId)).then((b) => (b ? b.duration : 0)) : Promise.resolve(0)),
+            prefetch(list) {
+                if (!AF || !filesUsable()) return;
+                for (const [speaker, lineId] of Array.isArray(list) ? list : []) locate(AF.voiceStem(speaker, lineId));
+            },
+        },
         /* Live bus gains, for the browser check. */
         debug: () => (G ? {
             state: ctx.state,
@@ -1164,6 +1538,15 @@ const audio = (() => {
             ui: G.ui.gain.value,
             sfx: G.sfx.gain.value,
             ambient: G.ambient.gain.value,
+            music: G.music.gain.value,
+            voice: G.voice.gain.value,
+            /* Where each bus is headed. Chrome stops advancing the gain of
+               a node with nothing playing into it, so an idle voice bus can
+               report a stale .value; the scheduled target is the truth. */
+            targets: { ...(G.targets || {}) },
+            duck: G.duck.gain.value,
+            musicBed: mus.bed ? mus.bed.id : null,
+            speaking: !!(line && line.src),
             voices: voices.length,
             miracleVoices: voices.filter((v) => v.name === 'miracle').length,
             ambientBed: !!bed,

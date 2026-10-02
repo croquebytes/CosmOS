@@ -106,9 +106,20 @@ onto thick paper on a wooden desk, dry"*.
 
 ---
 
-## 5. Drop-in contract (to build, mirroring §7 of the visual plan)
+## 5. Drop-in contract (built, mirroring §7 of the visual plan)
 
-The audio files are not wired yet. The engineering plan below mirrors `js/media.js`.
+Wired in `js/audiofiles.js` (names, the bed choice, the tape narration sync) and
+`js/audio.js` (the `music` and `voice` buses, probing, decoding, ducking). What is
+installed, and exactly how it was generated, is in `assets/audio/MANIFEST.md`.
+Tests: `tests/audio-files.mjs` (node) and `tests/audio.mjs` (browser).
+
+- **Tape line ids:** `<tape>-s<shot>-<caption>`, e.g. `t1-s2-0`: the tape id, the
+  1-based shot number (as in the shot code `T1-S2`), the 0-based caption index in
+  that shot. Speakers `I` / `N` / `S` are the slugs `instructor` / `null-operator` /
+  `sys`. Every M-cue in §2 already has its hook: beds follow the screen (an ending
+  or the Adversary scene is exclusive, a window theme falls back to the dimension's
+  bed, and M1 is the primordial bed only), M3 layers at cascade tier 2 and above,
+  and M4 and M11 ring with the `ship` and `boot` synth cues.
 
 - **Folder:** `assets/audio/`, which Vite already copies under `assets/`.
 - **Formats:** `.ogg` (Opus or Vorbis) preferred, `.mp3` as the fallback, 48 kHz. Music
