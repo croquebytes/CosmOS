@@ -75,7 +75,9 @@ Final standing at reboot 14 under that rule:
 Each band is now a recognisable way to play, the opening answer moves where you end up, and
 standing stays in the middle of its range instead of pinned at a rail (from OP-B the ordinary
 player's trace is +1 +2 +3 +2 +1 0 0 0 +1 +1 +1 +1 +2 +2, against +1 ... +11 now). A softer
-ship cap (-4) pushes everyone one band warmer (`--curve` has it).
+ship cap (-4) moves the ordinary player from OP-B from curious to complicit and leaves the passive
+and cold rows hostile (`--curve` has the full sweep), so the -6 cap is the one that gives
+curious a real place.
 
 **Needs a decision before it is built:** it changes what repeating an act is worth, adds
 per-lever counters to `State.adversary` (a schema default, no `SAVE_VERSION` bump), and moves
