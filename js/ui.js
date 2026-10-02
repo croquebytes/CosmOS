@@ -3330,6 +3330,10 @@ const ui = {
         if (mailIcon) {
             mailIcon.style.display = State.unlockedApps.includes('mail') ? 'block' : 'none';
         }
+        const etherIcon = document.getElementById('icon-etherscape');
+        if (etherIcon) {
+            etherIcon.style.display = State.unlockedApps.includes('etherscape') ? 'block' : 'none';
+        }
     },
 
     // === DOCUMENT SYSTEM UI ===

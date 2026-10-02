@@ -93,6 +93,7 @@ const system = {
         mediaplayer: { label: 'Sacred Media Player', glyph: 'mediaplayer', hint: 'Operator orientation tapes' },
         choir: { label: 'Choir', glyph: 'choir', hint: 'What the Created are saying about your builds' },
         mail: { label: 'CMS Mail', glyph: 'mail', hint: 'Interoffice mail, prayers and junk' },
+        etherscape: { label: 'Etherscape', glyph: 'etherscape', hint: 'Navigator for the afterlife web' },
         settings: { label: 'Divine Settings', art: 'settings', hint: 'Save, prestige, and display' }
     },
 
@@ -418,7 +419,8 @@ const system = {
             solitaire: { width: 660, height: 590 },
             mediaplayer: { width: 820, height: 600 },
             choir: { width: 560, height: 640 },
-            mail: { width: 860, height: 620 }
+            mail: { width: 860, height: 620 },
+            etherscape: { width: 880, height: 640 }
         };
 
         return appSizes[id] || { width: 620, height: 560 };
@@ -1310,6 +1312,11 @@ const system = {
                 title: 'CMS Mail - Interoffice',
                 initialHTML: `<div class="mail" id="mail-root"></div>`,
                 onOpen: () => MailView.open()
+            },
+            'etherscape': {
+                title: 'Etherscape',
+                initialHTML: `<div class="es" id="es-root"></div>`,
+                onOpen: () => EtherscapeView.open()
             }
         };
         return configs[id] || { title: 'Unknown App', initialHTML: 'ERROR' };

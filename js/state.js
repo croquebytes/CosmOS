@@ -507,6 +507,22 @@ const State = {
         ambN: 0
     },
 
+    /* === ETHERSCAPE (js/etherscape.js) ===
+       The Navigator's own memory: bookmarks, pages visited, history (capped),
+       pages that stay reachable once reached, the guestbook and the fan
+       page's visitor counter. Validated on every read by
+       EtherscapeLogic.normalise — mergeInto does no type checking. Added
+       without a SAVE_VERSION bump: an older save simply gains these. */
+    etherscape: {
+        bookmarks: ['cms://intranet', 'news://celestial-times', 'cosmopedia://'],
+        visited: [],
+        history: [],
+        unlocked: [],
+        guestbookSigned: false,
+        counterSeed: 0,
+        counterHits: 0
+    },
+
     // === TASK MANAGER ===
     taskManager: {
         opened: false,
