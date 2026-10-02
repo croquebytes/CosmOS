@@ -80,7 +80,23 @@ async function scenario(band) {
     /* ── The game's own trigger opens it ── */
     const scene = page.locator(`.fin-scene.fin-${band}`);
     await scene.waitFor({ timeout: 5000 });
-    // testMode collapses the theatre; the transcript runs to its last line and waits.
+    /* The one act: the transcript runs until the ending's button and WAITS.
+       Neither the timer, a click on the scene nor Escape gets past it. */
+    const act = page.locator('.fin-act:not(.is-done)');
+    await act.waitFor({ timeout: 5000 });
+    const label = { hostile: 'End Process', curious: 'Sign the rota', complicit: 'Hand over the console' }[band];
+    assert.equal((await act.innerText()).trim().toLowerCase(), label.toLowerCase(), `${band} shows the wrong act`);
+    await page.waitForTimeout(600);
+    await page.keyboard.press('Escape');
+    await scene.click({ position: { x: 300, y: 60 } });
+    await page.waitForTimeout(300);
+    const parked = await page.evaluate(() => ({ waiting: ui.advScene.awaitingAct, last: ui.advScene.index === ui.advBeats.length - 1 }));
+    assert.ok(parked.waiting && !parked.last, 'the scene went past its act without it');
+    if (band === 'hostile') { await act.focus(); await page.keyboard.press('Enter'); }
+    else await act.click();
+    await page.locator('.fin-act.is-done').waitFor({ timeout: 3000 });
+    step(`[${band}] the ending waits on its act ("${label}"); Escape and clicks do not skip it; ${band === 'hostile' ? 'Enter' : 'a click'} performs it`);
+    // testMode collapses the theatre; after the act the transcript runs to its last line and waits.
     await page.waitForFunction(() => ui.advScene && ui.advScene.index === ui.advBeats.length - 1);
     const transcript = await page.locator('#adv-transcript').innerText();
     assert.match(transcript, /You came back out of the archive/);
@@ -98,6 +114,8 @@ async function scenario(band) {
         await page.evaluate(() => { State.adversary.standing = -9; State.save(); });
         await page.reload({ waitUntil: 'domcontentloaded' });
         await page.locator('.fin-scene.fin-curious').waitFor({ timeout: 6000 });
+        // The act is part of the scene, so a resumed scene asks for it again.
+        await page.locator('.fin-act:not(.is-done)').click();
         await page.waitForFunction(() => ui.advScene && ui.advScene.index === ui.advBeats.length - 1);
         assert.equal(await page.locator('.fin-scene.fin-hostile').count(), 0);
         step('[curious] a reload mid-scene resumes the same ending, not the moved band');

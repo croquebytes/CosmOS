@@ -6985,3 +6985,38 @@ body:has(#system-modal-layer .cine-stage:not(.is-hosted)) :is(.document-notifica
     height: 100%;
     object-fit: cover;
 }
+
+/* ── The finale's one act (AdversaryFinale beats with `act`) ──
+   A real control inside the transcript, in the scene's own ink: the one
+   thing in the ending the player does rather than reads. */
+.fin-act {
+    display: inline-block;
+    margin: 6px 0 2px 26px;
+    padding: 5px 14px;
+    font: 12px/1.4 var(--cos-font-machine);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--cos-brass-100);
+    background: linear-gradient(180deg, var(--cos-iron-700), var(--cos-iron-900));
+    border: 1px solid var(--cos-brass-500);
+    cursor: pointer;
+    animation: fin-act-pulse 1.6s ease-in-out infinite;
+}
+
+.fin-act:focus-visible { outline: 2px solid var(--cos-brass-300); outline-offset: 2px; }
+
+.fin-act.is-done {
+    animation: none;
+    cursor: default;
+    color: var(--cos-ink-inv-dim);
+    border-color: var(--cos-iron-500);
+    text-transform: none;
+}
+
+@keyframes fin-act-pulse {
+    50% { box-shadow: 0 0 10px rgba(222, 196, 131, 0.45); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fin-act { animation: none; }
+}

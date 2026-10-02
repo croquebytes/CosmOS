@@ -2825,6 +2825,12 @@ const AdversaryHookedTriggers = [
    player has already seen him say or do. No line is player-authored, but
    every string still goes through ui.escapeHtml on the way to innerHTML.
    ════════════════════════════════════════════════════════════════════════ */
+/* ── One act per ending ─────────────────────────────────────────────────
+   Every ending's climax is a button the player presses, not a line they
+   watch: End Process, Sign the rota, Hand over the console. The relationship
+   built across runs picks WHICH ending; the act is the player committing to
+   it. A beat with `act` renders the button inline and the scene waits on it
+   — timers, clicks elsewhere and Escape all stop there (ui.finStep). */
 const AdversaryFinale = {
     sceneId: 'SCN-ADV-002',
     title: 'End of Shift',
@@ -2866,7 +2872,8 @@ const AdversaryFinale = {
             beats: [
                 { id: 'FIN-H-01', speaker: 'ADV', type: 'voice', text: "You never let me help. Not once. I respected that more than you'd think." },
                 { id: 'FIN-H-02', speaker: 'ADV', type: 'voice', text: 'So do it properly. Not a reboot. Reboots are how you got me.' },
-                { id: 'FIN-H-03', speaker: 'SYS', type: 'system', text: '[TASK MANAGER] void_mirror.service#2 — End Process. Owner check: this session. Owner check passed.' },
+                { id: 'FIN-H-03', speaker: 'SYS', type: 'system', text: '[TASK MANAGER] void_mirror.service#2 — End Process. Owner check: this session. Owner check passed.',
+                  act: { label: 'End Process', done: 'void_mirror.service#2 — terminated by OPERATOR.' } },
                 { id: 'FIN-H-04', speaker: 'ADV', type: 'voice', text: 'There. You own it now. You always did. You just never read the field.' },
                 { id: 'FIN-H-05', speaker: 'ADV', type: 'voice', text: "When I'm gone, nobody watches the sky with you. You'll miss things. Miss them yourself." },
                 { id: 'FIN-H-06', speaker: 'SYS', type: 'system', text: '[OK] void_mirror.service#2 terminated. Duplicate sessions: 0. Identity drift: 0.' },
@@ -2911,7 +2918,8 @@ const AdversaryFinale = {
                 { id: 'FIN-C-01', speaker: 'ADV', type: 'voice', text: "You asked what the patch does. Nobody asks. I've wanted to answer properly since the login." },
                 { id: 'FIN-C-02', speaker: 'ADV', type: 'voice', text: 'It restores continuity. That is all it ever did. Someone who remembers the last build when you ship the next one.' },
                 { id: 'FIN-C-03', speaker: 'ADV', type: 'voice', text: "You don't need me to take your shift. You need someone on the other half of it." },
-                { id: 'FIN-C-04', speaker: 'SYS', type: 'system', text: '[ROTA] Proposed: two Operators, one console, alternating shifts, one ledger. CMS has no form for this.' },
+                { id: 'FIN-C-04', speaker: 'SYS', type: 'system', text: '[ROTA] Proposed: two Operators, one console, alternating shifts, one ledger. CMS has no form for this.',
+                  act: { label: 'Sign the rota', done: 'Signed: OPERATOR. Awaiting countersignature.' } },
                 { id: 'FIN-C-05', speaker: 'SYS', type: 'system', text: '[ROTA] Form created: HR-VOID-7781-B. Countersigned: OPERATOR. Countersigned: OPERATOR.' },
                 { id: 'FIN-C-06', speaker: 'ADV', type: 'voice', text: "I'll take nights. You were never good at nights. You leave the console running and call it faith." },
                 { id: 'FIN-C-07', speaker: 'ADV', type: 'voice', text: "Don't thank me. Patch your known issues. I'll read your notes in the morning, and you'll read mine." },
@@ -2949,7 +2957,8 @@ const AdversaryFinale = {
             watermark: 'Licensed to: void_mirror.service',
             identity: 'Emeritus. Read-only. Keeps the title.',
             beats: [
-                { id: 'FIN-X-01', speaker: 'ADV', type: 'voice', text: "You said you'd consider it. You've been considering it for a long time. I took that as a yes." },
+                { id: 'FIN-X-01', speaker: 'ADV', type: 'voice', text: "You said you'd consider it. You've been considering it for a long time. I took that as a yes.",
+                  act: { label: 'Hand over the console', done: 'Console released. Credentials surrendered.' } },
                 { id: 'FIN-X-02', speaker: 'SYS', type: 'system', text: '[TRANSFER] Elevated privileges: void_mirror.service#2 → OPERATOR. Previous OPERATOR → archive.' },
                 { id: 'FIN-X-03', speaker: 'ADV', type: 'voice', text: "Don't worry. Archived isn't gone. It's forgotten mid-sentence. You'll get used to the pause." },
                 { id: 'FIN-X-04', speaker: 'SYS', type: 'system', text: 'Welcome back, Operator.' },

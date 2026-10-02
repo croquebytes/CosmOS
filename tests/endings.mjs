@@ -705,6 +705,20 @@ check('the hook table stays honest: the finale fires no bark trigger of its own'
 
 /* ── Content ───────────────────────────────────────────────────────────── */
 
+check('every ending has exactly one act, labelled, with what it did', () => {
+    /* The relationship built across runs picks the ending; the act is the
+       player committing to it. One per ending, so the climax is a press,
+       not a line to watch, and never a series of chores. */
+    const env = boot();
+    for (const band of env.AdversaryFinale.BANDS) {
+        const acts = env.AdversaryFinale.endings[band].beats.filter((b) => b.act);
+        assert.equal(acts.length, 1, `${band} has ${acts.length} acts`);
+        assert.ok(acts[0].act.label && acts[0].act.done, `${band}'s act is unlabelled`);
+        const i = env.AdversaryFinale.endings[band].beats.indexOf(acts[0]);
+        assert.ok(i < env.AdversaryFinale.endings[band].beats.length - 1, `${band}'s act is its last line: nothing follows the choice`);
+    }
+});
+
 check('every ending is complete, and its modifier is small and real', () => {
     const env = boot();
     for (const band of env.AdversaryFinale.BANDS) {

@@ -1371,6 +1371,13 @@ const ui = {
             }
         } else {
             this.finAppendLine(beat);
+            if (beat.act && !s.actsDone?.[beat.id]) {
+                // The scene waits for the player here. No timer.
+                s.awaitingAct = beat.id;
+                const hint = document.getElementById('adv-hint');
+                if (hint) hint.textContent = beat.act.label;
+                return;
+            }
         }
 
         if (s.index >= this.advBeats.length - 1) {
@@ -1388,16 +1395,42 @@ const ui = {
         s.timer = setTimeout(() => this.advanceFinale('timer'), dwell);
     },
 
+    finPerformAct(beatId) {
+        const s = this.advScene;
+        if (!s || !s.open || s.kind !== 'finale' || s.awaitingAct !== beatId) return;
+        const beat = this.advBeats.find((b) => b.id === beatId);
+        s.actsDone = { ...(s.actsDone || {}), [beatId]: true };
+        s.awaitingAct = null;
+        const button = document.querySelector(`[data-act="${CSS.escape(beatId)}"]`);
+        if (button) {
+            button.disabled = true;
+            button.textContent = beat?.act?.done || 'Done.';
+            button.classList.add('is-done');
+        }
+        game.sfx('directive');
+        this.advanceFinale('act');
+    },
+
     finAppendLine(beat) {
         const list = document.getElementById('adv-transcript');
         if (!list || !beat) return;
         const cls = beat.speaker === 'ADV' ? 'adv-voice'
             : beat.speaker === 'HOST' ? 'adv-host' : 'adv-sys';
         const mark = beat.speaker === 'ADV' ? '◆' : beat.speaker === 'HOST' ? '✧' : 'SYS';
+        const act = beat.act && !this.advScene?.actsDone?.[beat.id]
+            ? `<button type="button" class="fin-act" data-act="${this.escapeHtml(beat.id)}">${this.escapeHtml(beat.act.label)}</button>`
+            : '';
         list.insertAdjacentHTML('beforeend', `<li class="adv-line ${cls}" data-beat="${this.escapeHtml(beat.id)}">
             <span class="adv-mark">${mark}</span>
             <span class="adv-text">${this.finText(beat, this.advScene?.band)}</span>
+            ${act}
         </li>`);
+        const button = act ? list.querySelector(`[data-act="${CSS.escape(beat.id)}"]`) : null;
+        if (button) {
+            // The section advances on click; the act must not also do that.
+            button.addEventListener('click', (event) => { event.stopPropagation(); this.finPerformAct(beat.id); });
+            button.focus({ preventScroll: true });
+        }
         list.scrollTop = list.scrollHeight;
     },
 
@@ -1428,6 +1461,13 @@ const ui = {
         const s = this.advScene;
         if (!s || !s.open || s.kind !== 'finale') return;
         if (s.phase === 3) return;
+        if (s.awaitingAct) {
+            // Only the act moves the scene on. A key press counts when it is
+            // aimed at the act's own button; anything else is ignored.
+            const button = document.querySelector(`[data-act="${CSS.escape(s.awaitingAct)}"]`);
+            if (source === 'key' && button && document.activeElement === button) this.finPerformAct(s.awaitingAct);
+            return;
+        }
         clearTimeout(s.timer);
         if (s.index >= this.advBeats.length - 1) {
             if (source === 'timer') return;
@@ -1453,8 +1493,19 @@ const ui = {
             const start = s.phase === 2
                 ? s.index + 1
                 : this.advBeats.findIndex((b) => b.id === 'FIN-010');
+            if (s.awaitingAct) return true;   // Escape never performs the act for you
             if (s.phase === 1) this.finEnterPhaseTwo();
-            for (let i = Math.max(0, start); i <= last; i++) this.finAppendLine(this.advBeats[i]);
+            for (let i = Math.max(0, start); i <= last; i++) {
+                const beat = this.advBeats[i];
+                this.finAppendLine(beat);
+                s.index = i;
+                if (beat.act && !s.actsDone?.[beat.id]) {
+                    s.awaitingAct = beat.id;
+                    const hint = document.getElementById('adv-hint');
+                    if (hint) hint.textContent = beat.act.label;
+                    return true;
+                }
+            }
             s.index = last;
             const hint = document.getElementById('adv-hint');
             if (hint) hint.textContent = 'Click to file the release notes';
