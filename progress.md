@@ -1307,3 +1307,68 @@ count on the hook table; a non-atomic title read in the smoke test that
 flaked under load). `npm test`: 479 node assertions over 14 suites, golden
 unchanged, 6 browser suites (smoke, Patience 12, Archived 10, media 23,
 layout 7, endings 20).
+
+## 2026-10-01 — Session 7: the world gets mail, a web, a feed and footage
+
+Branch `session-7/world-and-media` (PR #2 merged first: sessions 5–6 are on
+`main`). Request: merge; generate the Krea reels; playtest the endings; add
+mail / internet / socials for lore and world-building; notes for generated
+audio, music and narration.
+
+### Krea reels (c47daeb)
+Nine reels generated and installed: V1 Cold Boot, V2 Ship the Build, V4
+Mirror Login, V5 Void Breach, V6 First Seraph, V3 cascade tiers 1–3 and V7
+SEV-1 alarm (seamless loops: same first and last frame). Nano Banana Pro
+keyframes anchored on the engine-core art, Seedance 2.5 image-to-video,
+`tools/encode_reel.sh` → silent VP9 + H.264 + webp poster. 16 MB runtime.
+Raw masters local/gitignored; keyframes + `assets/src/video/MANIFEST.md`
+committed. Toasts now step aside under a full-frame reel. The 29 training-
+tape shots are NOT generated yet — waiting on the user.
+
+### Audio plan (3963a2f)
+`docs/AUDIO_PLAN.md`: style block, 11 music cues, 5 cast voices mapped to
+existing content tables, foley, Krea ElevenLabs settings, and a drop-in
+contract (`assets/audio/`, content-type probe, music/voice buses with
+ducking, captions always on). Not generated or wired yet.
+
+### Endings playtest (128635f)
+Each ending now waits on one act the player performs — End Process / Sign
+the rota / Hand over the console; timers, clicks and Escape stop at it.
+24h floor kept (only bites a one-day binge, its purpose). Hostile drift
+kept for now; Mail replies and Choir statuses add levers — re-check.
+
+### Three world apps (parallel agent slices, merged)
+- **CMS Mail** (`js/mail.js`, `js/mailview.js`): 61 messages by trigger —
+  HR, the Instructor, the previous Operator's letters, Seraph #1, Fate,
+  NULL.OPERATOR from your own address, forwarded prayers, junk. Canned
+  replies (his move standing ±1 under the shared cooldown). Presence-aware,
+  never a modal. `assets/mail/<id>.webp` slots. 83 + 12 tests, 39/39.
+- **Etherscape** (`js/etherscape.js`): a Netscape-style browser, 26 pages —
+  CMS intranet, HR policies that change per reboot, the Celestial Times
+  (headlines generated from your real history), live Sector 7G status,
+  Cosmopedia (every number read from the constant), fan pages and webring,
+  Fate's casino, the Void forum, the previous Operator's homepage, and
+  `null://`. `Etherscape.knows/open`. `media.attachClip` + `web__*` clip
+  slots. 41 + 14 tests, 42/42.
+- **Choir** (`js/choir.js`): 13 personas reacting to real events (ships
+  quoting your changelog lines, cascades, outages, patches, Patience wins,
+  the Mirror Login, endings), bless, threads, canned statuses. Reads State
+  only. `assets/choir/<persona>.webp`. 40 + 20 tests, 50/52 (2 equivalent).
+- **Integration:** `tests/crosslinks.mjs` requires every address Mail and
+  Choir print to be a real Etherscape page. Both apps' browser tests now
+  drive the real browser (they had asserted the pre-merge world).
+- **Bugs the Etherscape agent found** (ceaa5ee): ACH-012 Void Tourist was
+  unreachable (counter never written); Nemesis blurb said 5% (pays 4%);
+  bare reboot confirm said +10%/DP (retired formula).
+
+### Verification
+`npm test` green: 17 node suites, golden unchanged, 10 browser suites.
+One intermittent seen once in `choir-e2e` inside the full chain ("Expected
+values to be strictly equal", no detail captured); not reproduced in
+three further runs — watch for it.
+
+### Next
+1. User: generate the 29 tape shots? Generate audio (M1, Instructor T1)?
+2. Wire the audio drop-in contract (`docs/AUDIO_PLAN.md` §5).
+3. PR `session-7/world-and-media` → `main`.
+4. Re-check hostile drift with the new standing levers.
