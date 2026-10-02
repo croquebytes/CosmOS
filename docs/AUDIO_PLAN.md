@@ -120,6 +120,22 @@ Tests: `tests/audio-files.mjs` (node) and `tests/audio.mjs` (browser).
   or the Adversary scene is exclusive, a window theme falls back to the dimension's
   bed, and M1 is the primordial bed only), M3 layers at cascade tier 2 and above,
   and M4 and M11 ring with the `ship` and `boot` synth cues.
+- **Every other line id is the line's own content id**, under the speaker its row
+  declares (`AudioFiles.fateLine`, `AudioFiles.sceneLine`):
+
+  | Lines | Id | Speaker slug | File |
+  |---|---|---|---|
+  | Fate at Patience.exe (`CasinoHostBarks`) | `CAS-HOST-001` … `-084` | `fate` | `vo__fate__CAS-HOST-051` |
+  | Mirror Login, SCN-ADV-001 | `ADV-001` … `ADV-029` | `ADV` → `null-operator`, `SYS` → `sys`, `HOST` → `fate` | `vo__null-operator__ADV-010`, `vo__sys__ADV-001`, `vo__fate__ADV-027` |
+  | End of Shift, SCN-ADV-002 | `FIN-001`, `FIN-R-H`, `FIN-H-01` … | the same three | `vo__sys__FIN-H-03` |
+
+  The choice prompt `ADV-022` is never spoken, and neither is a beat with a
+  `{REBOOTS}` or `{BAND}` placeholder (`ADV-011B`, `FIN-011`, `FIN-012`): its words
+  change per save, and a voice must say what the caption says.
+- **Foley ids** are the synth cue names, verbatim (`audio.SOUNDS`): `sfx__purchase`,
+  `sfx__windowOpen`. A foley file layers on its cue through that cue's own voice at
+  `AudioFiles.FOLEY_GAIN` (about −6 dB), rate-limited per cue at the cue's repeat
+  gap and never tighter than 120 ms. Master one-shots dry, around −12 dBFS peak.
 
 - **Folder:** `assets/audio/`, which Vite already copies under `assets/`.
 - **Formats:** `.ogg` (Opus or Vorbis) preferred, `.mp3` as the fallback, 48 kHz. Music
@@ -134,15 +150,30 @@ Tests: `tests/audio-files.mjs` (node) and `tests/audio.mjs` (browser).
 - **Buses:** music gets a new `music` bus under master; voice gets a `voice` bus with
   ducking that drops music about 8 dB while a line plays. Both follow the existing
   mute and volume settings, plus new Music and Voice sliders in Divine Settings.
-- **Narration sync:**
+- **Narration sync** (built: `createTapeVoice`, `createSceneVoice` and
+  `createFateVoice` in `js/audiofiles.js`):
   - Training tapes: a caption with a `vo` file plays it at the caption's timestamp,
-    and the tape clock waits for the line to finish.
-  - Fate's strip and the Adversary scene: a line plays its file when shown.
-  - With no file present, nothing changes.
+    and the tape clock waits for the line to finish. Pausing mid-line (or hiding
+    the tab) and playing again says the line again from its start; a seek forgets it.
+  - Fate's strip: the line the strip shows is spoken, when Dealer Chatter and
+    Voices are on. It has already passed the router's cooldowns. Her next line
+    replaces her last; she never talks over a tape or a scene; closing the table,
+    or turning chatter off, stops her line.
+  - The Adversary scenes: a beat's line plays when the beat is drawn, and the
+    beat's dwell timer waits for it, moving on 0.35 s after it ends. A click still
+    moves on. Escape cuts the line, then does what it always did (skip to the
+    choice, draw the transcript, file the record). An act beat waits on its button
+    alone. Closing a scene, or reaching the release notes, cuts its line.
+  - A line holds anything only once its file is known to be installed: a missing
+    file, or a probe still out, never waits. With no file present, nothing changes.
 - **Accessibility:** captions always stay on. A "Voices: on / off" setting is separate
   from music.
 - **Tests:** follow the `tests/media.mjs` pattern. Missing files are inert, ducking
   restores, mute zeroes everything, and a sync caption waits for its line.
+  `tests/audio.mjs` routes stand-in tones (generated with ffmpeg at run time, never
+  committed) to prove Fate, the scenes and foley in a browser.
+- **Next to generate:** the ordered list is in `assets/audio/MANIFEST.md`
+  ("Next lines to generate"). Nothing there has been generated.
 
 ## 6. Production order
 

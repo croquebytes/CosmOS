@@ -1756,11 +1756,25 @@ const Etherscape = (() => {
             this.index = -1;
             this.navigate(start);
             if (!this.refreshTimer) {
-                this.refreshTimer = setInterval(() => {
-                    if (!this.root()) { clearInterval(this.refreshTimer); this.refreshTimer = 0; return; }
+                // Every fifth beat of the shared clock, which rests in a hidden tab.
+                const refresh = () => {
+                    if (!this.root()) { this.stopRefresh(); return; }
                     if (this.current === 'sector://7g/status' && !document.hidden) this.render(this.current, { quiet: true });
-                }, 5000);
+                };
+                if (typeof Heartbeat !== 'undefined') {
+                    let beats = 0;
+                    const off = Heartbeat.every(() => { if (++beats % 5 === 0 || !this.root()) refresh(); });
+                    this.refreshTimer = { off };
+                } else {
+                    this.refreshTimer = setInterval(refresh, 5000);
+                }
             }
+        },
+
+        stopRefresh() {
+            if (this.refreshTimer && typeof this.refreshTimer.off === 'function') this.refreshTimer.off();
+            else clearInterval(this.refreshTimer);
+            this.refreshTimer = 0;
         },
 
         build(el) {
@@ -1773,7 +1787,7 @@ const Etherscape = (() => {
             ];
             el.innerHTML = `
                 <div class="es-chrome">
-                    <div class="es-menubar" role="menubar">
+                    <div class="es-menubar" role="group" aria-label="Menus">
                         <div class="es-menu-wrap">
                             <button type="button" class="es-menu-btn" data-menu="go" aria-haspopup="true" aria-expanded="false">Go</button>
                             <div class="es-menu" data-menu-list="go" role="menu" hidden></div>
@@ -1868,10 +1882,25 @@ const Etherscape = (() => {
                 else if (act === 'remove-bookmark') this.removeBookmark();
             });
             el.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && el.querySelector('.es-menu:not([hidden])')) {
+                const open = el.querySelector('.es-menu:not([hidden])');
+                if (e.key === 'Escape' && open) {
                     e.preventDefault();
                     e.stopPropagation();
                     this.closeMenus(true);
+                    return;
+                }
+                // A role="menu" is walked with the arrows, not Tab.
+                const moves = { ArrowDown: 1, ArrowUp: -1, Home: 'first', End: 'last' };
+                if (open && e.key in moves && open.contains(e.target)) {
+                    const items = Array.from(open.querySelectorAll('.es-menu-item:not([disabled])'));
+                    if (!items.length) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const at = items.indexOf(e.target);
+                    const m = moves[e.key];
+                    const next = m === 'first' ? 0 : m === 'last' ? items.length - 1
+                        : (at + m + items.length) % items.length;
+                    items[next].focus();
                 }
             });
             el.addEventListener('mousedown', (e) => {
@@ -1895,7 +1924,9 @@ const Etherscape = (() => {
             list.innerHTML = name === 'go' ? this.goMenuHtml() : this.bookmarksMenuHtml();
             list.hidden = false;
             this.$(`[data-menu="${name}"]`)?.setAttribute('aria-expanded', 'true');
-            list.querySelector('button')?.focus();
+            // The first item that can take focus: Back is disabled on a fresh
+            // history, and focusing it silently left the keyboard outside.
+            list.querySelector('.es-menu-item:not([disabled])')?.focus();
         },
 
         closeMenus(refocus = false) {
@@ -1923,8 +1954,8 @@ const Etherscape = (() => {
                 <button type="button" role="menuitem" class="es-menu-item" data-menu-act="forward"${this.index < this.stack.length - 1 ? '' : ' disabled'}><span>Forward</span></button>
                 <button type="button" role="menuitem" class="es-menu-item" data-menu-act="home"><span>Home</span></button>
                 <div class="es-menu-sep" role="separator"></div>
-                <div class="es-menu-head">History</div>
-                ${hist.length ? hist.map((u) => this.itemHtml(u, ctx)).join('') : '<div class="es-menu-empty">No pages visited yet.</div>'}`;
+                <div class="es-menu-head" role="presentation">History</div>
+                ${hist.length ? hist.map((u) => this.itemHtml(u, ctx)).join('') : '<div class="es-menu-empty" role="presentation">No pages visited yet.</div>'}`;
         },
 
         bookmarksMenuHtml() {
@@ -1934,7 +1965,7 @@ const Etherscape = (() => {
             return `<button type="button" role="menuitem" class="es-menu-item" data-menu-act="${marked ? 'remove-bookmark' : 'add-bookmark'}"${canMark ? '' : ' disabled'}>
                     <span>${marked ? 'Remove Bookmark' : 'Add Bookmark'}</span></button>
                 <div class="es-menu-sep" role="separator"></div>
-                ${ctx.store.bookmarks.length ? ctx.store.bookmarks.map((u) => this.itemHtml(u, ctx)).join('') : '<div class="es-menu-empty">No bookmarks.</div>'}`;
+                ${ctx.store.bookmarks.length ? ctx.store.bookmarks.map((u) => this.itemHtml(u, ctx)).join('') : '<div class="es-menu-empty" role="presentation">No bookmarks.</div>'}`;
         },
 
         addBookmark() {
@@ -2106,7 +2137,9 @@ const Etherscape = (() => {
     };
 
     if (hasDOM) {
-        setInterval(() => { try { tick(); } catch (err) { /* the watch never breaks the page */ } }, 1000);
+        // On the desktop's shared 1 Hz clock (js/heartbeat.js), which rests in a hidden tab.
+        const watch = () => { try { tick(); } catch (err) { /* the watch never breaks the page */ } };
+        if (typeof Heartbeat !== 'undefined') Heartbeat.every(watch); else setInterval(watch, 1000);
     }
 
     return {

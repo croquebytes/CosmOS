@@ -524,7 +524,9 @@ const Footage = (() => {
     }
 
     if (hasDOM) {
-        setInterval(() => { try { tick(); } catch (err) { /* the watch never breaks the page */ } }, 1000);
+        // On the desktop's shared 1 Hz clock (js/heartbeat.js), which rests in a hidden tab.
+        const watch = () => { try { tick(); } catch (err) { /* the watch never breaks the page */ } };
+        if (typeof Heartbeat !== 'undefined') Heartbeat.every(watch); else setInterval(watch, 1000);
         // A window opening (the Recycle Bin) gets its strip without waiting a tick.
         const arm = () => {
             const layer = document.getElementById('window-layer');

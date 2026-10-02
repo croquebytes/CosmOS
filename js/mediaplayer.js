@@ -211,7 +211,7 @@ const MediaPlayerView = (() => {
 
     function pause(silent = false) {
         advance();
-        vo('stop');   // narration hook
+        vo('pause');   // narration hook: cut the line, say it again from its start on play
         if (st.playing && !silent) sfx('click');
         st.playing = false;
         st.osd = null;   // PAUSE replaces any REW / FF still on screen

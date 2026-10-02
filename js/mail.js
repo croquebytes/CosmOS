@@ -1590,7 +1590,7 @@ const Mail = (() => {
         const tray = document.getElementById('tray-mail');
         if (!tray) return;
         const unlocked = typeof State !== 'undefined' && Array.isArray(State.unlockedApps) && State.unlockedApps.includes('mail');
-        tray.hidden = !unlocked;
+        if (tray.hidden !== !unlocked) tray.hidden = !unlocked;   // every beat: write only on change
         const count = MailLogic.unread(mail);
         const label = count ? `CMS Mail: ${count} unread` : 'CMS Mail: no unread messages';
         if (tray.getAttribute('aria-label') !== label) {
@@ -1656,7 +1656,11 @@ const Mail = (() => {
     }
 
     if (hasDOM) {
-        setInterval(() => { try { tick(); } catch (err) { /* the watch never breaks the page */ } }, 1000);
+        /* On the desktop's shared 1 Hz clock (js/heartbeat.js). It rests in a
+           hidden tab but beats once as the tab goes, so `away` is set and
+           what comes due is announced as a backlog on return. */
+        const watch = () => { try { tick(); } catch (err) { /* the watch never breaks the page */ } };
+        if (typeof Heartbeat !== 'undefined') Heartbeat.every(watch); else setInterval(watch, 1000);
     }
 
     return {
