@@ -92,6 +92,7 @@ const system = {
         solitaire: { label: 'Patience.exe', glyph: 'patience', hint: 'Golf solitaire, dealt from the arcana' },
         mediaplayer: { label: 'Sacred Media Player', glyph: 'mediaplayer', hint: 'Operator orientation tapes' },
         choir: { label: 'Choir', glyph: 'choir', hint: 'What the Created are saying about your builds' },
+        mail: { label: 'CMS Mail', glyph: 'mail', hint: 'Interoffice mail, prayers and junk' },
         settings: { label: 'Divine Settings', art: 'settings', hint: 'Save, prestige, and display' }
     },
 
@@ -208,6 +209,10 @@ const system = {
             }
             // The Sacred Media Player claims Space and the arrows the same way.
             if (typeof MediaPlayerView !== 'undefined' && MediaPlayerView.handleKey(e, this.getTopWindowId())) {
+                return;
+            }
+            // CMS Mail claims the arrows, Enter and Delete while it is on top.
+            if (typeof MailView !== 'undefined' && MailView.handleKey(e, this.getTopWindowId())) {
                 return;
             }
 
@@ -412,7 +417,8 @@ const system = {
             recyclebin: { width: 700, height: 560 },
             solitaire: { width: 660, height: 590 },
             mediaplayer: { width: 820, height: 600 },
-            choir: { width: 560, height: 640 }
+            choir: { width: 560, height: 640 },
+            mail: { width: 860, height: 620 }
         };
 
         return appSizes[id] || { width: 620, height: 560 };
@@ -1299,6 +1305,11 @@ const system = {
                 title: 'Choir - Celestial Status Board',
                 initialHTML: `<div class="choir" id="choir-root"></div>`,
                 onOpen: () => ChoirView.open()
+            },
+            'mail': {
+                title: 'CMS Mail - Interoffice',
+                initialHTML: `<div class="mail" id="mail-root"></div>`,
+                onOpen: () => MailView.open()
             }
         };
         return configs[id] || { title: 'Unknown App', initialHTML: 'ERROR' };

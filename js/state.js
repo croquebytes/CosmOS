@@ -553,6 +553,16 @@ const State = {
         }
     },
 
+    /* === CMS MAIL === js/mail.js. Ids and flags only, per delivered
+       message: { id, read, folder, reply, at, replyAt }. Bodies live in
+       MailCatalog and are rebuilt on every render. `clock` is attended
+       seconds, for follow-up delays. Validated by MailLogic.normalise on
+       every access; added without a SAVE_VERSION bump, like audio. */
+    mail: {
+        log: [],
+        clock: 0
+    },
+
     // === ACHIEVEMENTS (Tracked) ===
     achievementProgress: {
         // Counters for achievement conditions

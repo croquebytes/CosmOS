@@ -6,7 +6,7 @@
     "test:e2e": "node tests/e2e-smoke.mjs",
     "test:save": "node tests/save-migration.mjs",
     "test:golden": "node tools/golden.mjs",
-    "test": "npm run test:save && npm run test:modifiers && npm run test:reality && npm run test:adversary && npm run test:prestige && npm run test:storage && npm run test:certification && npm run test:breakdown && npm run test:incidents && npm run test:solitaire && npm run test:archived && npm run test:media && npm run test:endings && npm run test:fate && npm run test:choir && npm run test:golden && npm run test:e2e && npm run test:solitaire:e2e && npm run test:archived:e2e && npm run test:media:e2e && npm run test:layout:e2e && npm run test:endings:e2e && npm run test:choir:e2e",
+    "test": "npm run test:save && npm run test:modifiers && npm run test:reality && npm run test:adversary && npm run test:prestige && npm run test:storage && npm run test:certification && npm run test:breakdown && npm run test:incidents && npm run test:solitaire && npm run test:archived && npm run test:media && npm run test:endings && npm run test:fate && npm run test:choir && npm run test:mail && npm run test:golden && npm run test:e2e && npm run test:solitaire:e2e && npm run test:archived:e2e && npm run test:media:e2e && npm run test:layout:e2e && npm run test:endings:e2e && npm run test:choir:e2e && npm run test:mail:e2e",
     "test:modifiers": "node tests/modifier-equivalence.mjs",
     "test:reality": "node tests/reality-builds.mjs",
     "test:adversary": "node tests/adversary-scene.mjs",
@@ -22,12 +22,14 @@
     "test:endings": "node tests/endings.mjs",
     "test:fate": "node tests/fate.mjs",
     "test:choir": "node tests/choir.mjs",
+    "test:mail": "node tests/mail.mjs",
     "test:solitaire:e2e": "node tests/solitaire-e2e.mjs",
     "test:archived:e2e": "node tests/archived-e2e.mjs",
     "test:media:e2e": "node tests/media-e2e.mjs",
     "test:layout:e2e": "node tests/window-layout-e2e.mjs",
     "test:endings:e2e": "node tests/endings-e2e.mjs",
-    "test:choir:e2e": "node tests/choir-e2e.mjs"
+    "test:choir:e2e": "node tests/choir-e2e.mjs",
+    "test:mail:e2e": "node tests/mail-e2e.mjs"
   },
   "devDependencies": {
     "playwright": "^1.62.0",
