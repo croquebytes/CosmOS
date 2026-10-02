@@ -1243,7 +1243,8 @@ const AutomatonSpecs = {
         costMultKey: 'nemesisCostMultiplier',
         rateKey: null,
         ratePerUnit: 0,
-        blurb: 'Spends Echoes to lift EVERY dimension. +5% total production each.',
+        // From the constant, not restated: this said +5% while the code paid 4%.
+        blurb: `Spends Echoes to lift EVERY dimension. +${Math.round(Economy.nemesisBonusEach * 100)}% total production each.`,
         visible: () => State.dimensions.void.unlocked && State.dimensions.void.automatons.phantomCount >= 22
     }
 };

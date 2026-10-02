@@ -3050,8 +3050,14 @@ const ui = {
 
     switchDimension(dimensionId) {
         State.currentDimension = dimensionId;
-        // "Careful. Mirrors are contagious." (ADV-BARK-03)
-        if (dimensionId === 'void') game.triggerAdversaryBark('enter_void');
+        if (dimensionId === 'void') {
+            /* ACH-012 "Void Tourist" reads this counter and nothing ever
+               wrote it, so the achievement could not be earned. */
+            State.achievementProgress.enter_void = (Number(State.achievementProgress.enter_void) || 0) + 1;
+            // "Careful. Mirrors are contagious." (ADV-BARK-03)
+            game.triggerAdversaryBark('enter_void');
+            game.checkAchievements();
+        }
 
         // Update tab styling
         document.querySelectorAll('.dimension-tab').forEach(tab => {
