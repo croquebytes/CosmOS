@@ -373,6 +373,7 @@ const Breakdown = {
                 ? this.stamp(`SEV-${step.severity || 3}`, 'is-alarm')
                 : this.stamp('Build');
             case 'scar': return this.stamp('On file', 'is-alarm');
+            case 'ending': return this.stamp('Handover', 'is-live');
             case 'cascade': return this.stamp('Throttle', 'is-alarm');
             case 'floor': return this.stamp('Floor');
             case 'base': return '';

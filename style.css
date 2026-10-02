@@ -4512,6 +4512,132 @@ kbd {
     to   { opacity: 1; transform: translateY(0); }
 }
 
+/* ── SCN-ADV-002: End of Shift ───────────────────────────────────────────
+   Phases 1 and 2 are the Mirror Login's own classes. Phase 3 returns to
+   the institution's vellum to file the result, so its type is ink on
+   vellum (--cos-ink / --cos-ink-dim), never the inverse tokens. */
+
+/* "Outgoing Operator" does not fit the login's 92px label track. */
+.fin-scene .adv-field { grid-template-columns: 150px 1fr; }
+
+.fin-scene.fin-phase-credits {
+    max-width: 640px;
+    cursor: default;
+    color: var(--cos-ink);
+}
+.fin-phase-credits .rn-head h2 { color: var(--cos-ink); }
+.fin-phase-credits .briefing-eyebrow { color: var(--cos-brass-700); }
+.fin-phase-credits .adv-hint { padding-top: 0; }
+
+/* The roll. A real end-credits crawl would leave nothing on screen to
+   read; this one rises into place and stays, which is the final frame. */
+.fin-roll {
+    margin: 10px 18px 0;
+    padding: 12px 0 10px;
+    border-top: 1px solid var(--cos-vellum-400);
+    border-bottom: 1px solid var(--cos-vellum-400);
+    overflow: hidden;
+}
+.fin-roll-inner {
+    margin: 0;
+    display: grid;
+    gap: 3px;
+    animation: fin-roll-in 3.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.fin-roll-inner.is-still { animation: none; }
+.fin-credit {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    font: 11.5px/1.5 var(--cos-font-machine);
+}
+.fin-credit dt {
+    text-align: right;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--cos-ink-dim);
+}
+.fin-credit dd { margin: 0; color: var(--cos-ink); }
+
+@keyframes fin-roll-in {
+    from { transform: translateY(70px); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
+}
+
+/* Armed after a beat, like the Mirror Login's choice row: a click already
+   in flight from mashing through the transcript falls through. */
+.fin-close.is-arming { pointer-events: none; opacity: 0.5; }
+
+/* In Recovered Documents. */
+.fin-doc .fin-letter p { margin: 0 0 10px; font: 13px/1.6 var(--cos-font-display); }
+.fin-doc .fin-doc-head {
+    margin: 18px 0 8px;
+    font: bold 11px var(--cos-font-machine);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+.fin-doc .rn-list { padding: 0; }
+.fin-doc .fin-roll-inner { margin-top: 12px; }
+
+/* Regressions signed, when the relationship is hostile. */
+.rn-attrib {
+    display: block;
+    margin-top: 1px;
+    color: var(--cos-ichor-700);
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+}
+
+/* ── The post-game mark ──────────────────────────────────────────────────
+   Where a test build's watermark sits: bottom right, above the taskbar,
+   under every window. Plain machine type, no ornament — authentic, not a
+   trophy. */
+.build-watermark {
+    position: absolute;
+    right: 18px;
+    bottom: 44px;
+    z-index: 1;
+    display: grid;
+    justify-items: end;
+    gap: 1px;
+    pointer-events: none;
+    color: var(--cos-ink-inv);
+    opacity: 0.72;
+    font: 11px/1.35 var(--cos-font-machine);
+    letter-spacing: 0.04em;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+.build-watermark span:first-child { font-weight: bold; }
+
+/* The rivet on every window title bar records the handover.
+   Hostile: one cold iron rivet, nobody's glow but yours.
+   Curious: a second rivet beside it — two signatures on one fixing.
+   Complicit: his colour. */
+body[data-ending="hostile"] .window-title-bar::before {
+    background: radial-gradient(circle at 32% 30%, var(--cos-ink-inv), var(--cos-iron-500) 62%, var(--cos-iron-900));
+    box-shadow: none;
+}
+body[data-ending="curious"] .window-title-bar::before {
+    margin-right: 9px;
+    box-shadow:
+        0 0 5px rgba(222, 196, 131, 0.45),
+        10px 0 0 0 var(--cos-verd-500);
+}
+body[data-ending="complicit"] .window-title-bar::before {
+    background: radial-gradient(circle at 32% 30%, var(--cos-ichor-300), var(--cos-ichor-700) 62%, var(--cos-void));
+    box-shadow: 0 0 6px rgba(144, 99, 219, 0.55);
+}
+body[data-ending="complicit"] .build-watermark { color: var(--cos-ichor-300); }
+
+@media (prefers-reduced-motion: reduce) {
+    .fin-roll-inner { animation: none; }
+}
+
+@media (max-width: 640px) {
+    .fin-scene .adv-field { grid-template-columns: 1fr; gap: 4px; }
+    .build-watermark { right: 10px; font-size: 10px; }
+}
+
 /* ── Barks ───────────────────────────────────────────────────────────── */
 
 .adversary-bark-layer {
