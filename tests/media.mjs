@@ -579,6 +579,126 @@ test('clock: reduced motion holds every camera move still', () => {
     assert.notDeepEqual(plain(L.camera('push', 0)), plain(L.camera('push', 1)), 'and moves when allowed');
 });
 
+/* ═══════════════════════ attachClip (Etherscape's slots) ═══════════════════════
+   The one browser-bound helper tested here, against a minimal fake page: a
+   document that can create elements, a fetch that answers HEAD with a content
+   type, and matchMedia for reduced motion. With `types` naming no file, the
+   fetch answers like Vite: 200 and text/html. */
+function clipPage({ types = {}, reduced = false } = {}) {
+    const calls = [];
+    const node = (tag) => ({
+        tagName: tag.toUpperCase(), className: '', children: [], attrs: {}, isConnected: true,
+        setAttribute(k, v) { this.attrs[k] = String(v); },
+        removeAttribute(k) { delete this.attrs[k]; },
+        appendChild(c) { this.children.push(c); return c; },
+        prepend(c) { this.children.unshift(c); },
+        querySelector(sel) {
+            const cls = sel.replace(/^\./, '');
+            const walk = (n) => {
+                for (const c of n.children) {
+                    if (` ${c.className} `.includes(` ${cls} `)) return c;
+                    const r = walk(c);
+                    if (r) return r;
+                }
+                return null;
+            };
+            return walk(this);
+        },
+        canPlayType: (t) => (t.includes('webm') || t.includes('mp4') ? 'probably' : ''),
+        play: () => Promise.resolve(),
+    });
+    const ctx = vm.createContext({
+        console: { log: noop, warn: noop, error: noop, debug: noop },
+        Math, Date, JSON, Number, Object, Array, String, Boolean, Set, Map, Promise, isNaN, parseInt, parseFloat,
+        setTimeout, clearTimeout, setInterval: noop, clearInterval: noop,
+        window: { location: { protocol: 'http:' }, matchMedia: () => ({ matches: reduced }) },
+        document: { createElement: node, addEventListener: noop, getElementById: () => null, querySelectorAll: () => [], hidden: false },
+        fetch: async (url, opts) => {
+            calls.push({ url, method: opts?.method });
+            return { ok: true, headers: { get: () => types[url] || 'text/html; charset=utf-8' } };
+        },
+    });
+    vm.runInContext(MEDIA.code, ctx, { filename: MEDIA.name });
+    const media = vm.runInContext('media', ctx);
+    return { media, calls, host: () => node('figure') };
+}
+
+test('attachClip: an installed web clip mounts muted and looping', async () => {
+    const p = clipPage({ types: { 'assets/video/web__seraph-choir__720.webm': 'video/webm' } });
+    const host = p.host();
+    assert.equal(await p.media.attachClip(host, 'web__seraph-choir__720', { label: 'The choir' }), true);
+    const frame = host.querySelector('.media-clip');
+    assert.ok(frame, 'mounted');
+    assert.equal(frame.attrs.role, 'img');
+    assert.equal(frame.attrs['aria-label'], 'The choir');
+    const v = frame.children[0];
+    assert.equal(v.tagName, 'VIDEO');
+    assert.equal(v.src, 'assets/video/web__seraph-choir__720.webm');
+    assert.equal(v.muted, true);
+    assert.equal(v.loop, true);
+    assert.ok(p.calls.every((c) => c.method === 'HEAD'), 'probed with HEAD');
+    assert.equal(await p.media.attachClip(host, 'web__seraph-choir__720'), false, 'never twice in one slot');
+    assert.equal(host.children.length, 1);
+});
+
+test('attachClip: the dev server\'s index.html is a miss, so nothing mounts', async () => {
+    const p = clipPage();
+    const host = p.host();
+    assert.equal(await p.media.attachClip(host, 'web__fate-table__720'), false);
+    assert.equal(host.children.length, 0);
+    assert.deepEqual(p.calls.map((c) => c.url), ['assets/video/web__fate-table__720.webm', 'assets/video/web__fate-table__720.mp4'],
+        'both encodings were asked for, and both answered with HTML');
+});
+
+test('attachClip: falls back to the MP4 when only the MP4 is installed', async () => {
+    const p = clipPage({ types: { 'assets/video/web__null-operator__720.mp4': 'video/mp4' } });
+    const host = p.host();
+    assert.equal(await p.media.attachClip(host, 'web__null-operator__720'), true);
+    assert.equal(host.querySelector('.media-clip').children[0].src, 'assets/video/web__null-operator__720.mp4');
+});
+
+test('attachClip: Cinematics Off mounts nothing and probes nothing', async () => {
+    const p = clipPage({ types: { 'assets/video/web__seraph-choir__720.webm': 'video/webm' } });
+    p.media.settings().cinematics = 'off';
+    const host = p.host();
+    assert.equal(await p.media.attachClip(host, 'web__seraph-choir__720'), false);
+    assert.equal(host.children.length, 0);
+    assert.equal(p.calls.length, 0);
+});
+
+test('attachClip: reduced motion shows the poster still, or nothing without one', async () => {
+    const p = clipPage({ reduced: true, types: {
+        'assets/video/web__seraph-choir__720.webm': 'video/webm',
+        'assets/video/web__seraph-choir__720.webp': 'image/webp',
+        'assets/video/web__fate-table__720.webm': 'video/webm',
+    } });
+    const host = p.host();
+    assert.equal(await p.media.attachClip(host, 'web__seraph-choir__720'), true);
+    const frame = host.querySelector('.media-clip');
+    assert.match(frame.className, /is-still/);
+    assert.equal(frame.children[0].tagName, 'IMG');
+    assert.equal(frame.children[0].src, 'assets/video/web__seraph-choir__720.webp');
+    assert.ok(!p.calls.some((c) => c.url.endsWith('.webm')), 'no reel was even probed');
+    const bare = p.host();
+    assert.equal(await p.media.attachClip(bare, 'web__fate-table__720'), false, 'a reel with no poster shows nothing');
+    assert.equal(bare.children.length, 0);
+});
+
+test('attachClip: a stem that could leave assets/video is refused unprobed; a slot gone mid-probe stays empty', async () => {
+    const p = clipPage({ types: { 'assets/video/web__seraph-choir__720.webm': 'video/webm' } });
+    for (const stem of ['../index', 'a/b', 'web__X__720', '', null, 7, 'web__x__720.webm']) {
+        assert.equal(await p.media.attachClip(p.host(), stem), false, String(stem));
+    }
+    assert.equal(p.calls.length, 0);
+    assert.equal(p.media.catalog.clip('web__a-b__720').webm, 'assets/video/web__a-b__720.webm');
+    const host = p.host();
+    const pending = p.media.attachClip(host, 'web__seraph-choir__720');
+    host.isConnected = false;    // the player navigated away before the probe answered
+    assert.equal(await pending, false);
+    assert.equal(host.children.length, 0);
+    assert.equal(await p.media.attachClip(null, 'web__seraph-choir__720'), false);
+});
+
 /* ═════════════════════════════ Run ═════════════════════════════ */
 
 let passed = 0;

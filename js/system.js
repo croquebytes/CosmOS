@@ -91,6 +91,9 @@ const system = {
         // No authored plaque yet: `glyph` names a CSS-drawn mark instead.
         solitaire: { label: 'Patience.exe', glyph: 'patience', hint: 'Golf solitaire, dealt from the arcana' },
         mediaplayer: { label: 'Sacred Media Player', glyph: 'mediaplayer', hint: 'Operator orientation tapes' },
+        choir: { label: 'Choir', glyph: 'choir', hint: 'What the Created are saying about your builds' },
+        mail: { label: 'CMS Mail', glyph: 'mail', hint: 'Interoffice mail, prayers and junk' },
+        etherscape: { label: 'Etherscape', glyph: 'etherscape', hint: 'Navigator for the afterlife web' },
         settings: { label: 'Divine Settings', art: 'settings', hint: 'Save, prestige, and display' }
     },
 
@@ -209,6 +212,10 @@ const system = {
             if (typeof MediaPlayerView !== 'undefined' && MediaPlayerView.handleKey(e, this.getTopWindowId())) {
                 return;
             }
+            // CMS Mail claims the arrows, Enter and Delete while it is on top.
+            if (typeof MailView !== 'undefined' && MailView.handleKey(e, this.getTopWindowId())) {
+                return;
+            }
 
             // Space: Perform Miracle
             if (e.code === 'Space') {
@@ -302,6 +309,7 @@ const system = {
             const button = document.createElement('button');
             button.className = 'start-menu-action';
             button.type = 'button';
+            button.dataset.app = id; // lets an app badge its own entry (Choir's unread count)
             button.innerHTML = `
                 <span class="start-menu-icon">${this.appGlyph(id)}</span>
                 <span><strong>${meta.label}</strong><small>${meta.hint}</small></span>
@@ -409,7 +417,10 @@ const system = {
             taskmgr: { width: 860, height: 560 },
             recyclebin: { width: 700, height: 560 },
             solitaire: { width: 660, height: 590 },
-            mediaplayer: { width: 820, height: 600 }
+            mediaplayer: { width: 820, height: 600 },
+            choir: { width: 560, height: 640 },
+            mail: { width: 860, height: 620 },
+            etherscape: { width: 880, height: 640 }
         };
 
         return appSizes[id] || { width: 620, height: 560 };
@@ -922,6 +933,18 @@ const system = {
                                 <span class="setting-value" id="audio-ambient-value">35%</span>
                             </div>
                             <div class="setting-row">
+                                <label for="audio-music">Music:</label>
+                                <input type="checkbox" id="audio-music-enabled" class="setting-checkbox" checked aria-label="Music enabled" onchange="audio.setEnabled('music', this.checked)">
+                                <input type="range" id="audio-music" class="setting-range" min="0" max="100" step="1" value="60" oninput="audio.setVolume('music', this.value / 100)">
+                                <span class="setting-value" id="audio-music-value">60%</span>
+                            </div>
+                            <div class="setting-row">
+                                <label for="audio-voice">Voices:</label>
+                                <input type="checkbox" id="audio-voice-enabled" class="setting-checkbox" checked aria-label="Voices enabled" onchange="audio.setEnabled('voice', this.checked)">
+                                <input type="range" id="audio-voice" class="setting-range" min="0" max="100" step="1" value="85" oninput="audio.setVolume('voice', this.value / 100)">
+                                <span class="setting-value" id="audio-voice-value">85%</span>
+                            </div>
+                            <div class="setting-row">
                                 <label for="audio-muted">Mute All:</label>
                                 <input type="checkbox" id="audio-muted" class="setting-checkbox" onchange="audio.setMuted(this.checked)">
                                 <span class="setting-desc" id="audio-status">Standing by for your first action.</span>
@@ -1291,6 +1314,21 @@ const system = {
                 title: 'Sacred Media Player',
                 initialHTML: `<div class="mplayer" id="mplayer-root"></div>`,
                 onOpen: () => MediaPlayerView.open()
+            },
+            'choir': {
+                title: 'Choir - Celestial Status Board',
+                initialHTML: `<div class="choir" id="choir-root"></div>`,
+                onOpen: () => ChoirView.open()
+            },
+            'mail': {
+                title: 'CMS Mail - Interoffice',
+                initialHTML: `<div class="mail" id="mail-root"></div>`,
+                onOpen: () => MailView.open()
+            },
+            'etherscape': {
+                title: 'Etherscape',
+                initialHTML: `<div class="es" id="es-root"></div>`,
+                onOpen: () => EtherscapeView.open()
             }
         };
         return configs[id] || { title: 'Unknown App', initialHTML: 'ERROR' };

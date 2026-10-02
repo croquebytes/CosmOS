@@ -2971,7 +2971,9 @@ const game = {
                 `Divine Reboot\n\n` +
                 `You will gain ${divinityGain} Divinity Points.\n` +
                 (cascade.tier > 0 ? `${cascade.label} — award reduced to ${Math.round(cascade.award * 100)}%.\n` : '') +
-                `+${(divinityGain * 10)}% to all production.\n\n` +
+                // The real bonus: 1 + DP^exponent x scale, sub-linear. The old
+                // '+10% per DP' line described a formula retired long ago.
+                `Production multiplier ×${State.divinityPointMultiplier.toFixed(2)} → ×${(1 + Math.pow((State.totalDivinityPoints || 0) + divinityGain, Economy.prestigeBonusExponent) * Economy.prestigeBonusScale).toFixed(2)}.\n\n` +
                 `This will reset:\n` +
                 `- All resources\n` +
                 `- All automatons\n` +

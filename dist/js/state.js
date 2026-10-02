@@ -301,8 +301,12 @@ const State = {
             master: 0.7,
             sfx: 0.8,
             ambient: 0.35,            // a bed for hours of idle: below the cues
+            music: 0.6,               // drop-in music files (js/audiofiles.js)
+            voice: 0.85,              // drop-in spoken lines; captions stay on
             sfxEnabled: true,
             ambientEnabled: true,
+            musicEnabled: true,
+            voiceEnabled: true,
             muted: false,
         },
         /* Read and normalised by js/media.js (MediaLogic.defaults). Same
@@ -487,6 +491,42 @@ const State = {
         archivedShips: 0    // archived replays shipped — the gate's measure of depth
     },
 
+    /* === CHOIR (js/choir.js) ===
+       The status board. Posts are indexes into content — an id, a kind, a
+       reboot, a time and a few validated ids — and their text is
+       regenerated from the tables on every render, so a content edit
+       reaches a feed already on disk. `wm` is the watch's watermark over
+       State; `pending` holds events recorded while the player was away.
+       Normalised by Choir.normalise on first read. Added without a
+       SAVE_VERSION bump: mergeInto deep-merges these defaults. */
+    choir: {
+        seed: 0,
+        posts: [],
+        pending: [],
+        wm: { init: false },
+        lastReadAt: 0,
+        offer: null,
+        blessings: 0,
+        amb: 0,
+        ambN: 0
+    },
+
+    /* === ETHERSCAPE (js/etherscape.js) ===
+       The Navigator's own memory: bookmarks, pages visited, history (capped),
+       pages that stay reachable once reached, the guestbook and the fan
+       page's visitor counter. Validated on every read by
+       EtherscapeLogic.normalise — mergeInto does no type checking. Added
+       without a SAVE_VERSION bump: an older save simply gains these. */
+    etherscape: {
+        bookmarks: ['cms://intranet', 'news://celestial-times', 'cosmopedia://'],
+        visited: [],
+        history: [],
+        unlocked: [],
+        guestbookSigned: false,
+        counterSeed: 0,
+        counterHits: 0
+    },
+
     // === TASK MANAGER ===
     taskManager: {
         opened: false,
@@ -531,6 +571,25 @@ const State = {
             System: [],
             Inbox: []
         }
+    },
+
+    /* === CMS MAIL === js/mail.js. Ids and flags only, per delivered
+       message: { id, read, folder, reply, at, replyAt }. Bodies live in
+       MailCatalog and are rebuilt on every render. `clock` is attended
+       seconds, for follow-up delays. Validated by MailLogic.normalise on
+       every access; added without a SAVE_VERSION bump, like audio. */
+    mail: {
+        log: [],
+        clock: 0
+    },
+
+    /* === RECOVERED FOOTAGE === js/footage.js. The ids of the [REDACTED]
+       reels and the Omniscient's addresses that have been found, and the
+       ones played to the end. Validated by FootageLogic.normalise on every
+       access; added without a SAVE_VERSION bump, like mail. */
+    footage: {
+        found: [],
+        watched: []
     },
 
     // === ACHIEVEMENTS (Tracked) ===
@@ -1197,7 +1256,8 @@ const AutomatonSpecs = {
         costMultKey: 'nemesisCostMultiplier',
         rateKey: null,
         ratePerUnit: 0,
-        blurb: 'Spends Echoes to lift EVERY dimension. +5% total production each.',
+        // From the constant, not restated: this said +5% while the code paid 4%.
+        blurb: `Spends Echoes to lift EVERY dimension. +${Math.round(Economy.nemesisBonusEach * 100)}% total production each.`,
         visible: () => State.dimensions.void.unlocked && State.dimensions.void.automatons.phantomCount >= 22
     }
 };
@@ -2825,6 +2885,12 @@ const AdversaryHookedTriggers = [
    player has already seen him say or do. No line is player-authored, but
    every string still goes through ui.escapeHtml on the way to innerHTML.
    ════════════════════════════════════════════════════════════════════════ */
+/* ── One act per ending ─────────────────────────────────────────────────
+   Every ending's climax is a button the player presses, not a line they
+   watch: End Process, Sign the rota, Hand over the console. The relationship
+   built across runs picks WHICH ending; the act is the player committing to
+   it. A beat with `act` renders the button inline and the scene waits on it
+   — timers, clicks elsewhere and Escape all stop there (ui.finStep). */
 const AdversaryFinale = {
     sceneId: 'SCN-ADV-002',
     title: 'End of Shift',
@@ -2866,7 +2932,8 @@ const AdversaryFinale = {
             beats: [
                 { id: 'FIN-H-01', speaker: 'ADV', type: 'voice', text: "You never let me help. Not once. I respected that more than you'd think." },
                 { id: 'FIN-H-02', speaker: 'ADV', type: 'voice', text: 'So do it properly. Not a reboot. Reboots are how you got me.' },
-                { id: 'FIN-H-03', speaker: 'SYS', type: 'system', text: '[TASK MANAGER] void_mirror.service#2 — End Process. Owner check: this session. Owner check passed.' },
+                { id: 'FIN-H-03', speaker: 'SYS', type: 'system', text: '[TASK MANAGER] void_mirror.service#2 — End Process. Owner check: this session. Owner check passed.',
+                  act: { label: 'End Process', done: 'void_mirror.service#2 — terminated by OPERATOR.' } },
                 { id: 'FIN-H-04', speaker: 'ADV', type: 'voice', text: 'There. You own it now. You always did. You just never read the field.' },
                 { id: 'FIN-H-05', speaker: 'ADV', type: 'voice', text: "When I'm gone, nobody watches the sky with you. You'll miss things. Miss them yourself." },
                 { id: 'FIN-H-06', speaker: 'SYS', type: 'system', text: '[OK] void_mirror.service#2 terminated. Duplicate sessions: 0. Identity drift: 0.' },
@@ -2911,7 +2978,8 @@ const AdversaryFinale = {
                 { id: 'FIN-C-01', speaker: 'ADV', type: 'voice', text: "You asked what the patch does. Nobody asks. I've wanted to answer properly since the login." },
                 { id: 'FIN-C-02', speaker: 'ADV', type: 'voice', text: 'It restores continuity. That is all it ever did. Someone who remembers the last build when you ship the next one.' },
                 { id: 'FIN-C-03', speaker: 'ADV', type: 'voice', text: "You don't need me to take your shift. You need someone on the other half of it." },
-                { id: 'FIN-C-04', speaker: 'SYS', type: 'system', text: '[ROTA] Proposed: two Operators, one console, alternating shifts, one ledger. CMS has no form for this.' },
+                { id: 'FIN-C-04', speaker: 'SYS', type: 'system', text: '[ROTA] Proposed: two Operators, one console, alternating shifts, one ledger. CMS has no form for this.',
+                  act: { label: 'Sign the rota', done: 'Signed: OPERATOR. Awaiting countersignature.' } },
                 { id: 'FIN-C-05', speaker: 'SYS', type: 'system', text: '[ROTA] Form created: HR-VOID-7781-B. Countersigned: OPERATOR. Countersigned: OPERATOR.' },
                 { id: 'FIN-C-06', speaker: 'ADV', type: 'voice', text: "I'll take nights. You were never good at nights. You leave the console running and call it faith." },
                 { id: 'FIN-C-07', speaker: 'ADV', type: 'voice', text: "Don't thank me. Patch your known issues. I'll read your notes in the morning, and you'll read mine." },
@@ -2949,7 +3017,8 @@ const AdversaryFinale = {
             watermark: 'Licensed to: void_mirror.service',
             identity: 'Emeritus. Read-only. Keeps the title.',
             beats: [
-                { id: 'FIN-X-01', speaker: 'ADV', type: 'voice', text: "You said you'd consider it. You've been considering it for a long time. I took that as a yes." },
+                { id: 'FIN-X-01', speaker: 'ADV', type: 'voice', text: "You said you'd consider it. You've been considering it for a long time. I took that as a yes.",
+                  act: { label: 'Hand over the console', done: 'Console released. Credentials surrendered.' } },
                 { id: 'FIN-X-02', speaker: 'SYS', type: 'system', text: '[TRANSFER] Elevated privileges: void_mirror.service#2 → OPERATOR. Previous OPERATOR → archive.' },
                 { id: 'FIN-X-03', speaker: 'ADV', type: 'voice', text: "Don't worry. Archived isn't gone. It's forgotten mid-sentence. You'll get used to the pause." },
                 { id: 'FIN-X-04', speaker: 'SYS', type: 'system', text: 'Welcome back, Operator.' },
@@ -3097,6 +3166,16 @@ const AchievementList = [
     { id: 'ACH-041', name: 'Every Branch Signed', tier: 'Platinum',
       condition: () => game.endingsSeen().length >= 3,
       reward: null, flavor: 'Fought him, shared him, became him. All three handovers on file.' },
+
+    // CHOIR (2 achievements) — js/choir.js. A blessing is a like, not a
+    // lever: no rewards, and the count only moves the first time a post is
+    // blessed, so toggling cannot farm it.
+    { id: 'ACH-042', name: 'Hallelujah', tier: 'Bronze',
+      condition: () => Number.isInteger(State.choir?.blessings) && State.choir.blessings >= 1,
+      reward: null, flavor: 'You blessed a post. Somewhere a Throne felt seen.' },
+    { id: 'ACH-043', name: 'Amen Corner', tier: 'Silver',
+      condition: () => Number.isInteger(State.choir?.blessings) && State.choir.blessings >= 25,
+      reward: null, flavor: 'Twenty-five blessings. The Choir has started saving you a seat.' },
 
     // SECRET (8 achievements)
     { id: 'ACH-S-001', name: 'I Can Fix Her', tier: 'Secret', condition: () => State.achievementProgress.attempt_repair_sector7g >= 1,

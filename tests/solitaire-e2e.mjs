@@ -66,7 +66,8 @@ try {
     assert.ok(bought.apps.includes('solitaire'), 'purchase unlocks the app');
     assert.equal(bought.ledger, true, 'purchase recorded under the category the shop reads');
     assert.match(await item.innerText(), /PURCHASED/);
-    await page.locator('#icon-solitaire').waitFor({ state: 'visible', timeout: 2500 });
+    // The icon appears on the next desktop refresh (1 Hz); 2.5s flaked under the full chain's load.
+    await page.locator('#icon-solitaire').waitFor({ state: 'visible', timeout: 8000 });
     step('bought through the Mini-Games tab; desktop icon appears');
 
     await page.evaluate(() => system.closeApp('adorationshop'));
@@ -309,7 +310,8 @@ try {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.getByRole('button', { name: 'Perform Miracle' }).waitFor();
-    await page.locator('#icon-solitaire').waitFor({ state: 'visible', timeout: 2500 });
+    // The icon appears on the next desktop refresh (1 Hz); 2.5s flaked under the full chain's load.
+    await page.locator('#icon-solitaire').waitFor({ state: 'visible', timeout: 8000 });
     const after = await page.evaluate(() => ({
         apps: State.unlockedApps.slice(), rounds: State.casino.solitaire.rounds,
         moves: PatienceApp.current()?.moves.slice(),

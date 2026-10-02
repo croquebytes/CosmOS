@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CosmOS v1.0 - Divine Maintenance Suite</title>
-  <link rel="stylesheet" crossorigin href="/assets/index-Bz98qnfB.css">
+  <link rel="stylesheet" crossorigin href="/assets/index-hBwXfYsG.css">
 </head>
 
 <body class="booting">
@@ -56,6 +56,18 @@
             <div class="icon" id="icon-mediaplayer" onclick="system.openApp('mediaplayer')" style="display: none;">
                 <div class="icon-img mediaplayer-icon"></div>
                 <span class="icon-label">Sacred Media Player</span>
+            </div>
+            <div class="icon" id="icon-choir" onclick="system.openApp('choir')" style="display: none;">
+                <div class="icon-img choir-icon"></div>
+                <span class="icon-label">Choir</span>
+            </div>
+            <div class="icon" id="icon-mail" onclick="system.openApp('mail')" style="display: none;">
+                <div class="icon-img mail-icon"></div>
+                <span class="icon-label">CMS Mail</span>
+            </div>
+            <div class="icon" id="icon-etherscape" onclick="system.openApp('etherscape')" style="display: none;">
+                <div class="icon-img etherscape-icon"></div>
+                <span class="icon-label">Etherscape</span>
             </div>
             <div class="icon" id="icon-settings" onclick="system.openApp('settings')">
                 <div class="icon-img settings-icon"></div>
@@ -123,6 +135,13 @@
                         <g class="tray-audio-x" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 5.8l4 4.4M15 5.8l-4 4.4"/></g>
                     </svg>
                 </button>
+                <button id="tray-mail" class="tray-mail" type="button" hidden
+                        onclick="system.openApp('mail')" aria-label="CMS Mail: no unread messages" title="CMS Mail: no unread messages">
+                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                        <rect x="1.5" y="3.5" width="13" height="9" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/>
+                        <path d="M2 4.2l6 4.6 6-4.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+                    </svg><span class="tray-mail-count">0</span>
+                </button>
                 <button id="tray-incident-led" class="tray-incident-led" type="button" hidden
                         onclick="system.openApp('taskmgr')" aria-label="No open incidents" title="No open incidents">
                     <span class="led-lamp" aria-hidden="true"></span><span class="led-label">INC</span>
@@ -151,11 +170,17 @@
     <script src="js/state.js"></script>
     <script src="js/modifiers.js"></script>
     <script src="js/reality.js"></script>
+    <script src="js/audiofiles.js"></script>
     <script src="js/audio.js"></script>
     <script src="js/incidents.js"></script>
     <script src="js/solitaire.js"></script>
     <script src="js/media.js"></script>
     <script src="js/mediaplayer.js"></script>
+    <script src="js/footage.js"></script>
+    <script src="js/choir.js"></script>
+    <script src="js/mail.js"></script>
+    <script src="js/mailview.js"></script>
+    <script src="js/etherscape.js"></script>
     <script src="js/system.js"></script>
     <script src="js/ui.js"></script>
     <script src="js/game.js"></script>
