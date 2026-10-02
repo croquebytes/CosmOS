@@ -1400,3 +1400,30 @@ three further runs — watch for it.
 - **Patience e2e flake fixed:** the icon wait went from 2.5s to 8s (it
   appears on a 1 Hz refresh).
 - **Verification:** `npm test` green, 19 node suites + golden + 10 browser.
+
+## 2026-10-02 — Session 8 (branch `session-8/polish`): no paid generation
+- **User rules for paid generation** (memory + `docs/krea-resume/`):
+  - ask about the model, its price and expected usage first;
+  - make one test result and get the direction approved;
+  - then quote the batch and get explicit approval;
+  - cap each agent at the approved amount;
+  - never default to the most expensive model.
+- **`docs/VIDEO_TOOLS_PLAN.md`:** cheaper Krea video options for the pixel
+  look (Seedance 2.0 at 480p, Hailuo 2.3 Fast, Wan with a style LoRA,
+  Vidu Q3, LTX-2.5 Fast, sprite strips). Uses only known costs; the rest is
+  marked unknown. Proposed first test: about 300 units. Nothing generated.
+- **Audio hooks (merged):** Fate, NULL.OPERATOR and SYS voices, layered
+  foley, and paused tape lines restarting. All inert until their files
+  exist. 42 node and 28 browser checks.
+- **Polish (merged):**
+  - One shared 1 Hz heartbeat (`js/heartbeat.js`) replaces the per-app
+    timers; it pauses while the tab is hidden. Idle desktop: about 66 → 11
+    wakeups/s and 16.7 → 8.0 ms/s of main-thread work. A hidden tab now does
+    no app polling. Numbers are in `docs/PERFORMANCE.md`.
+  - Accessibility: Space presses the focused control, Escape closes the top
+    layer, contrast tokens for text on vellum, reduced motion covers the JS
+    canvases, ARIA added.
+  - New `idle-e2e` and `a11y-e2e` suites.
+- **Fixes:** Choir no longer drops achievement posts past its per-pass cap;
+  the audio timer sleeps while the tab is hidden.
+- `npm test` is green.
