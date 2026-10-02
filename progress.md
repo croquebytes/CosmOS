@@ -1253,3 +1253,40 @@ layout 7); `test:audio` 14 separately. dist rebuilt.
   with a presentation-counter guard so a slow probe cannot re-run a finished
   scene. PR #2 open against `main` (which was still at 9db0b7e; it carries
   sessions 5 and 6).
+
+### Session 6 part 3 — the arc ends, the Void changes per build (2026-10-01)
+
+**NULL.OPERATOR endings** (agent slice, merged ed0ae77). SCN-ADV-002 "End of
+Shift" opens once the Mirror Login is completed, an Archived replay has been
+*shipped*, reboot ≥ 13 and the save is ≥ 24h old (earliest ~14.5h of steady
+play; never day one; unreachable by the simulator). The relationship band at
+presentation picks the ending and is locked across reload:
+- hostile — *Patched Out*, title Sole Operator: you end void_mirror.service#2;
+  Miracles ×1.2, Divine Events ×0.9; his barks and audit log stop.
+- curious — *Co-Maintenance*, title Co-Operator: a two-Operator rota; Divine
+  Intervention cooldown ×0.9.
+- complicit — *He Takes the Shift*, title Operator Emeritus: you go to the
+  archive; Seraphs ×1.08, Miracles ×0.9.
+Each ends in "release notes for the last build" + a Notepad document; the
+game continues with the title in the Genesis menu, a desktop watermark and a
+per-ending chrome rivet. Modifiers use their own `'ending'` scope (not
+`'permanent'`: reconciling that scope would delete the adversary patch's
+unrebuildable records), re-derived on boot and reconciled in place.
+Replay route: another shipped Archived replay + a band whose ending is unseen.
+Hostile standing stamps regressions "Committed by void_mirror.service#2".
+ACH-038–041. Also fixed a pre-existing Notepad race (a slow fetch could
+overwrite a later-opened document). 39 + 20 tests; 43/44 mutants (1 equivalent).
+Agent's design notes worth a playtest: scripted endings with no in-scene act;
+±3 bands with reboots drifting hostile; the 24h calendar floor is blunt;
+stacked ending modifiers when several are worn.
+
+**Void Reality Builds** (agent slice, merged e34eec0). 13 Void entries (was
+2) across improvements, issues (some priced in Void currencies), regressions
+and a deprecation that cripples the Nemesis lift; eligible from reboot 1
+because performPrestige reseals the Void every reboot and no run ships
+without breaching it (a test pins that premise to the live tables).
+Deterministic, replay-exact. ~2 in 3 Stable builds and 96% of Nightly now
+touch the Void. Curve moved ~2% at 240h (push=1 22/68/311; push=3 27/84/390;
+Nightly 29/117/689); golden recaptured intentionally; Economy table updated.
+
+Fate barks in Patience.exe: still building at time of writing.
