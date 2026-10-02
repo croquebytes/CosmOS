@@ -301,8 +301,12 @@ const State = {
             master: 0.7,
             sfx: 0.8,
             ambient: 0.35,            // a bed for hours of idle: below the cues
+            music: 0.6,               // drop-in music files (js/audiofiles.js)
+            voice: 0.85,              // drop-in spoken lines; captions stay on
             sfxEnabled: true,
             ambientEnabled: true,
+            musicEnabled: true,
+            voiceEnabled: true,
             muted: false,
         },
         /* Read and normalised by js/media.js (MediaLogic.defaults). Same
@@ -577,6 +581,15 @@ const State = {
     mail: {
         log: [],
         clock: 0
+    },
+
+    /* === RECOVERED FOOTAGE === js/footage.js. The ids of the [REDACTED]
+       reels and the Omniscient's addresses that have been found, and the
+       ones played to the end. Validated by FootageLogic.normalise on every
+       access; added without a SAVE_VERSION bump, like mail. */
+    footage: {
+        found: [],
+        watched: []
     },
 
     // === ACHIEVEMENTS (Tracked) ===
