@@ -1110,6 +1110,7 @@ const game = {
                 this.checkAchievements();
                 this.checkDocuments();
                 this.checkAdversaryTrigger();
+                this.checkFinaleTrigger();
 
                 /* "Count them if you must." Fires once per power of ten of
                    lifetime Souls, so it marks scale rather than nagging. */
@@ -2012,6 +2013,11 @@ const game = {
         this.bootstrapCertification();
         this.applyCertification(now);
         this.applyScars(now);
+        /* The endings are a third derived set: `State.endings.history` is the
+           ledger, the `scope: 'ending'` records its projection. Validated
+           first, because the ledger arrives from a save. */
+        this.normaliseEndings(now);
+        this.applyEndings(now);
         /* Open incidents and deferrals are derived the same way: normalised
            from the save, then reconciled in place under scope 'incident'. */
         if (this.incidentsLive()) Incidents.bootstrap(now);
@@ -3005,6 +3011,8 @@ const game = {
 
         // Into the release history, before the build is replaced.
         this.recordShip(State.reality.build, divinityGain);
+        // The finale's measure of depth: a replay played all the way to its ship.
+        if (archivedReplay) this.noteArchivedShip();
 
         /* Award divinity points.
 
@@ -3623,6 +3631,8 @@ const game = {
        popping every sixty seconds. */
     appendAdversaryAuditEntry() {
         if (State.adversary?.playerChoice !== 'OP-A') return;
+        // "Nobody keeps the receipts now" — the hostile ending's own notes.
+        if (this.endingWorn() === 'hostile') return;
         const item = State.recycleBin.items.find((i) => i.id === 'adversary_audit');
         if (!item) return;
         State.adversary.auditLogEntries = (State.adversary.auditLogEntries || 0) + 1;
@@ -3636,6 +3646,8 @@ const game = {
     selectAdversaryBark(trigger) {
         const adv = State.adversary;
         if (!adv?.sceneCompleted) return null;
+        // Patched out. The quiet is the cost the hostile ending names.
+        if (this.endingWorn() === 'hostile') return null;
 
         const band = this.adversaryRelationship();
         const allowed = AdversaryBarkPolicy.triggers[band] || [];
@@ -3675,6 +3687,303 @@ const game = {
 
         ui.displayAdversaryBark(bark);
         return bark;
+    },
+
+    /* ════════════════════════════════════════════════════════════════════
+       SCN-ADV-002 — "End of Shift". Content, the gate and its measurement
+       live with AdversaryFinale in js/state.js; this is the mechanism.
+
+       The idle game does not end. An ending files a document, wears a title
+       and a desktop mark, and adds a small permanent modifier — and then the
+       player goes back to work. The relationship keeps moving, so the other
+       two endings stay reachable: see finaleBlocker for the replay route.
+       ════════════════════════════════════════════════════════════════════ */
+
+    /* Every field validated, because mergeInto does no type checking and
+       importSave decodes pasted text straight into State. Validation, not
+       defaulting (335f41f): an entry that does not validate is dropped. */
+    normaliseEndings(now = Date.now()) {
+        const bands = AdversaryFinale.BANDS;
+        const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+        const MAX = 1000000;
+        let e = State.endings;
+        if (!e || typeof e !== 'object' || Array.isArray(e)) {
+            e = { history: [], pending: null, attempts: 0, archivedShips: 0 };
+            State.endings = e;
+        }
+
+        /* Archived ships are counted from the moment this shipped; a save
+           that replayed before then still has the replay in its release
+           history, so the larger of the two counts is the honest one. */
+        const recorded = typeof Reality !== 'undefined'
+            ? Reality.normaliseHistory(State.reality?.history).filter((r) => r.channel === 'archived').length
+            : 0;
+        e.archivedShips = Math.max(int(e.archivedShips, 0, MAX) ? e.archivedShips : 0, recorded);
+
+        const seen = new Set();
+        const history = [];
+        for (const raw of Array.isArray(e.history) ? e.history : []) {
+            if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+            // One entry per ending, ever: the first one filed is the one seen.
+            if (!bands.includes(raw.ending) || seen.has(raw.ending)) continue;
+            if (!int(raw.reboot, 0, MAX) || !int(raw.ships, 0, MAX)) continue;
+            seen.add(raw.ending);
+            history.push({
+                ending: raw.ending,
+                reboot: raw.reboot,
+                // Cannot have been resolved after more replays than exist.
+                ships: Math.min(raw.ships, e.archivedShips),
+                at: Number.isFinite(raw.at) && raw.at >= 0 ? raw.at : null,
+            });
+        }
+        e.history = history;
+        e.attempts = int(e.attempts, 0, MAX) ? e.attempts : 0;
+
+        /* The calendar half of the gate. runtime.startTime is written once,
+           by the first session, and nothing else reads or writes it — so it
+           is the save's birth date. A missing, nonsense or future value
+           starts the clock now rather than opening the gate. */
+        const runtime = State.runtime;
+        if (runtime && typeof runtime === 'object') {
+            const start = runtime.startTime;
+            if (!Number.isFinite(start) || start <= 0 || start > now) runtime.startTime = now;
+        }
+
+        /* A pending ending must name an unseen ending AND sit behind a gate
+           that is still open — every clause but the band, which is exactly
+           what pending exists to freeze. Otherwise a pasted save could carry
+           `pending` past the whole gate, since the resume path does not
+           re-check it. Nothing in the gate can close by playing, so a
+           legitimately interrupted scene always survives this. */
+        const pending = bands.includes(e.pending) && !seen.has(e.pending) ? e.pending : null;
+        e.pending = pending && !this.finaleBlocker(now, { ignoreBand: true }) ? pending : null;
+        return e;
+    },
+
+    endingsSeen() {
+        const history = State.endings?.history;
+        if (!Array.isArray(history)) return [];
+        const out = [];
+        for (const entry of history) {
+            const band = entry && entry.ending;
+            if (AdversaryFinale.BANDS.includes(band) && !out.includes(band)) out.push(band);
+        }
+        return out;
+    },
+
+    /* The mark the player wears: the most recent ending. Titles and the
+       desktop follow it; the modifiers follow every ending seen. */
+    endingWorn() {
+        const seen = this.endingsSeen();
+        return seen.length ? seen[seen.length - 1] : null;
+    },
+
+    noteArchivedShip() {
+        const e = State.endings;
+        if (!e || typeof e !== 'object' || Array.isArray(e)) return;
+        const n = Number.isInteger(e.archivedShips) && e.archivedShips >= 0 ? e.archivedShips : 0;
+        e.archivedShips = n + 1;
+    },
+
+    /* Why the final scene cannot fire yet, or null when it can. A reason
+       rather than a boolean so the tests can say WHICH clause holds a save.
+
+       The replay route. After an ending, the scene re-arms only when BOTH
+         - an archived replay has been shipped since the last ending, and
+         - the relationship's current band names an ending not yet seen.
+       Archived is where he lives — every annotation was filed there — so
+       returning to it is the diegetic way back to him, and it costs a whole
+       zero-Divinity run, so a re-entry is earned and cannot be farmed. The
+       band moves on the levers that already exist (reading the paperwork,
+       feeding the reflection, rebooting, reopening the archive, trying to
+       end the mirror), so steering toward an ending you have not seen is a
+       goal you pursue across runs rather than a menu you pick from. A band
+       already seen never re-plays its ending: that would be a rerun. */
+    finaleBlocker(now = Date.now(), { ignoreBand = false } = {}) {
+        if (!State.adversary?.sceneCompleted) return 'no-relationship';
+        const gate = AdversaryFinale.gate;
+        if ((State.achievementProgress?.prestige_count || 0) < gate.minReboots) return 'reboots';
+        const e = State.endings;
+        if (!e || typeof e !== 'object') return 'no-ledger';
+        const ships = Number.isInteger(e.archivedShips) ? e.archivedShips : 0;
+        if (ships < gate.minArchivedShips) return 'archive';
+        const start = Number(State.runtime?.startTime);
+        if (!Number.isFinite(start) || now - start < gate.minSaveAgeMs) return 'save-age';
+        const seen = this.endingsSeen();
+        if (seen.length >= AdversaryFinale.BANDS.length) return 'complete';
+        const history = Array.isArray(e.history) ? e.history : [];
+        const last = history[history.length - 1];
+        if (last && ships <= (Number(last.ships) || 0)) return 'replay-needed';
+        if (!ignoreBand && seen.includes(this.adversaryRelationship())) return 'band-seen';
+        return null;
+    },
+
+    finaleExhausted() {
+        return (State.endings?.attempts || 0) >= 3;
+    },
+
+    /* Polled from the 1 Hz block, right after the Mirror Login's trigger.
+       The first test is the one the simulator fails on every tick, forever:
+       the Mirror Login cannot complete headlessly, so nothing below it runs
+       there and nothing in here may reach Math.random(). */
+    checkFinaleTrigger(now = Date.now()) {
+        if (!State.adversary?.sceneCompleted) return;
+        const e = State.endings;
+        if (!e || typeof e !== 'object') return;
+        // Never behind the boot overlay — see checkAdversaryTrigger.
+        if (typeof document !== 'undefined' && document.getElementById('boot-overlay')) return;
+
+        /* An interrupted scene resumes as the SAME ending. The band was
+           locked when it was first presented; the relationship may have
+           moved since, and a reload must not be a way to re-roll it. */
+        if (e.pending) {
+            if (this.finaleExhausted()) {
+                this.resolveEnding(e.pending, now);
+                ui.log('[void_mirror] Handover closed without operator input.');
+                return;
+            }
+            if (ui.isSystemModalOpen && ui.isSystemModalOpen()) return;
+            if (ui.isAdversarySceneOpen && ui.isAdversarySceneOpen()) return;
+            ui.playFinale();
+            return;
+        }
+
+        if (this.finaleBlocker(now)) return;
+        // Defer, never clobber: the modal layer is a single slot.
+        if (ui.isSystemModalOpen && ui.isSystemModalOpen()) return;
+        if (ui.isAdversarySceneOpen && ui.isAdversarySceneOpen()) return;
+
+        // Written BEFORE presenting, as the Mirror Login writes `contacted`.
+        e.pending = this.adversaryRelationship();
+        e.attempts = 0;
+        State.save();
+        ui.playFinale();
+    },
+
+    /* The beat list for one ending. Pure, so the vm suites can read it. */
+    finaleBeats(band) {
+        const ending = AdversaryFinale.endings[band];
+        if (!ending) return [];
+        const worn = this.endingWorn();
+        const out = [];
+        for (const line of AdversaryFinale.opening) {
+            out.push(line);
+            if (line.id === 'FIN-011' && worn && AdversaryFinale.reentry[worn]) {
+                out.push(AdversaryFinale.reentry[worn]);
+            }
+        }
+        return out.concat(ending.beats);
+    },
+
+    /* Idempotent: a second call for a seen ending changes nothing but the
+       pending flag. Called when the scene reaches its release notes, on
+       Escape past the transcript, or headlessly after three presentations
+       that never drew. */
+    resolveEnding(band, now = Date.now()) {
+        if (!AdversaryFinale.BANDS.includes(band)) return null;
+        const e = State.endings;
+        if (!e || typeof e !== 'object') return null;
+        e.pending = null;
+        e.attempts = 0;
+        if (!Array.isArray(e.history)) e.history = [];
+        if (this.endingsSeen().includes(band)) { State.save(); return null; }
+
+        const entry = {
+            ending: band,
+            reboot: State.prestigeLevel || 0,
+            ships: Number.isInteger(e.archivedShips) ? e.archivedShips : 0,
+            at: now,
+        };
+        e.history.push(entry);
+        this.applyEndings(now);
+
+        const ending = AdversaryFinale.endings[band];
+        const doc = this.endingDocument(entry);
+        ui.showDocumentNotification?.(doc);
+        ui.log(`[DOCUMENT FILED] ${doc.title}`);
+        ui.log(`[HANDOVER] ${ending.label}. Title on file: ${ending.title}.`);
+        this.checkAchievements();
+        State.save();
+        return entry;
+    },
+
+    endingMods() {
+        const mods = [];
+        for (const band of this.endingsSeen()) {
+            const ending = AdversaryFinale.endings[band];
+            for (const mod of ending.mods || []) {
+                mods.push({
+                    ...mod,
+                    source: { kind: 'ending', id: band },
+                    label: `Handover — ${ending.label}`,
+                });
+            }
+        }
+        return mods;
+    },
+
+    /* Its own scope rather than 'permanent', for one reason: reconcileScope
+       brings a WHOLE scope in line with a desired set, and 'permanent' also
+       holds the adversary patch's two records — which are in no ledger and
+       can never be regenerated. Reconciling 'permanent' against the endings
+       would delete them. 'ending' is permanent in lifetime (performPrestige
+       drops only 'run' and 'build'), derived like 'cert' and 'scar', and
+       reconciled IN PLACE so a reload never moves it in the fold. */
+    applyEndings(now = Date.now()) {
+        const count = Modifiers.reconcileScope('ending', this.endingMods());
+        Modifiers.commit(now);
+        return count;
+    },
+
+    /* The document, as data; the UI typesets it. The text is looked up from
+       the content table at read time — never stored — so a rewritten line
+       reaches every save that already filed it, as the annotations do. */
+    endingDocument(entry) {
+        const ending = AdversaryFinale.endings[entry?.ending];
+        if (!ending) return null;
+        const reboot = Number.isInteger(entry.reboot) && entry.reboot >= 0 ? entry.reboot : 0;
+        const version = typeof Reality !== 'undefined' ? Reality.versionOfLevel(reboot) : String(reboot);
+        return {
+            id: ending.document.id,
+            category: ending.document.category,
+            filename: ending.document.filename,
+            title: ending.document.title,
+            generated: true,
+            kind: 'ending',
+            ending: entry.ending,
+            label: ending.label,
+            endTitle: ending.title,
+            version,
+            reboot,
+            letter: ending.letter.slice(),
+            signoff: ending.signoff,
+            release: ending.release.map((r) => ({ ...r })),
+            credits: ending.credits.map((c) => c.slice()),
+        };
+    },
+
+    endingDocuments() {
+        return (Array.isArray(State.endings?.history) ? State.endings.history : [])
+            .filter((h) => h && AdversaryFinale.BANDS.includes(h.ending))
+            .map((h) => this.endingDocument(h))
+            .filter(Boolean);
+    },
+
+    /* Every document generated from the save rather than shipped as a
+       file: his archive annotations, and the handover records. */
+    generatedDocuments() {
+        return this.archiveDocuments().concat(this.endingDocuments());
+    },
+
+    /* "NULL.OPERATOR as the source of regressions" (DESIGN_DIRECTION §6
+       #10), at the cost of one stamp in the release notes. Only when the
+       relationship is hostile — that is when the player believes it — and
+       after the hostile ending, as a record of what he left behind. */
+    regressionAttribution() {
+        if (!State.adversary?.sceneCompleted) return null;
+        if (this.endingWorn() === 'hostile') return 'Committed by void_mirror.service#2 before termination';
+        if (this.adversaryRelationship() === 'hostile') return 'Committed by void_mirror.service#2';
+        return null;
     },
 
     // === PROPHET SYSTEM ===
