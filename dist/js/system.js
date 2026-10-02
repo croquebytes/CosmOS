@@ -1078,6 +1078,10 @@ const system = {
                     ui.updatePrestigeInfo();
                     ui.updateSettingsUI();
                     if (typeof PatienceDealer !== 'undefined') PatienceDealer.syncSettingsUI();
+                    // The Dev Console is a tester's section: js/devtools.js is
+                    // left out of a release build, and mounts itself only on
+                    // localhost or with ?dev=1.
+                    if (typeof DevTools !== 'undefined') DevTools.mountSettings(document.getElementById('content-settings'));
                 }
             },
             'mandates': {
