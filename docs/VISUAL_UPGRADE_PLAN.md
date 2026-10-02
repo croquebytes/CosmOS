@@ -329,3 +329,34 @@ should be generated clean: the tear is applied on top.
 §5 budgets (2.5 MB for each cinematic, about 1 MB for each 8s tape shot at 960×720)
 that comes to about 40 MB, which is the Steam ceiling. Encode the tapes at a lower
 bitrate than the cinematics; they are meant to look like tape.
+
+## 8. Etherscape web media (built)
+
+Pages in the Etherscape Navigator (`js/etherscape.js`) can carry a clip or an image
+slot. Like everything above, **a slot whose file is missing renders nothing**: the page
+reads as finished without it. Drop a file in under the exact name below and reload.
+
+**Rules**
+
+- **Clips** (`@clip <slug>` in a page): `assets/video/web__<slug>__720.webm` (VP9),
+  or `.mp4` (H.264) where WebM will not play, plus `assets/video/web__<slug>__720.webp`
+  as the poster. Mounted by `media.attachClip()`: muted, looping, shown at most 480 px
+  wide. 16:9, made at 1280×720, a seamless 3–6 s loop, ≤ 1.5 MB. Cinematics: *Off*
+  shows nothing at all; reduced motion shows the `.webp` poster as a still (and nothing
+  if there is no poster).
+- **Images** (`@image <slug>`): `assets/web/<slug>.webp`, at most 960 px wide, any
+  aspect (shown at most 480 px wide).
+- **Slugs** are lowercase `a-z`, `0-9` and hyphens. Captions are HTML under the slot,
+  never baked into the art.
+- **Availability** is probed the same way as the cinematics: a HEAD request, and an
+  HTML answer (Vite's `index.html` fallback) counts as missing.
+
+| Slot | Kind | File | Page | Generate in Krea |
+|---|---|---|---|---|
+| `cms-campus` | image | `assets/web/cms-campus.webp` | `cms://intranet` | The CMS campus as a 1996 corporate photo: an iron cathedral office park under a brass sky, slightly overexposed. |
+| `celestial-times-masthead` | image | `assets/web/celestial-times-masthead.webp` | `news://celestial-times` | A newsroom of brass typewriters and vellum stacks in Sector 1A, halftone print texture. |
+| `seraph-diagram` | image | `assets/web/seraph-diagram.webp` | `cosmopedia://automatons` | An encyclopedia plate: a folded six-winged brass Seraph, labelled with leader lines (labels left blank). |
+| `seraph-choir` | clip | `web__seraph-choir__720` | `seraph://fanpage` | Camcorder footage of a row of brass Seraphs singing, slight handheld wobble, low-res. |
+| `fate-table` | clip | `web__fate-table__720` | `fate://casino` | A felt card table under a single lamp; a dealer's hands (only the hands) turn cards. |
+| `void-forum-banner` | image | `assets/web/void-forum-banner.webp` | `void://forum` | A wide banner: the violet tear in the iron wall seen from inside the Void, wraith-light. |
+| `null-operator` | clip | `web__null-operator__720` | `null://` (after an ending) | A CRT showing the viewer's silhouette, which turns away from the lens; tracking noise. |

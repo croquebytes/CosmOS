@@ -3270,6 +3270,11 @@ const ui = {
         if (mediaIcon) {
             mediaIcon.style.display = State.unlockedApps.includes('mediaplayer') ? 'block' : 'none';
         }
+
+        const etherIcon = document.getElementById('icon-etherscape');
+        if (etherIcon) {
+            etherIcon.style.display = State.unlockedApps.includes('etherscape') ? 'block' : 'none';
+        }
     },
 
     // === DOCUMENT SYSTEM UI ===
