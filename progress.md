@@ -1517,3 +1517,28 @@ three further runs — watch for it.
   Notepad and buys a Void upgrade an hour ends +11 complicit by reboot 3 to 8, whatever the
   Mirror Login answer, and curious is unreachable. Lifetime caps per act plus a -6 ship
   drift cap fix it in the sim. Awaiting a decision before it is built.
+
+### Session 9, part 4 (2026-10-02): NULL.OPERATOR's standing, built
+- **The rule** (`js/game.js`, `js/state.js`): `game.ADVERSARY_NUDGE_CAPS` caps what each
+  KIND of act may add to `standing` over the whole save: Notepad +3, Void upgrades +3,
+  Choir status ±4, ending the mirror -4, the reboot drift -6. `State.adversary.nudgeTotals`
+  records what each has added (a schema default, no `SAVE_VERSION` bump; read defensively
+  because a save is pasted text). A spent act moves nothing and burns no cooldown; a delta
+  that only partly fits is trimmed; the patch, the archived replay and Mail are outside the
+  table. The cooldown is unchanged.
+- **Why:** with only the cooldown, standing saturated both ways on the way to the gate:
+  doing nothing was hostile whatever you answered, opening Notepad and buying one Void
+  upgrade an hour was +11 complicit by reboot 3-8 whatever you answered, and curious was
+  unreachable (`docs/STANDING_DRIFT.md`).
+- **Now** (real climb to reboot 14, `node tools/standing_sim.mjs`): passive -9 / -5 / -1
+  (hostile, hostile, curious) from OP-A / B / C; ordinary -2 / +2 / +6 (curious, curious,
+  complicit); attentive and farmer complicit; cold hostile. From OP-B: resisting is hostile,
+  reading and building is curious, feeding him is complicit, and the answer at the Mirror
+  Login shows at the gate again.
+- **Tooling:** `tools/standing_lib.mjs` is the climb driver (real `performPrestige`, archived
+  replay, `nudgeAdversaryStanding`, `Mail.reply`, on a fake clock); `tools/standing_sim.mjs`
+  is the report; `tests/standing.mjs` (22 checks, 17 fail against the old `game.js`) pins the
+  caps, persistence, hostile saves and the outcome of a climb. The Dev Console inspector
+  shows `nudgeTotals`.
+- The existing standing suites (`adversary-scene`, `mail`, `choir`, `endings`) were not
+  changed and stay green. Nothing in the economy reads standing; golden is unaffected.
