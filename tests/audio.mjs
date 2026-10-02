@@ -8,6 +8,14 @@
    4. A 15-clicks-per-second Miracle burst never exceeds its voice limit.
    5. Every cue rendered offline through the real graph at default settings
       has a sane level: never clipping, never silent, ambient well below SFX.
+   6. Drop-in files (js/audiofiles.js): M1 loops on the primordial desktop
+      after the first gesture; a missing file is inert (a HEAD probe, then
+      nothing); a spoken line ducks the music about 8 dB and lets it back;
+      mute zeroes music and voice and cuts the line; a synced tape caption
+      holds the tape clock until its line is done, caption on screen; the
+      music sits about 12 dB under the cues and the voice level with them;
+      and with every file answered by the dev server's index.html, nothing
+      changes at all: no music, no hold, no download, no error.
 
    Needs a running server:  COSMOS_TEST_URL=http://127.0.0.1:5192 npm run test:audio */
 import assert from 'node:assert/strict';
@@ -30,6 +38,8 @@ page.on('console', (message) => {
 });
 
 const debug = () => page.evaluate(() => audio.debug());
+const audioRequests = [];
+page.on('request', (req) => { if (req.url().includes('/assets/audio/')) audioRequests.push(`${req.method()} ${req.url().split('/assets/audio/')[1]}`); });
 async function waitFor(fn, label, timeout = 3000) {
     const start = Date.now();
     for (;;) {
@@ -138,17 +148,155 @@ try {
         await waitFor(() => audio.state() === 'running', "state 'running' again");
     });
 
+    /* ── Drop-in files ───────────────────────────────────────────────── */
+    await check('M1 Primordial Shift loops on the primordial desktop after the first gesture', async () => {
+        await waitFor(() => audio.debug().musicBed === 'primordial-shift', 'the M1 bed', 8000);
+        const d = await debug();
+        const lv = await page.evaluate(() => audio.defaultLevels());
+        assert.ok(Math.abs(d.music - lv.music) < 1e-3, `music bus at its default ${lv.music}, got ${d.music}`);
+        assert.ok(lv.music > 0 && lv.voice > 0);
+        assert.equal(d.duck, 1, 'nothing speaking, nothing ducked');
+        assert.ok(audioRequests.includes('GET music__primordial-shift.ogg'), `fetched once probed: ${audioRequests.join(', ')}`);
+    });
+
+    await check('the Void has no M1: the bed fades out, and returns on the way back', async () => {
+        await page.evaluate(() => { State.currentDimension = 'void'; });
+        await waitFor(() => audio.debug().musicBed === null, 'the bed to leave in the Void', 3000);
+        await waitFor(() => audio.music.known('void-breach') === false, 'M2 probed and found not installed', 3000);
+        assert.equal(await page.evaluate(() => audio.debug().musicBed), null, 'and nothing took its place');
+        await page.evaluate(() => { State.currentDimension = 'primordial'; });
+        await waitFor(() => audio.debug().musicBed === 'primordial-shift', 'M1 back on the primordial desktop', 3000);
+    });
+
+    await check('a missing file is inert: a HEAD probe, then nothing', async () => {
+        const before = await debug();
+        const outcome = await page.evaluate(() => audio.voice.say('instructor', 't2-s2-0'));
+        assert.equal(outcome, 'missing');
+        assert.equal(await page.evaluate(() => audio.voice.known('instructor', 't2-s2-0')), false, 'the dev server\'s index.html did not count');
+        const again = await page.evaluate(() => audio.voice.say('instructor', 't2-s2-0'));
+        assert.equal(again, 'missing');
+        const d = await debug();
+        assert.equal(d.duck, 1, 'no ducking for a line that does not exist');
+        assert.equal(d.speaking, false);
+        assert.equal(d.musicBed, before.musicBed, 'the music did not notice');
+        const t2 = audioRequests.filter((r) => r.includes('t2-s2-0'));
+        assert.ok(t2.length >= 1 && t2.every((r) => r.startsWith('HEAD ')), `only HEAD probes: ${t2.join(', ')}`);
+        assert.ok(t2.length <= 2, `probed once per extension, then cached: ${t2.join(', ')}`);
+        assert.equal(await page.evaluate(() => audio.music.stinger('release-day')), false, 'a missing stinger plays nothing');
+    });
+
+    await check('a spoken line ducks the music about 8 dB, and lets it back up', async () => {
+        const run = page.evaluate(() => audio.voice.say('instructor', 't1-s2-1'));
+        await waitFor(() => audio.debug().speaking, 'the line to start', 5000);
+        await page.waitForTimeout(600);
+        let d = await debug();
+        const db = 20 * Math.log10(d.duck);
+        assert.ok(db < -7 && db > -9, `ducked ${db.toFixed(2)} dB`);
+        assert.ok(d.voice > 0, 'voice bus open');
+        assert.equal(await run, 'played');
+        await page.waitForTimeout(1600);
+        d = await debug();
+        assert.ok(d.duck > 0.97, `restored to ${d.duck}`);
+        assert.equal(d.speaking, false);
+    });
+
+    await check('mute zeroes music and voice, and cuts the line in progress', async () => {
+        const run = page.evaluate(() => audio.voice.say('instructor', 't1-s6-1'));
+        await waitFor(() => audio.debug().speaking, 'the line to start', 5000);
+        await page.evaluate(() => audio.setMuted(true));
+        assert.equal(await run, 'stopped', 'muting cuts the line, so no tape waits on it');
+        await page.waitForTimeout(150);
+        const d = await debug();
+        assert.equal(d.master, 0);
+        assert.equal(d.music, 0, `music bus ${d.music}`);
+        // The voice bus has nothing playing into it now (the line was cut),
+        // so Chrome stops updating its .value: read the scheduled target.
+        assert.equal(d.targets.voice, 0, 'voice bus scheduled to 0');
+        assert.equal(d.targets.music, 0, 'music bus scheduled to 0');
+        assert.equal(await page.evaluate(() => audio.voice.say('instructor', 't1-s2-1')), 'off', 'nothing speaks while muted');
+        assert.equal(await page.evaluate(() => audio.voice.known('instructor', 't1-s2-1')), false, 'so a tape does not wait either');
+        await page.evaluate(() => audio.setMuted(false));
+        await waitFor(() => audio.state() === 'running', 'unmuted context resumes');
+        await waitFor(() => audio.debug().musicBed === 'primordial-shift', 'M1 back after unmute', 6000);
+    });
+
+    await check('a synced tape caption holds the tape clock until its line is done', async () => {
+        await waitFor(() => media.settings().tapes.includes('t1'), 'T1 filed after ten Miracles', 4000);
+        await page.evaluate(() => system.openApp('mediaplayer'));
+        await page.locator('#win-mediaplayer .mp-shelf').waitFor();
+        const duration = await page.evaluate(() => audio.voice.duration('instructor', 't1-s2-0'));
+        const plan = await page.evaluate(() => {
+            const tp = MediaCatalog.tape('t1');
+            const lines = AudioFiles.tapeLines(tp);
+            const line = lines.find((l) => l.id === 't1-s2-0');
+            MediaPlayerView.loadTape('t1', false);
+            MediaPlayerView.seek(line.at - 0.3);
+            MediaPlayerView.play();
+            return { at: line.at, limit: line.limit, text: line.text, next: lines.find((l) => l.id === 't1-s2-1').text };
+        });
+        assert.ok(duration > plan.limit - plan.at + 1, `the line (${duration.toFixed(2)} s) outlasts its gap (${(plan.limit - plan.at).toFixed(2)} s), so it must hold`);
+        const samples = await page.evaluate(async ({ limit }) => {
+            const out = [];
+            const t0 = performance.now();
+            while (performance.now() - t0 < 14000) {
+                const st = MediaPlayerView.state();
+                out.push({
+                    ms: performance.now() - t0, t: st.t, speaking: tapeVoice.speaking(), line: tapeVoice.current(),
+                    caption: document.querySelector('#win-mediaplayer .mp-line')?.textContent || '',
+                });
+                if (st.t > limit + 1) break;
+                await new Promise((r) => setTimeout(r, 100));
+            }
+            return out;
+        }, plan);
+        const speaking = samples.filter((x) => x.speaking && x.line === 't1-s2-0');
+        assert.ok(speaking.length > 10, `the line was heard (${speaking.length} samples)`);
+        for (const x of speaking) {
+            assert.ok(x.t < plan.limit, `clock ${x.t.toFixed(3)} passed the next caption at ${plan.limit} while the line played`);
+            assert.notEqual(x.caption, plan.next, 'the next caption never shows while this line plays');
+        }
+        const held = speaking.filter((x) => x.t > plan.limit - 0.05);
+        // While the clock waits, the line's own caption is the one on screen.
+        // (This loop's state() calls can start a line between frames, and a
+        // busy headless page draws only a few frames a second, so the check
+        // is made on the hold rather than on the first frame of the line.)
+        for (const x of held) assert.equal(x.caption, plan.text, 'the caption stays on screen through the hold');
+        const heldFor = held.length ? (held[held.length - 1].ms - held[0].ms) / 1000 : 0;
+        assert.ok(heldFor > 1.5, `the clock waited at the next caption (${heldFor.toFixed(1)} s)`);
+        const after = samples.find((x) => x.t >= plan.limit);
+        assert.ok(after, 'the tape ran on once the line ended');
+        const resumed = samples.filter((x) => x.t >= plan.limit && x.line === 't1-s2-1');
+        assert.ok(resumed.length, 'and the next caption\'s own line started');
+        assert.ok(resumed.some((x) => x.caption === plan.next), 'under its own caption');
+        const releasedAt = after.ms / 1000;
+        // Played from 0.3 s before the caption: the line ends near 0.3 + duration.
+        assert.ok(releasedAt >= duration, `released at ${releasedAt.toFixed(2)} s, after the ${duration.toFixed(2)} s line`);
+        console.log(`      held ${heldFor.toFixed(1)} s at the next caption; released ${releasedAt.toFixed(2)} s after play (line ${duration.toFixed(2)} s)`);
+        await page.evaluate(() => MediaPlayerView.pause(true));
+        assert.equal(await page.evaluate(() => tapeVoice.speaking()), false, 'pausing cut the line');
+        assert.equal(await page.evaluate(() => audio.debug().speaking), false);
+    });
+
     await check('settings panel drives the buses', async () => {
         await page.evaluate(() => system.openApp('settings'));
         const win = page.locator('#win-settings');
         await win.locator('#audio-master').fill('40');
         await win.locator('#audio-ambient-enabled').uncheck();
         await win.locator('#audio-sfx').fill('65');
+        await win.locator('#audio-music').fill('50');
+        await win.locator('#audio-voice-enabled').uncheck();
         await page.waitForTimeout(200);
         const d = await debug();
+        const lv = await page.evaluate(() => audio.defaultLevels());
+        assert.ok(Math.abs(d.music - 0.5 * (lv.music / 0.6)) < 1e-3, `music follows its slider, got ${d.music}`);
+        assert.equal(d.targets.voice, 0, 'voices off');
+        assert.equal(await win.locator('#audio-voice-value').innerText(), 'OFF');
+        assert.equal(await win.locator('#audio-music-value').innerText(), '50%');
         assert.ok(Math.abs(d.master - 0.4) < 1e-3, `master 0.4, got ${d.master}`);
-        assert.ok(Math.abs(d.sfx - 0.65) < 1e-3, `sfx 0.65, got ${d.sfx}`);
-        assert.equal(d.ambient, 0, 'ambient bus off');
+        // An idle bus (nothing playing into it) can report a stale .value in
+        // Chrome; the scheduled target is what the slider set.
+        assert.ok(Math.abs(d.targets.sfx - 0.65) < 1e-3, `sfx 0.65, got ${d.targets.sfx}`);
+        assert.equal(d.targets.ambient, 0, 'ambient bus off');
         assert.equal(d.ambientBed, false, 'ambient bed torn down when disabled');
         assert.equal(await win.locator('#audio-ambient-value').innerText(), 'OFF');
 
@@ -168,7 +316,11 @@ try {
         assert.equal(await win.locator('#audio-ambient-enabled').isChecked(), false);
         assert.equal(await win.locator('#audio-master-value').innerText(), '40%');
         const s = await page.evaluate(() => ({ ...State.settings.audio }));
-        assert.deepEqual(s, { master: 0.4, sfx: 0.65, ambient: 0.35, sfxEnabled: true, ambientEnabled: false, muted: false });
+        assert.equal(await win.locator('#audio-voice-enabled').isChecked(), false);
+        assert.deepEqual(s, {
+            master: 0.4, sfx: 0.65, ambient: 0.35, music: 0.5, voice: 0.85,
+            sfxEnabled: true, ambientEnabled: false, musicEnabled: true, voiceEnabled: false, muted: false,
+        });
     });
 
     await check('tray mute zeroes the master gain, persists, and unmutes', async () => {
@@ -176,6 +328,8 @@ try {
         await page.waitForTimeout(150);
         let d = await debug();
         assert.equal(d.master, 0, `master gain should be exactly 0, got ${d.master}`);
+        assert.equal(d.targets.music, 0, 'music bus closed under mute');
+        assert.equal(d.targets.voice, 0, 'voice bus closed under mute');
         assert.equal(await page.getAttribute('#tray-audio', 'aria-pressed'), 'true');
         assert.equal(await page.locator('#audio-muted').isChecked(), true, 'settings checkbox follows the tray');
         assert.equal(await page.evaluate(() => audio.play('purchase')), false, 'nothing plays while muted');
@@ -267,6 +421,86 @@ try {
         const one = levels.find((l) => l.label === 'miracle (streak 1)');
         const burst = levels.find((l) => l.label === 'miracle (15/s burst, each)');
         assert.ok(burst.peakDb < one.peakDb - 4);
+    });
+
+    /* File levels: the decoded files through the default bus gains, by the
+       same loudest-300 ms RMS as the cues, before the limiter. */
+    const fileLevels = await page.evaluate(async () => {
+        const lv = audio.defaultLevels();
+        const measure = async (url, gain) => {
+            const data = await (await fetch(url)).arrayBuffer();
+            const octx = new OfflineAudioContext(2, 44100, 44100);
+            const buf = await octx.decodeAudioData(data);
+            const win = Math.floor(buf.sampleRate * 0.3);
+            const chans = [...Array(buf.numberOfChannels).keys()].map((c) => buf.getChannelData(c));
+            let max = 0;
+            for (let start = 0; start + win <= buf.length; start += Math.floor(win / 2)) {
+                let sum = 0;
+                for (const d of chans) for (let i = start; i < start + win; i++) sum += d[i] * d[i];
+                max = Math.max(max, Math.sqrt(sum / (win * chans.length)));
+            }
+            return 20 * Math.log10(max * gain);
+        };
+        const music = await measure('assets/audio/music__primordial-shift.ogg', lv.master * lv.music);
+        const voice = [];
+        for (const id of ['t1-s2-0', 't1-s3-1', 't1-s6-1']) voice.push(await measure(`assets/audio/vo__instructor__${id}.ogg`, lv.master * lv.voice));
+        return { music, voice };
+    });
+
+    await check('music sits about 12 dB under the cues, voice about level with them', async () => {
+        const sfx = levels.filter((l) => l.name !== 'ambient' && l.name !== 'click' && l.name !== 'adversaryBark' && l.name !== 'eventAppear');
+        const sorted = sfx.map((l) => l.rmsDb).sort((a, b) => a - b);
+        const median = sorted[Math.floor(sorted.length / 2)];
+        const voice = fileLevels.voice.reduce((a, b) => a + b, 0) / fileLevels.voice.length;
+        console.log(`      cue median ${median.toFixed(1)} dB, music ${fileLevels.music.toFixed(1)} dB, voice ${voice.toFixed(1)} dB (loudest 300 ms RMS)`);
+        const under = median - fileLevels.music;
+        assert.ok(under >= 9 && under <= 15, `music ${under.toFixed(1)} dB under the cue median`);
+        assert.ok(Math.abs(voice - median) <= 4, `voice ${(voice - median).toFixed(1)} dB from the cue median`);
+        assert.ok(voice - fileLevels.music >= 9, 'a line is clear of the music before ducking');
+    });
+
+    await check('with no audio files installed, nothing changes', async () => {
+        // A second page where every assets/audio/ request gets what Vite
+        // gives a missing file: index.html with a 200.
+        const bare = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+        const p2 = await bare.newPage();
+        const seen = [];
+        const errors = [];
+        p2.on('pageerror', (e) => errors.push(String(e)));
+        p2.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+        await p2.route('**/assets/audio/**', (route) => {
+            seen.push(`${route.request().method()} ${route.request().url().split('/assets/audio/')[1]}`);
+            return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>CosmOS</title>' });
+        });
+        await p2.goto(`${baseUrl}/?testMode=1`, { waitUntil: 'domcontentloaded' });
+        for (let i = 0; i < 11; i += 1) await p2.getByRole('button', { name: 'Perform Miracle' }).click();
+        await p2.waitForFunction(() => media.settings().tapes.includes('t1'), null, { timeout: 4000 });
+        await p2.evaluate(() => system.openApp('mediaplayer'));
+        const run = await p2.evaluate(async () => {
+            const tp = MediaCatalog.tape('t1');
+            const line = AudioFiles.tapeLines(tp).find((l) => l.id === 't1-s2-0');
+            MediaPlayerView.loadTape('t1', false);
+            await new Promise((r) => setTimeout(r, 300));   // the probes answer
+            MediaPlayerView.seek(line.at - 0.3);
+            MediaPlayerView.play();
+            const t0 = performance.now();
+            let held = false;
+            while (performance.now() - t0 < 5000) {
+                if (tapeVoice.speaking()) held = true;
+                await new Promise((r) => setTimeout(r, 100));
+            }
+            const t = MediaPlayerView.state().t;
+            MediaPlayerView.pause(true);
+            return { t, start: line.at - 0.3, limit: line.limit, held, d: audio.debug(), said: await audio.voice.say('instructor', 't1-s2-0') };
+        });
+        await bare.close();
+        assert.equal(run.held, false, 'no line, no hold');
+        assert.ok(run.t > run.limit && Math.abs(run.t - (run.start + 5)) < 0.6, `the tape ran on the wall clock: ${run.t.toFixed(2)} after 5 s from ${run.start.toFixed(2)}`);
+        assert.equal(run.d.musicBed, null, 'no music');
+        assert.equal(run.d.duck, 1, 'no ducking');
+        assert.equal(run.said, 'missing');
+        assert.ok(seen.length > 0 && seen.every((r) => r.startsWith('HEAD ')), `only HEAD probes, never a download: ${seen.filter((r) => !r.startsWith('HEAD ')).join(', ')}`);
+        assert.deepEqual(errors, [], 'and no errors');
     });
 
     await check('no console errors and no autoplay warnings', async () => {

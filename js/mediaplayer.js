@@ -27,6 +27,15 @@ const MediaPlayerView = (() => {
     const esc = (v) => (typeof ui !== 'undefined' && ui.escapeHtml ? ui.escapeHtml(v)
         : String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])));
     const sfx = (name, opts) => { if (name && typeof game !== 'undefined' && game.sfx) game.sfx(name, opts); };
+    /* ── Narration hook (js/audiofiles.js, tapeVoice) ─────────────────────
+       A caption with an installed vo__<speaker>__<line-id> file is spoken at
+       its time, and the clock waits at the next caption (or the end of the
+       shot) until the line is done. Inert where tapeVoice is not loaded, and
+       with no file installed: then advance() returns the wall-clock time,
+       exactly as before. Called from loadTape, advance and every place the
+       clock is repositioned or stopped. */
+    const vo = (fn, ...args) => (typeof tapeVoice !== 'undefined' && tapeVoice && typeof tapeVoice[fn] === 'function'
+        ? tapeVoice[fn](...args) : undefined);
 
     const st = {
         tapeId: null,
@@ -155,6 +164,7 @@ const MediaPlayerView = (() => {
         const scrub = $('.mp-scrub');
         if (scrub) scrub.max = String(L().tapeLength(tp));
         probeReels(tp);
+        vo('load', tp);   // narration hook
         draw(true);
         if (autoplay) play(); else pause(true);
         return true;
@@ -198,6 +208,7 @@ const MediaPlayerView = (() => {
 
     function pause(silent = false) {
         advance();
+        vo('stop');   // narration hook
         if (st.playing && !silent) sfx('click');
         st.playing = false;
         st.osd = null;   // PAUSE replaces any REW / FF still on screen
@@ -217,6 +228,7 @@ const MediaPlayerView = (() => {
         if (!tp) return;
         st.t = Math.max(0, Math.min(L().tapeLength(tp), Number(time) || 0));
         st.ended = false;
+        vo('stop');   // narration hook
         anchor();
         draw(false);
     }
@@ -255,6 +267,7 @@ const MediaPlayerView = (() => {
     }
 
     function endOfTape() {
+        vo('stop');   // narration hook
         st.playing = false;
         st.ended = true;
         syncPlayButton();
@@ -282,7 +295,11 @@ const MediaPlayerView = (() => {
     function advance() {
         const tp = tape();
         if (!st.playing || !tp) return st.t;
-        st.t = Math.min(L().tapeLength(tp), st.anchorT + Math.max(0, performance.now() - st.anchorAt) / 1000);
+        const wall = Math.min(L().tapeLength(tp), st.anchorT + Math.max(0, performance.now() - st.anchorAt) / 1000);
+        // Narration hook: a line still speaking holds the clock; re-anchor
+        // so the tape resumes from the hold, not from the wall clock.
+        const held = vo('tick', tp, wall, st.playing);
+        if (typeof held === 'number' && held < wall) { st.t = held; anchor(); } else st.t = wall;
         return st.t;
     }
 
@@ -306,6 +323,7 @@ const MediaPlayerView = (() => {
     }
 
     function stop() {
+        vo('stop');   // narration hook
         if (st.raf) cancelAnimationFrame(st.raf);
         st.raf = 0;
         st.playing = false;
