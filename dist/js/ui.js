@@ -67,6 +67,7 @@ const ui = {
 
         this.syncResources();
         this.applyDesktopPlate();
+        this.applyPostGameMark();
         this.renderAutomatons();
         this.renderRepeatables();
         this.renderRealityPanel();
@@ -359,12 +360,16 @@ const ui = {
            installed nothing holds it and this returns false at once. */
         if (typeof media !== 'undefined' && media.deferUntilClear?.(() => this.showReleaseNotes(build))) return;
 
+        // NULL.OPERATOR as the source of regressions, when you believe he is.
+        const attribution = game.regressionAttribution?.() || null;
         const lines = (build.entries || []).map((entry) => {
             const mark = this.releaseMarks[entry.kind] || '-';
             const sev = entry.severity ? ` <span class="rn-sev">SEV-${entry.severity}</span>` : '';
+            const signed = attribution && entry.kind === 'regression'
+                ? ` <span class="rn-attrib">${this.escapeHtml(attribution)}</span>` : '';
             return `<li class="rn-line rn-${entry.kind}">
                 <span class="rn-mark">${mark}</span>
-                <span class="rn-note">${this.escapeHtml(entry.note)}${sev}</span>
+                <span class="rn-note">${this.escapeHtml(entry.note)}${sev}${signed}</span>
             </li>`;
         }).join('');
 
@@ -982,6 +987,9 @@ const ui = {
     advanceAdversaryScene(fromTimer = false) {
         const s = this.advScene;
         if (!s || !s.open) return;
+        /* SCN-ADV-002 shares the slot, the guards and this entry point —
+           system.js routes every key here while either scene is open. */
+        if (s.kind === 'finale') { this.advanceFinale(fromTimer ? 'timer' : 'key'); return; }
         const current = this.advBeats[s.index];
         /* Block on the choice ONLY while it is unanswered. Without the
            `!s.choiceId` half, chooseAdversaryResponse — which repoints index
@@ -1164,6 +1172,7 @@ const ui = {
     escapeAdversaryScene() {
         const s = this.advScene;
         if (!s || !s.open) return true;
+        if (s.kind === 'finale') return this.escapeFinale();
 
         const current = this.advBeats[s.index];
         if (current && current.type === 'choice_prompt' && !s.choiceId) {
@@ -1234,6 +1243,349 @@ const ui = {
             }, this.advSpeed() ? 700 : 0);
         }
         State.save();
+    },
+
+    /* ════════════════════════════════════════════════════════════════════
+       SCN-ADV-002 — "End of Shift"
+
+       The same renderer family as the Mirror Login, in three phases:
+
+         1. CMS vellum. A shift-handover form. Both Operator fields fill
+            themselves with the same name, and the form refuses: two were
+            found, and they are not distinct. FIN-002/003 are the field
+            labels, as ADV-003/004 were.
+         2. His transcript, on the dark panel — the same degradation the
+            Mirror Login performs, because it is the same man.
+         3. Back to vellum: the institution files the result. Release notes
+            for the last build, with an end-credits roll. The ending
+            RESOLVES when this phase is entered, so what the player is
+            reading is already on file in Recovered Documents.
+
+       It shares `advScene`, so every guard that keeps the Mirror Login safe
+       — the keyboard routing in system.js, the media director's isBlocked,
+       checkAdversaryTrigger's deferral, dismissSystemModal's teardown —
+       covers this scene without a second set of flags to forget. Every
+       string reaching innerHTML is escaped.
+       ════════════════════════════════════════════════════════════════════ */
+
+    finText(line, band) {
+        const reboots = State.achievementProgress?.prestige_count || 0;
+        return this.escapeHtml(String(line.text || '')
+            .replace('{REBOOTS}', reboots)
+            .replace('{BAND}', String(band || '').toUpperCase()));
+    },
+
+    playFinale() {
+        const band = State.endings?.pending;
+        if (!AdversaryFinale.BANDS.includes(band)) return;
+        if (this.isAdversarySceneOpen()) return;
+
+        /* A cinematic may hold the slot — the V2 reel plays between a ship
+           and its release notes, and the gate is most often met right after
+           an archived ship. Wait for it, on the V4 hook's guard: present only
+           if nobody has presented a scene since this claim. The poll keeps
+           calling while we wait, so several of these can be queued; the
+           counter is what stops the second one re-running a finished scene. */
+        if (typeof media !== 'undefined') {
+            const claim = this.advPresentations || 0;
+            if (media.deferUntilClear?.(() => {
+                if ((this.advPresentations || 0) === claim && !this.isAdversarySceneOpen()) this.playFinale();
+            })) return;
+        }
+
+        // Exhaustion is tested BEFORE an attempt is spent (see playAdversaryScene).
+        if (game.finaleExhausted()) {
+            game.resolveEnding(band);
+            this.log('[void_mirror] Handover closed without operator input.');
+            return;
+        }
+        /* Render-or-retry (cc11f22): never paint over an open modal. Nothing
+           is spent here, and the 1 Hz poll comes back for it. */
+        if (this.isSystemModalOpen()) return;
+
+        const layer = document.getElementById('system-modal-layer');
+        if (!layer) return;
+        State.endings.attempts = (State.endings.attempts || 0) + 1;
+        State.save();
+        this.advPresentations = (this.advPresentations || 0) + 1;
+
+        this.advScene = { open: true, kind: 'finale', band, phase: 1, index: 0, timer: null, closeArmed: false };
+        this.advBeats = game.finaleBeats(band);
+
+        layer.innerHTML = `
+            <section class="system-dialog adversary-scene fin-scene fin-${band} adv-phase-login" role="dialog" aria-modal="true"
+                     aria-labelledby="adv-title" onclick="ui.advanceFinale('click')">
+                <div class="system-dialog-titlebar" id="adv-titlebar">
+                    <span id="adv-title">CMS &mdash; SHIFT HANDOVER</span>
+                </div>
+                <div class="adv-body" id="adv-body">
+                    <div class="adv-login">
+                        <p class="adv-notice" id="adv-notice"></p>
+                        <div class="adv-field">
+                            <label for="fin-out" id="fin-out-label">Outgoing Operator</label>
+                            <input id="fin-out" type="text" value="" disabled autocomplete="off">
+                        </div>
+                        <div class="adv-field">
+                            <label for="fin-in" id="fin-in-label">Incoming Operator</label>
+                            <input id="fin-in" type="text" value="" disabled autocomplete="off">
+                        </div>
+                        <div class="adv-welcome" id="adv-welcome" aria-live="polite"></div>
+                    </div>
+                </div>
+                <p class="adv-hint" id="adv-hint">Click to continue</p>
+            </section>
+        `;
+        layer.classList.add('active');
+        game.sfx('adversary');
+        this.finStep();
+    },
+
+    finStep() {
+        const s = this.advScene;
+        if (!s || !s.open || s.kind !== 'finale') return;
+        const beat = this.advBeats[s.index];
+        if (!beat) return;
+        const speed = this.advSpeed();
+
+        if (s.phase === 1) {
+            const label = (text) => this.escapeHtml(String(text).replace(/:\s*$/, ''));
+            if (beat.id === 'FIN-001') {
+                const notice = document.getElementById('adv-notice');
+                if (notice) notice.innerHTML += `<span class="adv-notice-line">${this.finText(beat, s.band)}</span>`;
+            } else if (beat.id === 'FIN-002') {
+                const el = document.getElementById('fin-out-label');
+                if (el) el.innerHTML = label(beat.text);
+                this.advTypeInto(document.getElementById('fin-out'), 'OPERATOR', speed);
+            } else if (beat.id === 'FIN-003') {
+                const el = document.getElementById('fin-in-label');
+                if (el) el.innerHTML = label(beat.text);
+                // The second field fills with the same name. Nobody typed either.
+                this.advTypeInto(document.getElementById('fin-in'), 'OPERATOR', speed);
+            } else if (beat.id === 'FIN-004') {
+                const section = document.querySelector('.fin-scene');
+                const title = document.getElementById('adv-title');
+                const welcome = document.getElementById('adv-welcome');
+                if (section) section.classList.add('adv-conflict');
+                if (title) title.textContent = 'CMS — HANDOVER CONFLICT';
+                if (welcome) welcome.innerHTML += `<span class="adv-error-line">${this.finText(beat, s.band)}</span>`;
+            }
+        } else {
+            this.finAppendLine(beat);
+        }
+
+        if (s.index >= this.advBeats.length - 1) {
+            // The end of the transcript waits for the player: what comes
+            // next is the record, and it should not arrive on a timer.
+            const hint = document.getElementById('adv-hint');
+            if (hint) hint.textContent = 'Click to file the release notes';
+            return;
+        }
+        const dwell = !speed ? 0
+            : beat.id === 'FIN-004' ? 2200
+            : s.phase === 1 ? 1300
+            : 2300;
+        clearTimeout(s.timer);
+        s.timer = setTimeout(() => this.advanceFinale('timer'), dwell);
+    },
+
+    finAppendLine(beat) {
+        const list = document.getElementById('adv-transcript');
+        if (!list || !beat) return;
+        const cls = beat.speaker === 'ADV' ? 'adv-voice'
+            : beat.speaker === 'HOST' ? 'adv-host' : 'adv-sys';
+        const mark = beat.speaker === 'ADV' ? '◆' : beat.speaker === 'HOST' ? '✧' : 'SYS';
+        list.insertAdjacentHTML('beforeend', `<li class="adv-line ${cls}" data-beat="${this.escapeHtml(beat.id)}">
+            <span class="adv-mark">${mark}</span>
+            <span class="adv-text">${this.finText(beat, this.advScene?.band)}</span>
+        </li>`);
+        list.scrollTop = list.scrollHeight;
+    },
+
+    finEnterPhaseTwo() {
+        const s = this.advScene;
+        if (!s || s.phase !== 1) return;
+        s.phase = 2;
+        // The renderer has proved itself on this machine; refund the attempt,
+        // for the same reasons advEnterPhaseTwo gives.
+        if (State.endings?.attempts) {
+            State.endings.attempts = 0;
+            State.save();
+        }
+        const section = document.querySelector('.fin-scene');
+        const body = document.getElementById('adv-body');
+        const title = document.getElementById('adv-title');
+        if (section) { section.classList.remove('adv-phase-login'); section.classList.add('adv-phase-voice'); }
+        if (title) title.textContent = 'SESSION 0003 — HANDOVER';
+        if (body) body.innerHTML = '<ol class="adv-transcript" id="adv-transcript"></ol>';
+    },
+
+    /* 'timer' advances a line; 'click' and 'key' advance a line, or at the
+       end of the transcript move on to the record. In the record itself
+       neither does anything: it closes on Escape or on its own button,
+       which arms after a beat — a player mashing through the transcript
+       must not close the release notes in the same breath. */
+    advanceFinale(source = 'click') {
+        const s = this.advScene;
+        if (!s || !s.open || s.kind !== 'finale') return;
+        if (s.phase === 3) return;
+        clearTimeout(s.timer);
+        if (s.index >= this.advBeats.length - 1) {
+            if (source === 'timer') return;
+            this.finEnterCredits();
+            return;
+        }
+        s.index++;
+        const next = this.advBeats[s.index];
+        if (s.phase === 1 && next && next.id === 'FIN-010') this.finEnterPhaseTwo();
+        this.finStep();
+    },
+
+    /* Escape never skips anything unread. In the theatre it draws every
+       remaining line at once and parks at the end; at the end it files the
+       record; in the record it closes. */
+    escapeFinale() {
+        const s = this.advScene;
+        if (!s || !s.open) return true;
+        if (s.phase === 3) { this.finishFinale(); return true; }
+        const last = this.advBeats.length - 1;
+        if (s.index < last) {
+            clearTimeout(s.timer);
+            const start = s.phase === 2
+                ? s.index + 1
+                : this.advBeats.findIndex((b) => b.id === 'FIN-010');
+            if (s.phase === 1) this.finEnterPhaseTwo();
+            for (let i = Math.max(0, start); i <= last; i++) this.finAppendLine(this.advBeats[i]);
+            s.index = last;
+            const hint = document.getElementById('adv-hint');
+            if (hint) hint.textContent = 'Click to file the release notes';
+            return true;
+        }
+        this.finEnterCredits();
+        return true;
+    },
+
+    finEnterCredits() {
+        const s = this.advScene;
+        if (!s || !s.open || s.kind !== 'finale' || s.phase === 3) return;
+        clearTimeout(s.timer);
+        s.phase = 3;
+
+        // Filed before it is shown: the record on screen is already on file.
+        game.resolveEnding(s.band);
+        const doc = game.endingDocuments().find((d) => d.ending === s.band)
+            || game.endingDocument({ ending: s.band, reboot: State.prestigeLevel || 0 });
+        const section = document.querySelector('.fin-scene');
+        if (!section || !doc) { this.finishFinale(); return; }
+
+        const esc = (v) => this.escapeHtml(v);
+        const lines = doc.release.map((entry) => `<li class="rn-line rn-${esc(entry.kind)}">
+                <span class="rn-mark">${this.releaseMarks[entry.kind] || '-'}</span>
+                <span class="rn-note">${esc(entry.note)}</span>
+            </li>`).join('');
+        const credits = doc.credits.map(([role, name]) =>
+            `<div class="fin-credit"><dt>${esc(role)}</dt><dd>${esc(name)}</dd></div>`).join('');
+
+        section.className = `system-dialog adversary-scene fin-scene fin-${esc(s.band)} fin-phase-credits`;
+        section.setAttribute('aria-labelledby', 'fin-rn-title');
+        section.innerHTML = `
+            <div class="system-dialog-titlebar">
+                <span>REALITY &mdash; RELEASE NOTES (FINAL BUILD)</span>
+                <button type="button" onclick="event.stopPropagation();ui.finishFinale()" aria-label="Close release notes">X</button>
+            </div>
+            <div class="rn-head">
+                <div>
+                    <div class="briefing-eyebrow">Signed at handover &middot; ${esc(doc.label)}</div>
+                    <h2 id="fin-rn-title">COSMOS &mdash; REALITY v${esc(doc.version)}</h2>
+                    <p class="rn-meta">The last build of this shift &middot; Released to Sector 7G &middot; Rollback: unavailable</p>
+                </div>
+            </div>
+            <ul class="rn-list">${lines}</ul>
+            <div class="fin-roll" role="group" aria-label="Credits">
+                <dl class="fin-roll-inner${this.advSpeed() ? '' : ' is-still'}">${credits}</dl>
+            </div>
+            <p class="rn-foot">Filed to Recovered Documents &rsaquo; ${esc(doc.category)}. Title on file: <strong>${esc(doc.endTitle)}</strong>. The shift continues.</p>
+            <div class="system-dialog-actions">
+                <button class="dialog-primary fin-close is-arming" type="button"
+                        onclick="event.stopPropagation();ui.finishFinale()">Return to work</button>
+            </div>
+            <p class="adv-hint" id="adv-hint">Esc or Return to work</p>
+        `;
+        game.sfx('ship');
+        this.applyPostGameMark(true);
+
+        setTimeout(() => {
+            if (this.advScene !== s || !s.open) return;
+            s.closeArmed = true;
+            section.querySelector('.fin-close')?.classList.remove('is-arming');
+        }, this.advSpeed() ? 900 : 0);
+    },
+
+    finishFinale() {
+        const s = this.advScene;
+        if (!s || s.kind !== 'finale') return;
+        clearTimeout(s.timer);
+        s.open = false;
+        // Closed from outside before the record was reached: still resolve,
+        // so a pending ending can never be left behind an empty layer.
+        if (State.endings?.pending === s.band) game.resolveEnding(s.band);
+
+        this.dismissSystemModal();
+        this.advScene = null;
+        this.applyPostGameMark(true);
+        this.updateTaskManagerList();
+
+        /* Complicit: the console is his now, and he opens a window you did
+           not ask for — the record of you, in the archive. The other two
+           leave the desktop alone: one of them is alone, and the other one
+           respects a rota. */
+        if (s.band === 'complicit' && game.endingWorn() === 'complicit') {
+            setTimeout(() => {
+                system.openApp('notepad');
+                this.viewDocument('END-COMPLICIT');
+                this.log('[void_mirror] Recovered Documents opened. You did not open it.');
+            }, this.advSpeed() ? 700 : 0);
+        }
+        State.save();
+    },
+
+    /* The post-game mark: the title in the Genesis menu, a build stamp on
+       the desktop in the corner a test build's watermark sits, and the
+       window rivets (style.css, body[data-ending]). Follows the ending worn.
+       Runs on the panel tick and only touches the DOM when something
+       changed, like applyDesktopPlate. */
+    applyPostGameMark(force = false) {
+        const band = game.endingWorn?.() || null;
+        const version = State.reality?.build?.version || '';
+        const key = `${band}|${version}`;
+        if (!force && this.postGameKey === key) return;
+        this.postGameKey = key;
+
+        const ending = band ? AdversaryFinale.endings[band] : null;
+        if (document.body) {
+            if (ending) document.body.dataset.ending = band;
+            else delete document.body.dataset.ending;
+        }
+        const identity = document.querySelector('.start-menu-identity');
+        if (identity) {
+            const strong = identity.querySelector('strong');
+            const line = identity.querySelector('span');
+            if (strong) strong.textContent = ending ? ending.title.toUpperCase() : 'OPERATOR';
+            if (line) line.textContent = ending ? ending.identity : 'Divine Maintenance, Sector 7G';
+        }
+
+        let mark = document.getElementById('build-watermark');
+        if (!ending) { mark?.remove(); return; }
+        if (!mark) {
+            const desktop = document.getElementById('desktop');
+            if (!desktop) return;
+            mark = document.createElement('div');
+            mark.id = 'build-watermark';
+            mark.className = 'build-watermark';
+            mark.setAttribute('aria-hidden', 'true');
+            desktop.appendChild(mark);
+        }
+        mark.innerHTML = `<span>CosmOS Reality${version ? ` v${this.escapeHtml(version)}` : ''} &mdash; ${this.escapeHtml(ending.title)}</span>
+            <span>${this.escapeHtml(ending.watermark)}</span>`;
     },
 
     displayAdversaryBark(bark) {
@@ -2968,7 +3320,7 @@ const ui = {
         /* NULL.OPERATOR's annotations on replayed builds. Generated from the
            save rather than shipped as files, so they live beside the manifest
            instead of in it, and file under Archive with ALPHA-2. */
-        docsToShow = docsToShow.concat(game.archiveDocuments?.() || []);
+        docsToShow = docsToShow.concat(game.generatedDocuments?.() || []);
 
         // Filter by category if not 'all'
         if (category !== 'all') {
@@ -3031,10 +3383,16 @@ const ui = {
 
     async viewDocument(docId) {
         const doc = DocumentManifest.find(d => d.id === docId)
-            || (game.archiveDocuments?.() || []).find(d => d.id === docId);
+            || (game.generatedDocuments?.() || []).find(d => d.id === docId);
         if (!doc) return;
+        /* Last request wins. A shipped document loads by fetch, so without
+           this a slow response overwrote whatever was opened after it — the
+           Notepad's own onOpen preview landing on top of a document opened
+           a moment later (the complicit ending does exactly that). */
+        const ticket = this.docViewTicket = (this.docViewTicket || 0) + 1;
         if (doc.generated) {
-            this.viewArchiveDocument(doc);
+            if (doc.kind === 'ending') this.viewEndingDocument(doc);
+            else this.viewArchiveDocument(doc);
             return;
         }
 
@@ -3066,6 +3424,7 @@ const ui = {
                 }
 
                 const markdown = await response.text();
+                if (ticket !== this.docViewTicket) return; // a later document owns the viewer
 
                 // Strip frontmatter (YAML between --- delimiters)
                 let content = markdown.replace(/^---\n[\s\S]*?\n---\n/, '');
@@ -3075,6 +3434,7 @@ const ui = {
 
                 contentEl.innerHTML = content;
             } catch (error) {
+                if (ticket !== this.docViewTicket) return;
                 contentEl.innerHTML = `
                     <div class="error">
                         <strong>Error loading document</strong>
@@ -3128,6 +3488,46 @@ Replayed: reboot ${esc(doc.filedOn)}
 Annotated by: void_mirror.service (shadow instance)</pre>
                     ${notes ? `<ol class="arc-notes">${notes}</ol>` : `<p class="arc-clean">${esc(doc.clean)}</p>`}
                     <p class="arc-signoff">&mdash; ${esc(doc.signoff)}</p>
+                </div>`;
+        }
+        document.querySelectorAll('.document-item').forEach(item => {
+            item.classList.toggle('selected', item.dataset.docId === doc.id);
+        });
+    },
+
+    /* A handover record, typeset: his letter, then the release notes for
+       the last build with their credits. Escaped throughout — the version
+       comes out of a save. */
+    viewEndingDocument(doc) {
+        const titleEl = document.getElementById('document-title');
+        const contentEl = document.getElementById('document-content');
+        const metaEl = document.getElementById('document-meta');
+        const esc = (v) => this.escapeHtml(v);
+        if (titleEl) titleEl.innerText = doc.title;
+        if (metaEl) {
+            metaEl.innerHTML = `
+                <span class="doc-meta-item"><strong>Category:</strong> ${esc(doc.category)}</span>
+                <span class="doc-meta-item"><strong>File:</strong> ${esc(doc.filename)}</span>
+                <span class="doc-meta-item"><strong>ID:</strong> ${esc(doc.id)}</span>
+            `;
+        }
+        if (contentEl) {
+            const letter = doc.letter.map((p) => `<p>${esc(p)}</p>`).join('');
+            const notes = doc.release.map((entry) => `<li class="rn-line rn-${esc(entry.kind)}">
+                    <span class="rn-mark">${this.releaseMarks[entry.kind] || '-'}</span>
+                    <span class="rn-note">${esc(entry.note)}</span></li>`).join('');
+            const credits = doc.credits.map(([role, name]) =>
+                `<div class="fin-credit"><dt>${esc(role)}</dt><dd>${esc(name)}</dd></div>`).join('');
+            contentEl.innerHTML = `
+                <div class="arc-doc fin-doc">
+                    <pre class="arc-header">SHIFT HANDOVER RECORD &middot; SCN-ADV-002
+Outcome: ${esc(doc.label)}
+Signed at: reboot ${esc(doc.reboot)} &middot; REALITY v${esc(doc.version)}
+Title on file: ${esc(doc.endTitle)}</pre>
+                    <div class="fin-letter">${letter}<p class="arc-signoff">${esc(doc.signoff)}</p></div>
+                    <h3 class="fin-doc-head">Release notes &mdash; the last build of the shift</h3>
+                    <ul class="rn-list">${notes}</ul>
+                    <dl class="fin-roll-inner is-still">${credits}</dl>
                 </div>`;
         }
         document.querySelectorAll('.document-item').forEach(item => {
@@ -3510,6 +3910,8 @@ Annotated by: void_mirror.service (shadow instance)</pre>
             // The shadow instance does not exist until it announces itself in
             // ADV-013, and cannot be removed afterwards.
             if (proc.hiddenUntilContact && !State.adversary?.contacted) return;
+            // Terminated at handover (SCN-ADV-002, the hostile ending).
+            if (proc.hiddenUntilContact && game.endingWorn?.() === 'hostile') return;
 
             runningCount++;
             totalCPU += proc.cpu;

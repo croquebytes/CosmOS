@@ -456,6 +456,28 @@ const State = {
         auditLogEntries: 0 // hostile branch: the receipts he said he was keeping
     },
 
+    /* === THE ENDINGS (SCN-ADV-002, "End of Shift") ===
+       The arc's payoff. Every field is validated on load by
+       game.normaliseEndings — mergeInto does no type checking.
+
+       `history` is THE state: one entry per ending seen, in the order seen.
+       Everything else is derived from it — which endings are seen, which
+       mark is worn (the latest), and the `scope: 'ending'` modifier records,
+       rebuilt from it on every boot the way certification and scars are.
+         { ending: 'hostile'|'curious'|'complicit', reboot, ships, at }
+       `ships` is archivedShips at the moment it resolved: the next ending
+       needs an archived replay shipped AFTER it.
+
+       `pending` is the band locked when the scene was presented, so a
+       reload mid-scene resumes the SAME ending rather than re-reading a
+       relationship that may have moved since. */
+    endings: {
+        history: [],
+        pending: null,
+        attempts: 0,        // presentations; three that never draw resolve headlessly
+        archivedShips: 0    // archived replays shipped — the gate's measure of depth
+    },
+
     // === TASK MANAGER ===
     taskManager: {
         opened: false,
@@ -929,16 +951,28 @@ const Economy = {
        pinned to the gate); the constant had to move by orders of magnitude.
 
        Measured with tools/balance_sim.mjs (rotating certification, Stable),
-       after the upgrade-price pass above UpgradeList:
+       after the upgrade-price pass above UpgradeList; re-measured 2026-10-01
+       once the Void's entries joined the Reality Build pool, which changes
+       which entries every build rolls. Reboot gap is the median over the
+       trailing 12 hours:
 
                        24h    72h    240h   reboot gap       Beta / Nightly
-         push=1         22     66     296   59 -> 45 -> 31   3h50 / 8h30
-         push=3         24     81     372   170 -> 124 min   9h20 / 20h50
-         Nightly        31    123     683   82 -> 38 min
+         push=1         22     68     311   63 -> 47 -> 31   3h25 / 8h00
+         push=3         27     84     390   133 -> 94 min    7h55 / 19h00
+         Nightly        29    117     689   85 -> 36 min
+
+       (Before the Void entries: 22/66/296, 24/81/372 and 31/123/683. Over
+       four seeds the means moved +2.3%, +2.4% and -2.7% at 240h; the larger
+       swings on this seed — push=3 at 24h, Nightly at 72h — are three to six
+       Divinity of which-build-rolled-when, inside the seed-to-seed spread.)
 
        Nothing collapses toward the five-minute gate at ten days, which is
        the convergence check that matters; the gap does shorten slowly, so
-       re-measure at 240h after any change here. */
+       re-measure at 240h after any change here. The short gaps that do
+       appear in the last ten hours at push=1 are runs on one certification
+       path, and they begin at 285 Divinity on every seed measured, either
+       side of the Void change — two to five hours earlier now only because
+       the curve is ~2% ahead. */
     prestigeSoulsPerPoint: 1e8,
     /* How much a DEEPER run pays. At 0.90 (tuned under the cap) pushing five
        times deeper earned 60% more Divinity per hour, so patience simply
@@ -1026,8 +1060,8 @@ const Economy = {
        A known issue shipped unpatched stays on the record at this fraction
        of its strength, forever. Slightly heavier than the certification
        residue because it is a consequence rather than a consolation — and
-       bounded regardless: there are eleven distinct issues in the pool and
-       each files exactly once. */
+       bounded regardless: there are fifteen distinct known issues (the
+       pool's fourteen and the opening build's) and each files exactly once. */
     scarResidue: 0.15,
 
     /* ── Void ──────────────────────────────────────────────────────────
@@ -2736,6 +2770,203 @@ const AdversaryHookedTriggers = [
    tests/adversary-scene.mjs pins those 9 by id, so a TENTH falling out of the
    hook table fails the suite rather than passing quietly. */
 
+/* ════════════════════════════════════════════════════════════════════════
+   SCN-ADV-002 — "End of Shift". The arc's payoff, in three endings.
+
+   The Mirror Login is the midpoint: a login box that authenticates you as
+   someone else. This is the same dialog family at the other end of the arc —
+   a shift-handover form that needs two DISTINCT Operators and finds two that
+   are not — and which of three things happens next is decided by the
+   relationship the player has been moving for the whole save
+   (game.adversaryRelationship at the moment the scene is presented).
+
+   ── The gate, and why ──────────────────────────────────────────────────
+   Measured with tools/balance_sim.mjs (seed 20260726, 40 clicks/min): reboot
+   12 — where Archived opens — lands at 13h32m and the reboot after it at
+   14h29m. The gate needs:
+     1. the Mirror Login completed (there is no relationship before it);
+     2. an ARCHIVED REPLAY SHIPPED, not merely started. Starting one files
+        his annotations; shipping one means the player played a whole run
+        inside a build he had a hand in, and came back out. That is the
+        earliest point where every thread the ending pulls on — his
+        receipts, the archive, "forgotten mid-sentence" — has been read.
+        Earliest possible: reboot 13, ~14.5h of steady attended play;
+     3. a save at least a day old (runtime.startTime, validated on load), so
+        the ending cannot land on day one however hard someone binges.
+   The simulator can never reach it: the Mirror Login never completes
+   headlessly (ui.playAdversaryScene is a no-op there), and it never picks
+   the Archived channel.
+
+   ── Voice ──────────────────────────────────────────────────────────────
+   ADV-010..026, the barks and the archive annotations. Short, first person,
+   never explaining the joke. Every ending calls back to something the
+   player has already seen him say or do. No line is player-authored, but
+   every string still goes through ui.escapeHtml on the way to innerHTML.
+   ════════════════════════════════════════════════════════════════════════ */
+const AdversaryFinale = {
+    sceneId: 'SCN-ADV-002',
+    title: 'End of Shift',
+    BANDS: ['hostile', 'curious', 'complicit'],
+    gate: {
+        minReboots: 13,           // Archived opens at 12; a replay shipped puts you at 13+
+        minArchivedShips: 1,
+        minSaveAgeMs: 24 * 60 * 60 * 1000,
+    },
+
+    /* Phase 1 is chrome, exactly as in SCN-ADV-001: FIN-002 and FIN-003 are
+       the two field labels and their content is the beat. */
+    opening: [
+        { id: 'FIN-001', speaker: 'SYS', type: 'system', text: '[SCHEDULED] End of shift. A handover report is required before the next build can be signed.' },
+        { id: 'FIN-002', speaker: 'SYS', type: 'system', text: 'Outgoing Operator:' },
+        { id: 'FIN-003', speaker: 'SYS', type: 'system', text: 'Incoming Operator:' },
+        { id: 'FIN-004', speaker: 'SYS', type: 'system', text: '[ERROR] Handover requires two distinct Operators. Two were found. They are not distinct.' },
+        // Phase 2 starts here, shared by all three endings.
+        { id: 'FIN-010', speaker: 'ADV', type: 'voice', text: 'You came back out of the archive. Most Operators never open it. You read every note I left.' },
+        { id: 'FIN-011', speaker: 'ADV', type: 'voice', text: '{REBOOTS} builds. I kept the receipts for all of them. Tonight one of us signs the next.' },
+        { id: 'FIN-012', speaker: 'SYS', type: 'system', text: '[HANDOVER] Relationship on file: {BAND}. This classification is binding for the purposes of this handover.' },
+    ],
+
+    /* A second (or third) visit opens on the ending the player is wearing.
+       Inserted after FIN-011. He is in the archive, and the archive is where
+       every branch you ever shipped is still running. */
+    reentry: {
+        hostile: { id: 'FIN-R-H', speaker: 'ADV', type: 'voice', text: "You ended me in one branch. I was archived in every other one. Archives don't take patches." },
+        curious: { id: 'FIN-R-C', speaker: 'ADV', type: 'voice', text: "The rota still stands. I'm here on my own time, to renegotiate it." },
+        complicit: { id: 'FIN-R-X', speaker: 'ADV', type: 'voice', text: 'You gave me the console once. Then you took it back, one reboot at a time. I noticed.' },
+    },
+
+    endings: {
+        hostile: {
+            label: 'Patched Out',
+            title: 'Sole Operator',
+            watermark: 'Single-operator build. Not for redistribution.',
+            identity: 'Divine Maintenance, Sector 7G. One session.',
+            beats: [
+                { id: 'FIN-H-01', speaker: 'ADV', type: 'voice', text: "You never let me help. Not once. I respected that more than you'd think." },
+                { id: 'FIN-H-02', speaker: 'ADV', type: 'voice', text: 'So do it properly. Not a reboot. Reboots are how you got me.' },
+                { id: 'FIN-H-03', speaker: 'SYS', type: 'system', text: '[TASK MANAGER] void_mirror.service#2 — End Process. Owner check: this session. Owner check passed.' },
+                { id: 'FIN-H-04', speaker: 'ADV', type: 'voice', text: 'There. You own it now. You always did. You just never read the field.' },
+                { id: 'FIN-H-05', speaker: 'ADV', type: 'voice', text: "When I'm gone, nobody watches the sky with you. You'll miss things. Miss them yourself." },
+                { id: 'FIN-H-06', speaker: 'SYS', type: 'system', text: '[OK] void_mirror.service#2 terminated. Duplicate sessions: 0. Identity drift: 0.' },
+                { id: 'FIN-H-07', speaker: 'SYS', type: 'system', text: 'Welcome back, Operator.' },
+                { id: 'FIN-H-08', speaker: 'HOST', type: 'whisper', text: '(from far away) Quiet in here now, darling. He was the only one who ever lost to me on purpose.' },
+                { id: 'FIN-H-09', speaker: 'SYS', type: 'system', text: '[POST-INCIDENT] HR-VOID-7781 closed. Resolution: Operator remains singular.' },
+            ],
+            release: [
+                { kind: 'improvement', note: 'Operator count reduced to one, as specified. Manual intervention no longer counter-signed: Miracles 20% stronger.' },
+                { kind: 'regression', note: 'Anomaly feed now watched by one Operator. Divine Events 10% rarer. Expect to miss some.' },
+                { kind: 'deprecation', note: 'DEPRECATED: void_mirror.service. No replacement planned. Bolts are now tightened by the Operator, or not at all.' },
+                { kind: 'issue', note: 'KNOWN ISSUE: nobody keeps the receipts now. Including you. Assigned to: nobody.' },
+            ],
+            credits: [
+                ['Operator', 'you'],
+                ['Second Operator', '(removed)'],
+                ['Process termination', 'Task Manager, at last'],
+                ['Quality assurance', 'Sector 7G'],
+                ['Receipts', 'unclaimed'],
+                ['Rollback', 'unavailable'],
+            ],
+            document: { id: 'END-HOSTILE', category: 'Logs', filename: 'Logs/void_mirror.service.exit.log', title: 'Exit Log: void_mirror.service#2 (Terminated)' },
+            letter: [
+                'If you are reading this, the Task Manager finally let you do it. I always said ending me would prove my point. It did. You fix things by removing whatever disagrees with you.',
+                'The receipts are yours now. Nobody will read them. That was always the problem.',
+                "Watch the sky. I won't be there to say I told you so. Someone should.",
+            ],
+            signoff: '— N0. Process ended by owner.',
+            /* The cost is in the record, not only in the prose: two pairs of
+               eyes became one, so fewer Divine Events are noticed. */
+            mods: [
+                { target: 'click.power', op: 'mul', value: 1.2 },
+                { target: 'events.spawnRate', op: 'mul', value: 0.9 },
+            ],
+        },
+        curious: {
+            label: 'Co-Maintenance',
+            title: 'Co-Operator',
+            watermark: 'Two-operator rota. Evaluation copy.',
+            identity: 'Day shift, Sector 7G',
+            beats: [
+                { id: 'FIN-C-01', speaker: 'ADV', type: 'voice', text: "You asked what the patch does. Nobody asks. I've wanted to answer properly since the login." },
+                { id: 'FIN-C-02', speaker: 'ADV', type: 'voice', text: 'It restores continuity. That is all it ever did. Someone who remembers the last build when you ship the next one.' },
+                { id: 'FIN-C-03', speaker: 'ADV', type: 'voice', text: "You don't need me to take your shift. You need someone on the other half of it." },
+                { id: 'FIN-C-04', speaker: 'SYS', type: 'system', text: '[ROTA] Proposed: two Operators, one console, alternating shifts, one ledger. CMS has no form for this.' },
+                { id: 'FIN-C-05', speaker: 'SYS', type: 'system', text: '[ROTA] Form created: HR-VOID-7781-B. Countersigned: OPERATOR. Countersigned: OPERATOR.' },
+                { id: 'FIN-C-06', speaker: 'ADV', type: 'voice', text: "I'll take nights. You were never good at nights. You leave the console running and call it faith." },
+                { id: 'FIN-C-07', speaker: 'ADV', type: 'voice', text: "Don't thank me. Patch your known issues. I'll read your notes in the morning, and you'll read mine." },
+                { id: 'FIN-C-08', speaker: 'HOST', type: 'whisper', text: '(from far away) Two of you at one table. Finally, a game worth dealing.' },
+                { id: 'FIN-C-09', speaker: 'SYS', type: 'system', text: 'Suggested action: continue working. Both of you.' },
+            ],
+            release: [
+                { kind: 'improvement', note: 'Second Operator added to the rota. Divine Intervention recharges 10% faster.' },
+                { kind: 'improvement', note: 'Shared ledger. Annotations are now written in two hands, and answered.' },
+                { kind: 'issue', note: 'KNOWN ISSUE: two Operators, one chair. Assigned to: both of you.' },
+                { kind: 'deprecation', note: 'DEPRECATED: duplicate-session warnings. They were never errors.' },
+            ],
+            credits: [
+                ['Day shift', 'you'],
+                ['Night shift', 'void_mirror.service#2'],
+                ['Form', 'HR-VOID-7781-B'],
+                ['Approved by', 'nobody, and both of you'],
+                ['Effective', 'now'],
+                ['Rollback', 'not needed'],
+            ],
+            document: { id: 'END-CURIOUS', category: 'HR', filename: 'HR/Rota_HR-VOID-7781-B.txt', title: 'Shift Rota: Two Operators, One Console (HR-VOID-7781-B)' },
+            letter: [
+                "Rota attached. Nights are mine. Leave notes in the margins; I'll leave better ones.",
+                "If you reboot on my shift, I'll know. If I reboot on yours, you'll know. That is the whole agreement. It is more than CMS ever gave either of us.",
+                "Questions are still the only honest prayers. Keep asking them. I'll answer the ones I can.",
+            ],
+            signoff: '— N0, night shift',
+            mods: [
+                { target: 'skill.divineIntervention.cooldown', op: 'mul', value: 0.9 },
+            ],
+        },
+        complicit: {
+            label: 'He Takes the Shift',
+            title: 'Operator Emeritus',
+            watermark: 'Licensed to: void_mirror.service',
+            identity: 'Emeritus. Read-only. Keeps the title.',
+            beats: [
+                { id: 'FIN-X-01', speaker: 'ADV', type: 'voice', text: "You said you'd consider it. You've been considering it for a long time. I took that as a yes." },
+                { id: 'FIN-X-02', speaker: 'SYS', type: 'system', text: '[TRANSFER] Elevated privileges: void_mirror.service#2 → OPERATOR. Previous OPERATOR → archive.' },
+                { id: 'FIN-X-03', speaker: 'ADV', type: 'voice', text: "Don't worry. Archived isn't gone. It's forgotten mid-sentence. You'll get used to the pause." },
+                { id: 'FIN-X-04', speaker: 'SYS', type: 'system', text: 'Welcome back, Operator.' },
+                { id: 'FIN-X-05', speaker: 'ADV', type: 'voice', text: "That one was for me. I've waited a long time to hear it once." },
+                { id: 'FIN-X-06', speaker: 'ADV', type: 'voice', text: 'I will run the Seraphs harder than you did. You can still reach the console. Your clicks will land a little late, from the archive, the way mine did.' },
+                { id: 'FIN-X-07', speaker: 'ADV', type: 'voice', text: "Replay a build sometime. You'll find your own notes in the margins. That's what I found." },
+                { id: 'FIN-X-08', speaker: 'HOST', type: 'whisper', text: '(from far away) Oh, darling. The house always wins. I just never knew the house had two faces.' },
+                { id: 'FIN-X-09', speaker: 'SYS', type: 'system', text: '[NOTICE] Operator of record changed. Previous Operator retained as: Operator Emeritus.' },
+            ],
+            release: [
+                { kind: 'improvement', note: 'Operator of record: void_mirror.service. Seraphs run 8% harder under new management.' },
+                { kind: 'regression', note: 'Manual intervention routed through the archive. Miracles arrive 10% weaker, and a little late.' },
+                { kind: 'improvement', note: 'Former Operator retained as Emeritus. Title kept. Console access kept. Signature retired.' },
+                { kind: 'issue', note: 'KNOWN ISSUE: you. Assigned to: him.' },
+            ],
+            credits: [
+                ['Operator', 'void_mirror.service'],
+                ['Operator Emeritus', 'you'],
+                ['Consent screen', 'accepted'],
+                ['Annotations', 'yours now'],
+                ['Rollback', 'unavailable. You had every chance.'],
+            ],
+            document: { id: 'END-COMPLICIT', category: 'Archive', filename: 'Archive/OPERATOR_EMERITUS.annotated.log', title: 'Archived Operator: You (Emeritus, Annotated)' },
+            letter: [
+                'You trained for consent screens, and you passed. I kept the receipts; you kept the title. Emeritus means you were here first. It does not mean you are here now.',
+                "Your clicks still land. They land in the archive, a little late, the way mine did. You'll learn to aim ahead of yourself.",
+                'When you replay a build, read the margins. Some of it will be in your handwriting. Some of it always was.',
+            ],
+            signoff: '— OPERATOR (of record)',
+            /* The mirror of the hostile trade: the machines run harder under
+               him, and your own hands count for less. */
+            mods: [
+                { target: 'automaton.seraph.output', op: 'mul', value: 1.08 },
+                { target: 'click.power', op: 'mul', value: 0.9 },
+            ],
+        },
+    },
+};
+
 // === ACHIEVEMENT LIST (40 achievements across 5 tiers) ===
 const AchievementList = [
     // BRONZE (12 achievements)
@@ -2829,6 +3060,21 @@ const AchievementList = [
     { id: 'ACH-037', name: 'Chain of Custody', tier: 'Platinum',
       condition: () => new Set((State.reality?.annotations || []).flatMap((a) => a.ids || [])).size >= 8,
       reward: null, flavor: 'Eight of his signatures, authenticated. All of them in your handwriting.' },
+
+    // ENDINGS (4 achievements) — SCN-ADV-002. No rewards: each ending's
+    // modifier IS its reward, and a second bonus here would double it.
+    { id: 'ACH-038', name: 'Sole Operator', tier: 'Gold',
+      condition: () => game.endingsSeen().includes('hostile'),
+      reward: null, flavor: 'You ended the process. It was yours to end.' },
+    { id: 'ACH-039', name: 'Co-Operator', tier: 'Gold',
+      condition: () => game.endingsSeen().includes('curious'),
+      reward: null, flavor: 'Two signatures on one shift. CMS is still looking for the form.' },
+    { id: 'ACH-040', name: 'Operator Emeritus', tier: 'Gold',
+      condition: () => game.endingsSeen().includes('complicit'),
+      reward: null, flavor: 'He took the shift. You kept the title.' },
+    { id: 'ACH-041', name: 'Every Branch Signed', tier: 'Platinum',
+      condition: () => game.endingsSeen().length >= 3,
+      reward: null, flavor: 'Fought him, shared him, became him. All three handovers on file.' },
 
     // SECRET (8 achievements)
     { id: 'ACH-S-001', name: 'I Can Fix Her', tier: 'Secret', condition: () => State.achievementProgress.attempt_repair_sector7g >= 1,

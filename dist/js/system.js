@@ -1067,9 +1067,10 @@ const system = {
                     // Update document count
                     const countDisplay = document.getElementById('doc-count-display');
                     if (countDisplay) {
-                        // NULL.OPERATOR's archive annotations are documents too.
+                        // NULL.OPERATOR's archive annotations and the handover
+                        // records are documents too.
                         countDisplay.innerText = State.documents.collected.length +
-                            (game.archiveDocuments?.() || []).length;
+                            (game.generatedDocuments?.() || []).length;
                     }
                     ui.renderDocumentList('all');
                     const firstCollectedDocument = DocumentManifest.find(doc =>
