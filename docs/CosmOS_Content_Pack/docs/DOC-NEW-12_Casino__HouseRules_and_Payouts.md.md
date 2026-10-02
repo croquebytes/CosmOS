@@ -19,8 +19,13 @@ We are delighted you’ve chosen to risk something you value.
 4. If you see a second dealer behind the dealer, blink once and leave.
 
 ### Payout Notes
-- **Streak bonuses** are real. So are streak penalties.  
-- “Near misses” are a curated experience.  
+- The table is **Patience.exe**. Cleared cards pay Adoration and Overclock charge.
+- **Grace** is the house's patience with you. It wears down with every round and
+  recovers while you are away. The first rounds each hour pay in full.
+- **Streak bonuses** are real. So are streak penalties.
+- “Near misses” are a curated experience.
+- A **Divine Mulligan** is priced against your own Praise vault. The house finds
+  that fair. The house would.
 - Jackpot payouts may be **borrowed** from archived branches.
 
 ### Lore Footnote (small print)
@@ -30,6 +35,10 @@ Fate’s Casino is classified internally as:
 - **User Experience Testing**
 
 ### Easter Eggs
-- Win 10 in a row: unlock “House Edge” achievement.  
-- Lose 15 in a row: the host gives you a pity chip (and a whisper).  
-- Tap the dealer portrait 7 times: watch the smile lag by one frame.
+- Make par three rounds running and the dealer starts paying attention. At ten,
+  she stops pretending she isn't.
+- Tap the dealer twice. She notices. She always notices.
+- Clear the whole spread at full Grace and the house says a word it does not
+  like saying.
+- The pity chip has been recalled pending review by Accounts. The host will
+  still offer it. Do not hold your breath.
