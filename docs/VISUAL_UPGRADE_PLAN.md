@@ -380,3 +380,71 @@ reads as finished without it. Drop a file in under the exact name below and relo
 | `fate-table` | clip | `web__fate-table__720` | `fate://casino` | A felt card table under a single lamp; a dealer's hands (only the hands) turn cards. |
 | `void-forum-banner` | image | `assets/web/void-forum-banner.webp` | `void://forum` | A wide banner: the violet tear in the iron wall seen from inside the Void, wraith-light. |
 | `null-operator` | clip | `web__null-operator__720` | `null://` (after an ending) | A CRT showing the viewer's silhouette, which turns away from the lens; tracking noise. |
+
+## 10. Recovered footage — "[REDACTED] files" (built)
+
+`js/footage.js`. Archive reels CMS would rather you had not seen, uncovered through
+play and filed to a **Recovered** shelf in the Sacred Media Player, under the training
+tapes. As with §7, **a reel whose file is missing does not exist**: it is never
+offered, filed, linked or mailed, and with none installed the player, the Recycle
+Bin, Mail and Etherscape are unchanged. A reel is not even probed until the moment
+it would be found.
+
+**Rules**
+
+- **Files:** `assets/video/rec__<slug>__720.webm` (VP9) or `.mp4`, plus a `.webp`
+  poster. 16:9, 1280×720, 10 s, ≤ 1.5 MB. Encode with `tools/encode_reel.sh`.
+- **Clean footage only.** The player draws the black redaction bars (positioned per
+  reel in `FootageCatalog.bars`, in percent of the frame, with in/out times), the
+  *CLASSIFIED — CMS EYES ONLY* banner, the file number and camera, a running
+  timecode, the REC lamp, the RECOVERED stamp, and the scanlines, roll bar and torn
+  bands. Reduced motion holds the glitches still.
+- **Captions** are HTML in the transcript well under the picture, timed to the reel.
+  A run of `█` in a caption is drawn as a bar; the words under it are not in the page.
+- **Persistence:** `State.footage = { found, watched }`, a schema default with no
+  `SAVE_VERSION` bump, normalised by type and membership on every read.
+- **Never interrupts.** Filing is a console line, and only while the player is present,
+  the tab is visible and no system dialog is up. Nothing plays until the player
+  presses play.
+
+| Reel | File in `assets/video/` | Found | Trigger |
+|---|---|---|---|
+| *Incident 0 — the first reboot* (`INC-0000.rec`) | `rec__incident-0__720` | Recycle Bin: a strip below the deleted items, "found in unallocated space"; **Recover** files and plays it. It is never a bin item, so it cannot be restored, emptied or sacrificed. | the first reboot |
+| *The previous Operator's last shift* (`LAST_SHIFT.rec`) | `rec__last-shift__720` | An attachment on the previous Operator's Void mail (`prev-02`), shown once installed; filed with a console line. | `prev-02` delivered |
+| *Sector 7G, before the failure* (`7G_BEFORE.rec`) | `rec__sector-7g__720` | A post on `void://forum` links it (`[[reel:rec-sector-7g]]`); following the link files and plays it. | the Veil breached (sticky across reboots) |
+| *Mirror test (subject: ████)* (`MIRROR_TEST_7781-A.rec`) | `rec__mirror-test__720` | A line on `null://`, before and after an ending. | the Adversary scene completed |
+| *The Archive is still running* (`ARCHIVE_FLOOR.rec`) | `rec__archive-running__720` | Filed by itself, with "[ARCHIVE] An annotation in the margin cites footage". | the first archive annotation |
+
+## 11. Welcome from the Omniscient (built)
+
+Four short addresses from the retired deity whose post you hold, seen only as light and
+geometry, never a face. They arrive through **CMS Mail**, from *The Omniscient
+(Retired)* `<everything@cosmos.local>`, via *every channel at once*, as a video
+attachment that opens in the Sacred Media Player, and stay on its **Addresses** shelf.
+Mail fits better than the shelf alone: the first one is an optional message filed after
+the first directive (the V1 Cold Boot still owns the boot), and Mail already delivers
+quietly, waits for presence and keeps a badge. Each message is due only once its reel
+is on file, so with no reels the Omniscient never writes.
+
+- **Files:** `assets/video/omni__<slug>__720.webm` / `.mp4` / `.webp`, 16:9, 1280×720,
+  12 s, ≤ 1.5 MB. No text; the header *A MESSAGE FOR THE SUCCESSOR*, the file name, the
+  bloom and the captions (speaker: THE OMNISCIENT) are HTML and CSS.
+- **Look:** an unbearable violet-white light or a vast geometric presence (nested brass
+  polyhedra, armillary halos). Brightness may exceed the §1 ceiling: these play only in
+  the player, never as a desktop background.
+
+| Address | Mail | File | Trigger |
+|---|---|---|---|
+| *A message for the Successor* | `omni-01` | `omni__successor__720` | first directive claimed, after HR's welcome |
+| *On your first reboot* | `omni-02` | `omni__reboot__720` | the first reboot |
+| *On the Void* | `omni-03` | `omni__void__720` | the Veil breached |
+| *On the end of a shift* | `omni-04` | `omni__ending__720` | any ending resolved |
+
+**Etherscape clips (§9).** The third idea is to fill the slots that already exist rather
+than invent a new format: `fate-table` (a Fate's casino commercial on `fate://casino`),
+`null-operator` (`null://` after an ending) and `seraph-choir` (`seraph://fanpage`).
+They need no code. Their prompts are in `assets/src/video/MANIFEST.md`.
+
+**Status (2026-10-02):** the code is complete and tested. Two keyframes are approved
+(*last shift*, *Sector 7G*). No reel has been rendered, because the Krea balance ran
+out; the MANIFEST lists what remains, with the prompts.

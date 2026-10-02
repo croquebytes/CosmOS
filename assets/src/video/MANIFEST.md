@@ -56,3 +56,62 @@ The pipeline is the one above, with three differences:
 Keyframes approved but not yet animated (the Krea balance ran out): `key__tape__t1__shot2.webp`
 to `key__tape__t1__shot6.webp`. The remaining 28 reels fall back to their slides until
 they are made.
+
+## Recovered footage, the Omniscient's addresses and web clips (2026-10-02, in progress)
+
+For `docs/VISUAL_UPGRADE_PLAN.md` §10 and §11. The code (`js/footage.js`) is in and
+every slot below is a drop-in, inert until its file exists. **Generation stopped
+part-way:** the shared Krea balance reached 0 (`402 INSUFFICIENT_BALANCE`) after three
+keyframes, so no reel has been rendered yet. Resume from this table after a top-up.
+
+**Pipeline** (as above, with these differences):
+- **Keyframe:** Nano Banana Pro, 2K, 16:9, with `image_urls` set to the engine-core
+  probe (`https://app-uploads.krea.ai/17ccbb0d-0540-43de-ac56-786be2582631/1790908179494-engine-core__idle__probe.png`).
+- **Motion:** Seedance 2.5 image-to-video, 720p, 10 s for recovered reels and 12 s for
+  addresses (the captions are timed to those lengths). Web clips are 4–6 s seamless
+  loops, with the keyframe passed as both `start_image` and `end_image`.
+- **Encoding:** `tools/encode_reel.sh <master> <stem> 1.5` at 1280×720, ≤ 1.5 MB.
+  Recovered reels are clean footage: the redaction bars, timecode, CLASSIFIED frame and
+  glitches are CSS. Do not bake any of that in.
+- **Prompt shape:** every prompt opens with the declaration *"High-detail hi-bit pixel
+  art, crisp edges, limited palette. Dark gothic sacred machinery, cast iron housing,
+  aged brass filigree, verdigris copper, parchment vellum, inner violet-white divine
+  glow, cathedral spires as circuitry, rim light in warm brass, deep blue-black
+  background #04060a. Match the style of the reference image."*, then the scene, then
+  *"Avoid: photoreal, 3D render, plastic, neon cyberpunk, pink, rainbow, lens flare
+  spam, text, letters, watermark, logo, cartoon mascot, anime, blurry, painterly smear,
+  emoji. Constraints: no text, no letters or numbers anywhere, no human faces, no
+  people."* The scene and motion lines for each reel are the `krea` field in
+  `FootageCatalog` (`js/footage.js`).
+
+| Stem | Keyframe | Length | Status |
+|---|---|---|---|
+| `rec__incident-0__720` | — | 10s | Keyframe **rejected**: the model baked camera text (REC, timecodes) into the corners. Regenerate and add "plain picture, no on-screen display" to the scene. |
+| `rec__last-shift__720` | `key__rec-last-shift.webp` ([2K](https://app-uploads.krea.ai/public/3b8a173c-ace8-4df2-b273-261ab6512a9e-image.png)) | 10s | Keyframe approved. Motion not rendered. |
+| `rec__sector-7g__720` | `key__rec-sector-7g.webp` ([2K](https://app-uploads.krea.ai/public/71652d4d-6090-403d-bc19-ff19a5092770-image.png)) | 10s | Keyframe approved. Motion not rendered. |
+| `rec__mirror-test__720` | — | 10s | Not started (402). |
+| `rec__archive-running__720` | — | 10s | Not started (402). |
+| `omni__successor__720` | — | 12s | Not started (402). |
+| `omni__reboot__720` | — | 12s | Not started (402). |
+| `omni__void__720` | — | 12s | Not started (402). |
+| `omni__ending__720` | — | 12s | Not started (402). |
+| `web__fate-table__720` | — | 4–6s loop | Not started (402). Slot already wired on `fate://casino`. |
+| `web__null-operator__720` | — | 4–6s loop | Not started (402). Slot already wired on `null://` after an ending. |
+| `web__seraph-choir__720` | — | 4–6s loop | Not started (402). Slot already wired on `seraph://fanpage`. |
+
+The redaction bars in `FootageCatalog` are positioned against the approved keyframes
+(the pinned note and the screen in *last shift*, the core in *Sector 7G*). For a reel
+whose keyframe is regenerated, check the bars on the contact strip and move them in
+`js/footage.js` if the composition moved.
+
+**Web clip prompts** (the slots are documented in `docs/VISUAL_UPGRADE_PLAN.md` §9):
+- `fate-table`: *a green felt card table under a single brass hanging lamp in a dark
+  gothic casino of iron; a dealer's gloved hands in vellum cuffs (only the hands) turn
+  cards with blank brass-filigree backs beside stacks of brass chips.* Motion: the hands
+  turn one card and slide it, the lamp sways slightly; seamless loop, locked camera.
+- `null-operator`: *a bulky CRT in an iron housing showing a featureless black
+  silhouette of head and shoulders, violet tint, tracking-noise bands.* Motion: the
+  silhouette slowly turns away from the lens, noise rolls; seamless loop.
+- `seraph-choir`: *a row of six-winged brass Seraph automata of organ pipes singing in
+  choir stalls, camcorder framing, slightly low-res.* Motion: gentle handheld wobble,
+  halo-gears turn, wings shift; seamless loop.

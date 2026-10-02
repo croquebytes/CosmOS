@@ -494,6 +494,7 @@ try {
                 ...Object.values(MediaCatalog.loops).map((l) => ({ url: l.webm, kind: 'loop', minDur: 3 })),
                 ...MediaCatalog.tapes.flatMap((t) => t.shots.filter((s) => s.video)
                     .map((s) => ({ url: s.video.webm, kind: 'tape', minDur: s.dur }))),
+                ...FootageCatalog.reels.map((r) => ({ url: r.webm, kind: 'footage', minDur: 3 })),
             ];
             const out = [];
             for (const reel of reels) {
@@ -527,6 +528,118 @@ try {
         const count = (kind) => `${installed.filter((r) => r.kind === kind).length}/${report.filter((r) => r.kind === kind).length}`;
         step(`installed reels decode at the contract size (cinematics ${count('cine')}, loops ${count('loop')}, tape shots ${count('tape')})`);
         await ctx.close();
+    }
+
+    /* ── 8. Recovered footage and the Omniscient (js/footage.js) ─────── */
+    {
+        const FX_OUT = 'output/footage';
+        mkdirSync(FX_OUT, { recursive: true });
+        // A save one reboot in, its first directive claimed: Incident 0 is due
+        // in the Recycle Bin, and the first address is due by mail.
+        const setup = async (p) => {
+            for (let i = 0; i < 10; i++) await p.getByRole('button', { name: 'Perform Miracle' }).click();
+            await p.getByRole('button', { name: 'Claim Reward' }).click();
+            await p.waitForFunction(() => State.mail.log.some((r) => r.id === 'hr-welcome'), null, { timeout: 4000, polling: 100 });
+            await p.evaluate(() => { State.achievementProgress.prestige_count = 1; });
+        };
+
+        // Missing: nothing anywhere, however long it is given.
+        const bare = await newContext({ viewport: { width: 1440, height: 900 } });
+        const p0 = await freshTestPage(bare);
+        await setup(p0);
+        await p0.waitForTimeout(3500);
+        const none = await p0.evaluate(() => {
+            system.openApp('recyclebin');
+            system.openApp('mediaplayer');
+            return { found: State.footage.found.slice(), omni: State.mail.log.some((r) => r.id.startsWith('omni-')),
+                bin: !!document.querySelector('.fx-bin'), shelves: !!document.querySelector('#win-mediaplayer .mp-shelves, #win-mediaplayer .fx-shelves'),
+                deck: !!document.querySelector('#win-mediaplayer .fx-deck') };
+        });
+        await p0.waitForTimeout(1200);
+        none.binLater = await p0.evaluate(() => !!document.querySelector('.fx-bin'));
+        assert.deepEqual(none, { found: [], omni: false, bin: false, shelves: false, deck: false, binLater: false });
+        step('footage with no reel installed: no bin file, no shelf, no mail, the player unchanged');
+        await bare.close();
+
+        if (reel) {
+            const ctx = await newContext({ viewport: { width: 1440, height: 900 } });
+            for (const stem of ['rec__incident-0__720', 'omni__successor__720']) {
+                await ctx.route(`**/assets/video/${stem}.webm`, (route) => route.fulfill({ status: 200, contentType: 'video/webm', body: reel }));
+            }
+            const p = await freshTestPage(ctx);
+            await setup(p);
+            // The address files itself and HR's welcome is followed by it.
+            await p.waitForFunction(() => State.mail.log.some((r) => r.id === 'omni-01'), null, { timeout: 5000, polling: 100 });
+            assert.deepEqual(await p.evaluate(() => State.footage.found.slice()), ['omni-successor'], 'Incident 0 waits to be found');
+
+            // Opened by hand, the player already shelves the address under the tapes.
+            const opened = await p.evaluate(() => { system.openApp('mediaplayer'); return {
+                shelf: [...document.querySelectorAll('#win-mediaplayer .fx-reel')].map((b) => b.dataset.reel),
+                deck: getComputedStyle(document.querySelector('#win-mediaplayer .mp-deck')).display !== 'none' }; });
+            assert.deepEqual(opened, { shelf: ['omni-successor'], deck: true }, 'the Addresses shelf is mounted on open; the tape deck stays up');
+
+            // The Recycle Bin shows a file in unallocated space; Recover opens it.
+            await p.evaluate(() => system.openApp('recyclebin'));
+            const recover = p.locator('#win-recyclebin .fx-bin [data-reel="rec-incident-0"]');
+            await recover.waitFor({ timeout: 2000 });
+            assert.equal(await p.evaluate(() => State.recycleBin.items.length), 0, 'not a bin item: nothing to sacrifice');
+            await recover.click();
+            await p.locator('#win-mediaplayer .fx-deck .fx-video').waitFor();
+            await p.waitForFunction(() => { const v = document.querySelector('#win-mediaplayer .fx-video'); return v && v.currentTime > 0.2; }, null, { timeout: 5000, polling: 100 });
+            const rec = await p.evaluate(() => ({
+                found: State.footage.found.slice(),
+                active: FootageView.state().active,
+                tapeDeckHidden: getComputedStyle(document.querySelector('#win-mediaplayer .mp-deck')).display === 'none',
+                classified: document.querySelector('#win-mediaplayer .fx-classified')?.textContent.trim(),
+                bars: document.querySelectorAll('#win-mediaplayer .fx-bars .fx-bar').length,
+                barBg: getComputedStyle(document.querySelector('#win-mediaplayer .fx-bar')).backgroundColor,
+                redactions: document.querySelectorAll('#win-mediaplayer .fx-line .fx-redact').length,
+                line: document.querySelector('#win-mediaplayer .fx-line').textContent,
+                tc: document.querySelector('#win-mediaplayer .fx-tc-time').textContent,
+                shelf: [...document.querySelectorAll('#win-mediaplayer .fx-reel')].map((b) => b.dataset.reel),
+            }));
+            assert.deepEqual(rec.found, ['rec-incident-0', 'omni-successor']);
+            assert.equal(rec.active, true);
+            assert.equal(rec.tapeDeckHidden, true, 'one picture at a time');
+            assert.equal(rec.classified, 'CLASSIFIED — CMS EYES ONLY');
+            assert.ok(rec.bars >= 1, 'a redaction bar over the picture');
+            assert.equal(rec.barBg, 'rgb(0, 0, 0)');
+            assert.ok(rec.redactions >= 1, 'a redacted caption');
+            assert.doesNotMatch(rec.line, /█/, 'the bar replaces the text');
+            assert.match(rec.tc, /^03:14:0\d:\d\d$/, `timecode runs from the reel's base (${rec.tc})`);
+            assert.deepEqual(rec.shelf, ['rec-incident-0', 'omni-successor']);
+            await clearToasts(p);
+            await p.screenshot({ path: `${FX_OUT}/e2e-recovered-1440.png` });
+            step('a recovered reel: found in the Recycle Bin, played with redaction bars, timecode and CLASSIFIED framing');
+
+            // The address, from its mail attachment.
+            await p.evaluate(() => { system.openApp('mail'); MailView.setFolder('inbox'); MailView.select('omni-01'); });
+            const attach = p.locator('#win-mail [data-reel="omni-successor"]');
+            await attach.waitFor({ timeout: 2000 });
+            assert.match(await attach.innerText(), /FOR_THE_SUCCESSOR\.mov/);
+            await attach.click();
+            await p.waitForFunction(() => FootageView.state().reel === 'omni-successor' && FootageView.state().t > 0.2, null, { timeout: 5000, polling: 100 });
+            const addr = await p.evaluate(() => ({
+                head: document.querySelector('#win-mediaplayer .fx-address-head')?.textContent.trim(),
+                speaker: document.querySelector('#win-mediaplayer .fx-speaker').textContent,
+                classified: !!document.querySelector('#win-mediaplayer .fx-classified'),
+                bars: document.querySelectorAll('#win-mediaplayer .fx-bar').length,
+            }));
+            assert.deepEqual(addr, { head: 'A MESSAGE FOR THE SUCCESSOR', speaker: 'THE OMNISCIENT', classified: false, bars: 0 });
+            step('an address from the Omniscient plays from its CMS Mail attachment');
+
+            // A training tape takes the deck back.
+            await p.locator('#win-mediaplayer .mp-shelf .mp-tape[data-tape]').first().click();
+            assert.equal(await p.evaluate(() => FootageView.state().active), false);
+            assert.equal(await p.evaluate(() => getComputedStyle(document.querySelector('#win-mediaplayer .mp-deck')).display !== 'none'), true);
+            step('choosing a training tape hands the deck back to the tapes');
+
+            // Played to its end it is marked watched.
+            await p.evaluate(() => FootageView.load('rec-incident-0', true));
+            await p.waitForFunction(() => State.footage.watched.includes('rec-incident-0'), null, { timeout: 6000, polling: 100 });
+            step('a reel played to its end is marked watched');
+            await ctx.close();
+        }
     }
 
     assert.deepEqual(errors, [], 'no console errors');

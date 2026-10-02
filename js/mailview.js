@@ -147,6 +147,14 @@ const MailView = (() => {
                     title="${ready ? 'Play in the Sacred Media Player' : 'Not yet filed'}">
                     <span class="ml-attach-glyph" aria-hidden="true"></span>${esc(name)}${ready ? '' : ' <em>(not yet filed)</em>'}</button>`;
         }
+        if (a.reel) {
+            // Recovered footage and the Omniscient's addresses (js/footage.js):
+            // not shown at all until the reel is on file.
+            const reel = typeof FootageCatalog !== 'undefined' ? FootageCatalog.reel(a.reel) : null;
+            if (!reel || !reelAvailable(a.reel)) return '';
+            return `<button type="button" class="ml-attach ml-attach--reel" data-reel="${esc(a.reel)}" title="Play in the Sacred Media Player">
+                    <span class="ml-attach-glyph" aria-hidden="true"></span>${esc(reel.file)}</button>`;
+        }
         if (a.url) {
             const name = `${a.url.replace(/^([a-z]+):\/\//, '$1-').replace(/[/]+$/, '').replace(/[/]/g, '-') || 'link'}.url`;
             if (Mail.linkable(a.url)) {
@@ -221,7 +229,7 @@ const MailView = (() => {
     /* Availability can change while a message is open (a document is
        recovered, a tape is filed), so it is part of the render key. */
     function attachState(r) {
-        return (r.msg.attach || []).map((a) => (a.doc ? docAvailable(a.doc) : a.tape ? tapeAvailable(a.tape) : a.url ? Mail.linkable(a.url) : false) ? 1 : 0).join('');
+        return (r.msg.attach || []).map((a) => (a.doc ? docAvailable(a.doc) : a.tape ? tapeAvailable(a.tape) : a.reel ? reelAvailable(a.reel) : a.url ? Mail.linkable(a.url) : false) ? 1 : 0).join('');
     }
 
     function probeImage(id) {
@@ -291,6 +299,15 @@ const MailView = (() => {
 
     function tapeAvailable(id) {
         try { return typeof media !== 'undefined' && media.settings().tapes.includes(id); } catch (err) { return false; }
+    }
+
+    function reelAvailable(id) {
+        try { return typeof Footage !== 'undefined' && Footage.isFound(id) === true; } catch (err) { return false; }
+    }
+
+    function openReel(id) {
+        if (!reelAvailable(id) || !Footage.open(id)) { notice('That attachment is not on file.'); return false; }
+        return true;
     }
 
     function openDoc(id) {
@@ -437,6 +454,8 @@ const MailView = (() => {
         if (doc && !doc.disabled) { openDoc(doc.dataset.doc); return; }
         const tape = t.closest('[data-tape]');
         if (tape && !tape.disabled) { openTape(tape.dataset.tape); return; }
+        const reel = t.closest('[data-reel]');
+        if (reel) { openReel(reel.dataset.reel); return; }
         const link = t.closest('[data-url]');
         if (link) { if (!Mail.openUrl(link.dataset.url)) notice('Etherscape is not installed on this console.'); }
     }

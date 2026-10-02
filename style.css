@@ -8910,3 +8910,503 @@ button.ml-attach:hover:not(:disabled) { border-color: var(--cos-brass-700); back
         transition: none;
     }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Recovered footage and the Omniscient's addresses (js/footage.js).
+   None of this is on screen until a reel is on file. The reels are clean
+   footage; the redaction, the CLASSIFIED framing, the timecode and the
+   glitches are all drawn here, so they stay crisp and can be held still.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* The shelf column, once there is a second shelf to stand beside the tapes. */
+.mp-shelves {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mp-shelves > .mp-shelf {
+    flex: 1 1 auto;
+}
+
+.fx-shelves {
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: 55%;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.fx-shelves:empty {
+    display: none;
+}
+
+.fx-section {
+    padding: 6px;
+    background: var(--cos-iron-900);
+    border: 2px solid;
+    border-color: var(--cos-vellum-500) var(--cos-vellum-100) var(--cos-vellum-100) var(--cos-vellum-500);
+}
+
+.fx-section--address {
+    background: linear-gradient(180deg, #1d1a12, var(--cos-iron-900));
+}
+
+.fx-shelf-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    margin: 0 0 6px;
+    color: var(--cos-alarm);
+    font: bold 10px var(--cos-font-machine);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.fx-section--address .fx-shelf-head {
+    color: var(--cos-brass-300);
+}
+
+.fx-shelf-head span {
+    color: var(--cos-ink-inv-dim);
+    font-weight: normal;
+    letter-spacing: 0.08em;
+}
+
+.fx-shelf {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.mp-tape.fx-reel.is-recovered {
+    border-left-color: var(--cos-alarm);
+}
+
+.mp-tape.fx-reel.is-recovered .mp-tape-code {
+    color: var(--cos-halo);
+    background: #000;
+    border-color: var(--cos-alarm);
+}
+
+.mp-tape.fx-reel.is-address {
+    border-left-color: var(--cos-halo);
+}
+
+.mp-tape.fx-reel.is-address .mp-tape-code {
+    background: var(--cos-halo);
+    border-color: var(--cos-brass-300);
+}
+
+/* A redaction: a black bar as wide as the words it replaces. */
+.fx-redact {
+    display: inline-block;
+    width: calc(var(--n, 6) * 0.62em);
+    height: 0.95em;
+    margin: 0 0.08em;
+    vertical-align: -0.12em;
+    background: #000;
+    box-shadow: 0 0 0 1px #000;
+}
+
+.mp-tape-title .fx-redact {
+    background: var(--cos-ink-inv-dim);
+    box-shadow: none;
+}
+
+/* ── The footage deck: shown instead of the tape deck ── */
+.fx-deck {
+    display: none;
+}
+
+.mp.is-footage .mp-deck {
+    display: none;
+}
+
+.mp.is-footage .fx-deck {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.fx-deck-inner {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.fx-screen {
+    position: relative;
+    width: min(100cqw, calc(100cqh * 16 / 9));
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background: #000;
+    border: 2px solid;
+    border-color: var(--cos-vellum-500) var(--cos-vellum-100) var(--cos-vellum-100) var(--cos-vellum-500);
+    box-shadow: inset 0 0 0 1px #000;
+    cursor: pointer;
+}
+
+.fx-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #04060a;
+}
+
+.fx--recovered .fx-video {
+    filter: saturate(0.72) contrast(1.08);
+}
+
+.fx-bars,
+.fx-glitch,
+.fx-frame {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.fx-bar {
+    position: absolute;
+    background: #000;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.9), 2px 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* Archive damage: scanlines, a slow roll bar and the odd torn band. */
+.fx--recovered .fx-glitch {
+    background:
+        repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px),
+        linear-gradient(180deg, transparent 0 46%, rgba(255, 247, 222, 0.06) 48% 52%, transparent 54%);
+    background-size: 100% 100%, 100% 260%;
+    animation: fx-roll 6.5s linear infinite;
+}
+
+.fx--recovered .fx-glitch::before,
+.fx--recovered .fx-glitch::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 30%;
+    height: 7%;
+    background: rgba(144, 99, 219, 0.16);
+    border-top: 1px solid rgba(255, 247, 222, 0.25);
+    backdrop-filter: hue-rotate(40deg) saturate(1.6);
+    opacity: 0;
+    animation: fx-tear 4.3s steps(1, end) infinite;
+}
+
+.fx--recovered .fx-glitch::after {
+    height: 3%;
+    animation-duration: 7.1s;
+    animation-delay: 1.9s;
+}
+
+@keyframes fx-roll {
+    from { background-position: 0 0, 0 0; }
+    to { background-position: 0 0, 0 -260%; }
+}
+
+@keyframes fx-tear {
+    0%, 88%, 100% { opacity: 0; top: 30%; transform: translateX(0); }
+    90% { opacity: 1; top: 31%; transform: translateX(-3%); }
+    93% { opacity: 1; top: 64%; transform: translateX(2.5%); }
+    96% { opacity: 0.7; top: 18%; transform: translateX(-1%); }
+}
+
+.fx-frame {
+    color: var(--cos-halo);
+    font: bold 11px var(--cos-font-machine);
+    letter-spacing: 0.08em;
+    text-shadow: 1px 1px 0 #000, 0 0 4px rgba(0, 0, 0, 0.9);
+}
+
+.fx-frame > span {
+    position: absolute;
+}
+
+.fx-classified {
+    top: 4.5%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 2px 10px;
+    color: #000;
+    background: var(--cos-alarm);
+    text-shadow: none;
+    letter-spacing: 0.22em;
+    white-space: nowrap;
+}
+
+.fx-file {
+    top: 12%;
+    left: 50%;
+    transform: translateX(-50%);
+    color: var(--cos-ink-inv);
+    font-weight: normal;
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+.fx-rec {
+    top: 5%;
+    left: 4%;
+    color: var(--cos-alarm);
+    animation: fx-blink 1s steps(1, end) infinite;
+}
+
+.fx-tc {
+    right: 4%;
+    bottom: 5%;
+    font-weight: normal;
+}
+
+.fx-tc b {
+    font-weight: bold;
+}
+
+.fx-stamp {
+    left: 4%;
+    bottom: 5%;
+    padding: 1px 6px;
+    color: var(--cos-alarm);
+    border: 2px solid var(--cos-alarm);
+    transform: rotate(-4deg);
+    opacity: 0.85;
+}
+
+@keyframes fx-blink {
+    50% { opacity: 0; }
+}
+
+.fx-corner {
+    position: absolute;
+    width: 5%;
+    height: 9%;
+    border: 2px solid rgba(255, 247, 222, 0.75);
+}
+
+.fx-corner--tl { top: 3%; left: 2%; border-right: 0; border-bottom: 0; }
+.fx-corner--tr { top: 3%; right: 2%; border-left: 0; border-bottom: 0; }
+.fx-corner--bl { bottom: 3%; left: 2%; border-right: 0; border-top: 0; }
+.fx-corner--br { bottom: 3%; right: 2%; border-left: 0; border-top: 0; }
+
+/* The addresses: a brass mat, and a bloom the eye cannot quite hold. */
+.fx--address .fx-corner {
+    border-color: rgba(222, 196, 131, 0.7);
+}
+
+.fx--address .fx-glitch {
+    background: radial-gradient(ellipse at 50% 45%, rgba(255, 247, 222, 0.38), transparent 62%);
+    mix-blend-mode: screen;
+    animation: fx-bloom 5.5s ease-in-out infinite;
+}
+
+@keyframes fx-bloom {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+}
+
+.fx-address-head {
+    top: 5%;
+    left: 50%;
+    transform: translateX(-50%);
+    color: var(--cos-brass-100);
+    font: 12px var(--cos-font-display);
+    letter-spacing: 0.32em;
+    white-space: nowrap;
+}
+
+.fx--address .fx-file {
+    top: auto;
+    bottom: 5%;
+    color: var(--cos-brass-300);
+}
+
+.fx-end {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: var(--cos-halo);
+    background: rgba(0, 0, 0, 0.78);
+    font: bold 13px var(--cos-font-machine);
+    letter-spacing: 0.24em;
+}
+
+.fx-end[hidden] {
+    display: none;
+}
+
+.is-damaged .fx-screen {
+    background: repeating-linear-gradient(180deg, #111 0 2px, #000 2px 4px);
+}
+
+.fx-caption {
+    min-height: 4.1em;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 7px 10px;
+    color: var(--cos-ink);
+    background: var(--cos-vellum-100);
+    border: 2px solid;
+    border-color: var(--cos-vellum-500) var(--cos-vellum-100) var(--cos-vellum-100) var(--cos-vellum-500);
+    font: 12px/1.5 var(--cos-font-machine);
+}
+
+/* The transcript of a recovered file reads like the released document:
+   typed on vellum, with the bars laid on in ink. */
+.fx--address .fx-caption {
+    font: 13px/1.45 var(--cos-font-display);
+}
+
+.fx-speaker {
+    flex: 0 0 auto;
+    color: var(--cos-alarm);
+    font: bold 10px var(--cos-font-machine);
+    letter-spacing: 0.12em;
+}
+
+.fx--address .fx-speaker {
+    color: var(--cos-brass-700);
+}
+
+.fx-speaker:empty {
+    display: none;
+}
+
+.fx-caption .fx-redact {
+    background: #000;
+    box-shadow: none;
+}
+
+.fx-transport {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mp .win-btn.fx-play {
+    flex-basis: 44px;
+    width: 44px;
+}
+
+.fx-scrub-wrap {
+    flex: 1;
+    min-width: 80px;
+    display: flex;
+    align-items: center;
+}
+
+.fx-scrub {
+    width: 100%;
+    margin: 0;
+    accent-color: var(--cos-brass-500);
+    cursor: pointer;
+}
+
+.fx-time {
+    min-width: 84px;
+    color: var(--cos-ink-dim);
+    font: 11px var(--cos-font-machine);
+    text-align: right;
+}
+
+/* Mail: a film-reel mark for a reel attachment. */
+.ml-attach--reel .ml-attach-glyph {
+    width: 12px;
+    height: 12px;
+    clip-path: none;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle, var(--cos-vellum-100) 0 1.5px, transparent 2px),
+        radial-gradient(circle at 50% 18%, var(--cos-vellum-100) 0 1.5px, transparent 2px),
+        radial-gradient(circle at 50% 82%, var(--cos-vellum-100) 0 1.5px, transparent 2px),
+        var(--cos-iron-700);
+    border-color: var(--cos-iron-900);
+}
+
+/* The Recycle Bin: a file in unallocated space, below the listed items. */
+.fx-bin {
+    flex: 0 0 auto;
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: #0b0d12;
+    color: var(--cos-ink-inv);
+    border: 2px solid;
+    border-color: var(--cos-iron-900) var(--cos-iron-600) var(--cos-iron-600) var(--cos-iron-900);
+}
+
+.fx-bin-head {
+    margin-bottom: 6px;
+    color: var(--cos-ink-inv-dim);
+    font-size: 10px;
+}
+
+.fx-bin .recyclebin-item {
+    color: var(--cos-ink-inv);
+    background: transparent;
+    border-color: var(--cos-iron-600);
+}
+
+.fx-bin .item-name {
+    color: var(--cos-halo);
+}
+
+.fx-bin .item-desc,
+.fx-bin .item-meta {
+    color: var(--cos-ink-inv-dim);
+}
+
+.fx-bin .fx-redact {
+    background: #000;
+    box-shadow: 0 0 0 1px var(--cos-iron-600);
+}
+
+.fx-bin-glyph {
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle, #000 0 3px, transparent 3.5px),
+        radial-gradient(circle at 50% 20%, #000 0 3px, transparent 3.5px),
+        radial-gradient(circle at 50% 80%, #000 0 3px, transparent 3.5px),
+        radial-gradient(circle at 20% 50%, #000 0 3px, transparent 3.5px),
+        radial-gradient(circle at 80% 50%, #000 0 3px, transparent 3.5px),
+        var(--cos-iron-600);
+    border: 2px solid var(--cos-brass-500);
+}
+
+@container mplayer (max-width: 620px) {
+    .fx-shelves { max-height: none; }
+    .fx-shelf { flex-direction: row; overflow-x: auto; }
+    .fx-shelf li { flex: 0 0 196px; }
+    .fx-screen { width: 100%; }
+    .fx-screen-wrap { flex: 0 0 auto; min-height: 0; display: block; container-type: normal; }
+}
+
+@media (max-width: 900px) and (orientation: portrait) and (min-height: 640px) {
+    .fx-deck { order: 1; }
+    .mp-shelves { order: 2; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fx-glitch,
+    .fx-glitch::before,
+    .fx-glitch::after,
+    .fx-rec {
+        animation: none !important;
+    }
+}

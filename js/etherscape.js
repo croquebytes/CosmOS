@@ -38,8 +38,10 @@
    A link is live when its page is reachable, a DEAD link (struck, with a
    tooltip saying why) when the page exists but is locked, and a plain link
    to the in-world 404 when no such page exists. Besides web URLs a link may
-   name doc:<id> (Recovered Documents), tape:<id> (the Sacred Media Player)
-   or app:<id> (an installed app), each live only when that thing is.
+   name doc:<id> (Recovered Documents), tape:<id> (the Sacred Media Player),
+   reel:<id> (recovered footage, js/footage.js) or app:<id> (an installed
+   app), each live only when that thing is. Pages write a reel: link only
+   when ctx.reels lists it, so an uninstalled reel leaves no trace.
 
    ── Media slots (naming convention) ─────────────────────────────────────
      @clip <slug> | caption    assets/video/web__<slug>__720.webm (or .mp4),
@@ -107,9 +109,9 @@ const EtherscapeLogic = (() => {
         return `${m[1]}://${m[2].replace(/\/+$/, '')}`;
     }
 
-    /* A cross-link: doc:, tape: or app:. Ids keep their own case rules. */
+    /* A cross-link: doc:, tape:, reel: or app:. Ids keep their own case rules. */
     function crossLink(href) {
-        const m = /^(doc|tape|app):([A-Za-z0-9_-]{1,40})$/i.exec(String(href || '').trim());
+        const m = /^(doc|tape|app|reel):([A-Za-z0-9_-]{1,40})$/i.exec(String(href || '').trim());
         if (!m) return null;
         const type = m[1].toLowerCase();
         return { type, id: type === 'doc' ? m[2].toUpperCase() : m[2].toLowerCase() };
@@ -1225,6 +1227,11 @@ const EtherscapeSites = (() => {
                     > they shipped ${E.plural(ctx.scars.length, 'known issue')} without patching. each one is a bolt left loose. somebody has to live on the far side of a loose bolt.
                     > (echo) somebody has to live on the far side of a loose bolt.`);
                 }
+                if (ctx.reels.includes('rec-sector-7g')) {
+                    posts.push(`@post wraith_42 | thread: found this on an old drive
+                    > promo reel from before. 7G with the lights on. CMS never released it. look at the core, then look at the date.
+                    > [[reel:rec-sector-7g|7G_BEFORE.rec]] (do not tell the Cherubs. they cry.)`);
+                }
                 if (ctx.adversary.contacted && !ctx.endingWorn) {
                     posts.push(`@post void_mirror.service#2 | thread: read the release notes
                     > ${ctx.adversary.band === 'hostile' ? "I've stopped asking them. They'll learn or they'll ship it." : ctx.adversary.band === 'complicit' ? 'They let me drive sometimes now. The console is warmer than you\'d think.' : 'They asked what the patch does. Nobody asks.'}`);
@@ -1264,6 +1271,9 @@ const EtherscapeSites = (() => {
                 | Known issues you left loose | ${E.n(ctx.scars.length)}
                 | Branches I annotated | ${E.n(ctx.annotations.length)}
                 ${ctx.annotations.map((x) => `- [[doc:ARC-${String(x.level).padStart(4, '0')}|v${E.lit(ctx.versionOf(x.level))}, annotated]]`).join('\n')}`;
+                // QA's tape of where he came from (js/footage.js), once it is installed.
+                const test = ctx.reels.includes('rec-mirror-test')
+                    ? '\n> You want to know where I came from. QA has a tape. They marked it passed. [[reel:rec-mirror-test|MIRROR_TEST_7781-A.rec]]' : '';
                 if (ctx.endingWorn) {
                     const ending = ENDING_LABEL(ctx.endingWorn);
                     const body = {
@@ -1273,7 +1283,7 @@ const EtherscapeSites = (() => {
                     }[ctx.endingWorn];
                     return `
                     = ${E.lit(ending.label)}
-                    ${body}
+                    ${body}${test}
                     > ${E.lit(ending.signoff)}
                     ${receipts}
                     @clip null-operator | (recording continued after the end of the programme)`;
@@ -1291,7 +1301,7 @@ const EtherscapeSites = (() => {
                 }[a.band] || 'I am what happens to an Operator who reboots and never reads the release notes.';
                 return `
                 = null://
-                ${E.lit(line)}
+                ${E.lit(line)}${test}
                 ${receipts}
                 @note Relationship on file: ${E.lit(a.band)}. This page is not indexed. You found it because I left it open.`;
             },
@@ -1484,6 +1494,8 @@ const Etherscape = (() => {
         ctx.inVoid = St.currentDimension === 'void';
         ctx.apps = Array.isArray(St.unlockedApps) ? St.unlockedApps.filter((a) => typeof a === 'string') : [];
         ctx.tapes = safe(() => (typeof MediaLogic !== 'undefined' ? MediaLogic.normalise(St.settings && St.settings.media).tapes : []), []);
+        // Recovered footage a page may link to: installed, and its moment come.
+        ctx.reels = safe(() => (typeof Footage !== 'undefined' && Footage ? Footage.linkable() : []), []);
         ctx.docs = Array.isArray(St.documents && St.documents.collected) ? St.documents.collected.filter((d) => typeof d === 'string') : [];
         ctx.generatedDocs = safe(() => g.generatedDocuments().map((d) => d.id), []);
         ctx.bar = safe(() => g.getPrestigeThreshold(), 0);
@@ -1561,6 +1573,11 @@ const Etherscape = (() => {
             const have = ctx.apps.includes('mediaplayer') && ctx.tapes.includes(cross.id) && typeof MediaPlayerView !== 'undefined';
             return have ? { state: 'ok', url, title: `${tape.code} — ${tape.title}`, kind: 'tape' }
                 : { state: 'dead', url, title: tape.code, hint: tape.secret ? 'Not filed.' : `Not filed yet. ${tape.hint}` };
+        }
+        if (cross.type === 'reel') {
+            const reel = typeof FootageCatalog !== 'undefined' ? FootageCatalog.reel(cross.id) : null;
+            const have = !!reel && ctx.reels.includes(cross.id);
+            return have ? { state: 'ok', url, title: reel.file, kind: 'reel' } : { state: 'dead', url, title: reel ? reel.file : cross.id, hint: 'File not found.' };
         }
         const meta = typeof system !== 'undefined' && system.appMeta ? system.appMeta[cross.id] : null;
         const have = !!meta && ctx.apps.includes(cross.id);
@@ -1961,6 +1978,8 @@ const Etherscape = (() => {
             } else if (cross.type === 'tape') {
                 system.openApp('mediaplayer');
                 if (typeof MediaPlayerView !== 'undefined') MediaPlayerView.loadTape(cross.id, true);
+            } else if (cross.type === 'reel') {
+                if (typeof Footage !== 'undefined') Footage.open(cross.id);
             } else if (cross.type === 'app') {
                 system.openApp(cross.id);
             }
