@@ -32,3 +32,27 @@ The motion prompts follow the beat lists in `MediaCatalog` (`js/media.js`, the `
 field). Each prompt opens with a pixel-art style declaration and hard negatives, and
 ends with a constraints tail: no text, no faces, symmetry, and a locked camera for
 loops.
+
+## Training tapes
+
+Generated 2026-10-02 in Krea for `docs/VISUAL_UPGRADE_PLAN.md` §3 and §7 (the shot list).
+The pipeline is the one above, with three differences:
+
+- **The Instructor is locked first.** `key__tape__instructor-sheet.webp` is a Nano Banana
+  Pro character sheet (2K, 16:9: front, three-quarter, presenting, pointing) made from the
+  approved Seraph keyframe and the engine-core probe. It is the reference for every shot
+  the Instructor appears in. The face is a smooth iron mask: Seedance refuses human faces.
+- **Keyframes are 4:3-safe.** Each is the §1 style block plus *"VHS training-video still,
+  4:3-safe composition (keep the action in the centre 75% width)"*, no text. Shots the plan
+  marks as reused (T2-S2 from V6, T4-S5 from V2) start from that reel's keyframe instead.
+- **Encoding** is `tools/encode_reel.sh <raw> <stem> <poster> 960 720`, the centre 4:3 of
+  the 16:9 render. Where a file came out over the 600 KB tape budget, both codecs were
+  re-encoded with the same filters at a higher CRF (the VHS look forgives it).
+
+| Stem | Keyframe | Duration | Krea raw render |
+|---|---|---|---|
+| `tape__t2__shot2__720` | `key__first-seraph.webp` (V6, reused) | 8s (slot 8s) | https://app-uploads.krea.ai/public/3ea1f396-d3f2-4c59-9214-25239abe6a71-video.mp4 |
+
+Keyframes approved but not yet animated (the Krea balance ran out): `key__tape__t1__shot2.webp`
+to `key__tape__t1__shot6.webp`. The remaining 28 reels fall back to their slides until
+they are made.

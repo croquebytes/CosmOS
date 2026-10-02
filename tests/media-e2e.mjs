@@ -486,15 +486,21 @@ try {
         watch(p);
         await p.goto(`${baseUrl}/?testMode=1`, { waitUntil: 'domcontentloaded' });
         const report = await p.evaluate(async () => {
-            const stems = [
-                ...Object.values(MediaCatalog.scenes).map((s) => s.webm),
-                ...Object.values(MediaCatalog.loops).map((l) => l.webm),
+            /* Each kind has its own contract (docs/VISUAL_UPGRADE_PLAN.md §7):
+               cinematics and dialog loops are 16:9, tape shots are 4:3 and
+               must run at least as long as the shot they fill. */
+            const reels = [
+                ...Object.values(MediaCatalog.scenes).map((s) => ({ url: s.webm, kind: 'cine', minDur: 3 })),
+                ...Object.values(MediaCatalog.loops).map((l) => ({ url: l.webm, kind: 'loop', minDur: 3 })),
+                ...MediaCatalog.tapes.flatMap((t) => t.shots.filter((s) => s.video)
+                    .map((s) => ({ url: s.video.webm, kind: 'tape', minDur: s.dur }))),
             ];
             const out = [];
-            for (const url of stems) {
+            for (const reel of reels) {
+                const { url } = reel;
                 const head = await fetch(url, { method: 'HEAD', cache: 'no-cache' });
                 const type = head.headers.get('content-type') || '';
-                if (!/^video\//.test(type)) { out.push({ url, installed: false }); continue; }
+                if (!/^video\//.test(type)) { out.push({ ...reel, installed: false }); continue; }
                 const v = document.createElement('video');
                 v.muted = true; v.preload = 'metadata'; v.src = url;
                 const meta = await new Promise((res) => {
@@ -502,18 +508,24 @@ try {
                     v.onerror = () => res(null);
                     setTimeout(() => res(null), 8000);
                 });
-                out.push({ url, installed: true, meta });
+                out.push({ ...reel, installed: true, meta });
             }
             return out;
         });
         const installed = report.filter((r) => r.installed);
         for (const r of installed) {
             assert.ok(r.meta, `${r.url} is installed but does not decode`);
-            assert.ok(r.meta.d >= 3, `${r.url} is ${r.meta.d}s long`);
-            assert.ok(r.meta.w >= 960 && r.meta.h >= 540 && Math.abs(r.meta.w / r.meta.h - 16 / 9) < 0.02,
-                `${r.url} is ${r.meta.w}x${r.meta.h}, not 16:9 at the contract size`);
+            assert.ok(r.meta.d >= r.minDur - 0.05, `${r.url} is ${r.meta.d}s long, shorter than its ${r.minDur}s slot`);
+            if (r.kind === 'tape') {
+                assert.ok(r.meta.w >= 960 && r.meta.h >= 720 && Math.abs(r.meta.w / r.meta.h - 4 / 3) < 0.02,
+                    `${r.url} is ${r.meta.w}x${r.meta.h}, not 4:3 at the tape contract size`);
+            } else {
+                assert.ok(r.meta.w >= 960 && r.meta.h >= 540 && Math.abs(r.meta.w / r.meta.h - 16 / 9) < 0.02,
+                    `${r.url} is ${r.meta.w}x${r.meta.h}, not 16:9 at the contract size`);
+            }
         }
-        step(`installed reels decode at the contract size (${installed.length} of ${report.length} installed)`);
+        const count = (kind) => `${installed.filter((r) => r.kind === kind).length}/${report.filter((r) => r.kind === kind).length}`;
+        step(`installed reels decode at the contract size (cinematics ${count('cine')}, loops ${count('loop')}, tape shots ${count('tape')})`);
         await ctx.close();
     }
 
