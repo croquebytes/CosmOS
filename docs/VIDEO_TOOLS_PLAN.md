@@ -79,3 +79,44 @@ loop test, quoted once its price is visible.
   master upscales to the contract size.
 - **Decode test:** `tests/media-e2e.mjs` checks that installed reels decode at their
   size, whatever model made them.
+
+## Test result: Seedance 2.0 Mini, 480p, 4 s on T2 shot 2 (2026-10-02)
+
+The one approved job. **Verdict (my read; yours decides): not suitable for tape
+shots in this style.**
+
+| | |
+|---|---|
+| Job | `5b11edba-3287-4c0d-82e2-4adca275b4f2`, `bytedance/seedance-2-mini`, completed in about 3.5 min |
+| Input | `start_image` = the SERAPH (V6) keyframe, 16:9, `duration` 4, `resolution` 480p, `seed` 20261002; no enhance, no upscale; the prompt frame from `docs/krea-resume/tapes-shotplan.md` for T2 shot 2, compressed to 4 s |
+| Result | 864x496, 24 fps, 4.04 s, 4.2 MB raw master (with an audio track the game would drop) |
+| Cost | **Not visible.** No Krea video schema exposes a price and there is no balance tool, so the units spent were not read. The estimate quoted before the job was up to ~250 units. |
+| Compared with | the shipped T2 shot 2 (Seedance 2.5, 720p, 8 s, about 1,370 units) |
+
+What the comparison showed (contact sheet at 0 / 1 / 2 / 3 / 3.9 s, and native-resolution crops of
+the same wing region):
+
+- **It did not keep `@Image1`'s design.** The shipped reel keeps the keyframe's brass
+  organ-pipe feathers with verdigris trim. The Mini render turned them into naturalistic,
+  softly shaded feathers: a different object, and a smoother, more painterly look than the
+  hi-bit pixel art. This was the exact thing the prompt ("keep its design, framing and
+  pixel rendering exactly") asked it to hold.
+- **Pace.** The whole unfold finished inside about 2 s and then held; the shipped reel is
+  nearly still for its first 4 s.
+- **Framing.** Fully spread, the wings run past the frame edges, so the game's 4:3 crop
+  would cut them.
+- The pose also changed (arms outstretched) though the prompt did not ask for it.
+
+So the cheaper tier saved money on a result that would have to be thrown away. It does not
+settle the other models, and **no direction is approved**. Candidates for a next test, each
+a new job that needs its own quote and your OK:
+
+1. **Seedance 2.5 with `draft: true`** (a 480p draft "billed at the 480p rate"), at
+   `aspect_ratio: "4:3"` so it is generated in the game's own crop. The family that kept
+   the design, at the cheaper rate. The 480p rate for 2.5 is not visible either.
+2. **Seedance 2.0 Fast, 480p, 4 s**, the same job, to see whether Mini specifically was the problem.
+3. **Spend nothing on the tape shots**: keep the fallback slides (the CSS camera on a still)
+   and reserve video for the five recovered reels and four Omniscient addresses.
+
+Local artifacts (gitignored): `output/test__t2s2__seedance2mini-480p.mp4` and a side-by-side
+page, `output/video-compare-t2s2.html` (served by the dev server).
