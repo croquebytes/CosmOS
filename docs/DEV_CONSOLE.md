@@ -120,15 +120,18 @@ leaves `js/devtools.js` out of `dist/` and its `<script>` tag out of `index.html
 `dist/` is **committed**, so rebuild it with `build:release` before committing it;
 a plain `npm run build` includes the console (useful with `npm run preview`).
 `tests/release-build.mjs` builds both, checks the release output carries no
-trace of the console, and checks that the tracked `dist/` loads none.
+trace of the console, checks that the tracked `dist/` loads none, and checks that
+closing the **dev server** writes nothing into `dist/` (the copy plugin is
+`apply: 'build'`; it once ran on dev-server shutdown too, so a config edit or
+Ctrl-C copied `js/devtools.js` into the committed `dist/`).
 
 ## Tests
 
 | Suite | What it holds |
 |---|---|
 | `tests/devtools.mjs` (vm, no DOM) | Each action's state effect, the gate, the taint flag, snapshot and text round-trips, URL parameters. |
-| `tests/devtools-e2e.mjs` (browser) | The section on localhost, absent on a release-like page, `?dev=1` on a non-local host; unlock-all shows every icon; a seen cinematic replays; ships, time, incidents, NULL.OPERATOR; snapshots through a reload; a link reproduces a state; keyboard rules; no idle cost. |
-| `tests/release-build.mjs` | A release `dist/` contains no `devtools.js`. |
+| `tests/devtools-e2e.mjs` (browser) | The section on localhost, absent on a release-like page, `?dev=1` on a non-local host; unlock-all shows every icon; a seen cinematic replays; ships, time, incidents, NULL.OPERATOR; snapshots through a reload; a link reproduces a state; keyboard rules; no idle cost; every text in the open panel clears WCAG AA. |
+| `tests/release-build.mjs` | A release `dist/` contains no `devtools.js`, the tracked `dist/` loads none, and a dev-server shutdown leaves `dist/` alone. |
 
 The simulator and the other vm suites never load `js/devtools.js`, and
 `npm run test:golden` still prints "Economy unchanged".

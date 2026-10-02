@@ -18,6 +18,10 @@
  *      work), and index.html loads it.
  *   4. The committed dist/ — it is tracked — carries no devtools.js, so a
  *      `git add dist` after a plain build cannot publish the console.
+ *   5. Closing the DEV server writes nothing into dist/. The copy plugin's
+ *      closeBundle also fires when the dev server shuts down (a config edit
+ *      restarts it), and it once copied js/ — devtools.js included — into the
+ *      tracked dist/ every time.
  */
 
 import assert from 'node:assert/strict';
@@ -26,6 +30,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } 
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createServer } from 'vite';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const VITE = resolve(ROOT, 'node_modules/vite/bin/vite.js');
@@ -48,6 +53,29 @@ function build(mode) {
     execFileSync(process.execPath, args, { cwd: ROOT, stdio: 'pipe' });
     return out;
 }
+
+/* Start the dev server in middleware mode (no port, no watcher) and close it,
+   then say what that did to dist/. `configFile` is swappable so the check can
+   be shown to fail against a config that still copies on close. */
+async function closeDevServer(configFile) {
+    const cache = mkdtempSync(join(tmpdir(), 'cosmos-vite-cache-'));
+    scratch.push(cache);
+    const server = await createServer({
+        root: ROOT, configFile, cacheDir: cache, logLevel: 'silent', appType: 'custom',
+        server: { middlewareMode: true, watch: null },
+        optimizeDeps: { noDiscovery: true, include: [] },
+    });
+    await server.close();
+}
+
+const distStamp = () => {
+    const dir = join(ROOT, 'dist/js');
+    return existsSync(dir)
+        ? Object.fromEntries(readdirSync(dir).map((f) => [f, statSync(join(dir, f)).mtimeMs]))
+        : {};
+};
+
+export { closeDevServer, distStamp };
 
 const scratch = [];
 try {
@@ -91,6 +119,11 @@ try {
     const staged = execFileSync('git', ['ls-files', 'dist/index.html'], { cwd: ROOT, encoding: 'utf8' }).trim();
     if (staged) assert.ok(!/devtools/i.test(committedHtml), 'the tracked dist/index.html loads devtools.js — rebuild with npm run build:release');
     step('the tracked dist/ carries no devtools.js and loads none');
+
+    const before = distStamp();
+    await closeDevServer(join(ROOT, 'vite.config.js'));
+    assert.deepEqual(distStamp(), before, 'closing the dev server wrote into dist/ (the copy plugin must be apply: "build")');
+    step('closing the dev server writes nothing into dist/');
 
     console.log(`\nRelease build: ${passed} checks passed.`);
 } finally {
