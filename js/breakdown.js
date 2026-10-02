@@ -69,6 +69,16 @@ const Breakdown = {
         document.addEventListener('click', (e) => this.onClick(e));
         document.addEventListener('keydown', (e) => this.onKeyDown(e));
         window.addEventListener('resize', () => this.position());
+        // A pinned sheet in a background tab has nobody to explain anything
+        // to: its 4Hz refresh rests, and catches up the moment it is seen.
+        document.addEventListener('visibilitychange', () => {
+            if (!this.anchor) return;
+            clearInterval(this.timer);
+            this.timer = null;
+            if (document.hidden) return;
+            this.refresh(false);
+            if (this.anchor) this.timer = setInterval(() => this.refresh(false), this.REFRESH_MS);
+        });
         // Capture: a scrolling window body moves the anchor without moving
         // the page.
         document.addEventListener('scroll', (e) => {

@@ -950,12 +950,14 @@ const PatienceView = {
         this.syncDealer();
         PatienceDealer.onOpen();
 
-        clearInterval(this.refreshTimer);
+        this.stopRefresh();
         // Mulligan prices follow the Praise cap, and Grace recovers in real
         // time, so the controls live on a slow tick while the window is up.
-        // The dealer keeps her own clock on the same tick.
-        this.refreshTimer = setInterval(() => {
-            if (!this.root()) { clearInterval(this.refreshTimer); this.refreshTimer = null; return; }
+        // The dealer keeps her own clock on the same tick. It is the shared
+        // 1 Hz clock (js/heartbeat.js), which rests in a hidden tab and beats
+        // once on return, so her clock never shows a gap nobody could see.
+        const refresh = () => {
+            if (!this.root()) { this.stopRefresh(); return; }
             this.renderControls();
             this.renderStatus();
             PatienceDealer.tick(Date.now(), {
@@ -963,14 +965,21 @@ const PatienceView = {
                     && system.getTopWindowId() === PatienceApp.APP_ID,
                 inRound: !!PatienceApp.current() && !this.banner,
             });
-        }, 1000);
+        };
+        if (typeof Heartbeat !== 'undefined') this.refreshTimer = { off: Heartbeat.every(refresh) };
+        else this.refreshTimer = setInterval(refresh, 1000);
+    },
+
+    stopRefresh() {
+        if (this.refreshTimer && typeof this.refreshTimer.off === 'function') this.refreshTimer.off();
+        else clearInterval(this.refreshTimer);
+        this.refreshTimer = null;
     },
 
     /* system.closeApp calls this after the window is gone, so her parting
        line has nowhere to land but the engine log. */
     close() {
-        clearInterval(this.refreshTimer);
-        this.refreshTimer = null;
+        this.stopRefresh();
         clearTimeout(this.staleTimer);
         this.staleTimer = null;
         PatienceDealer.onClose();

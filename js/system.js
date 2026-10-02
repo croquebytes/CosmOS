@@ -58,7 +58,10 @@ const system = {
         }), bootDelay);
 
         this.updateClock();
-        setInterval(() => this.updateClock(), 1000);
+        // The shared 1 Hz clock (js/heartbeat.js): it rests in a hidden tab,
+        // where nobody can read the taskbar, and beats once on return.
+        if (typeof Heartbeat !== 'undefined') Heartbeat.every(() => this.updateClock());
+        else setInterval(() => this.updateClock(), 1000);
         this.initKeyboardShortcuts();
         this.initDesktopIcons();
         this.renderStartMenu();

@@ -1191,7 +1191,25 @@ const game = {
            they were not present for. */
         const attended = deltaSeconds <= this.ATTENDED_GAP_SECONDS;
         this.tick(deltaSeconds, now, { attended });
-        requestAnimationFrame(() => this.loop());
+        this.nextFrame();
+    },
+
+    /* The loop rides requestAnimationFrame because a background tab parks
+       it — that is what makes a long absence an unattended gap, above. But
+       only the canvases and the stabilisation needle need every frame
+       (ui.needsFrames); with every window shut, the Engine's text panels
+       already refresh at PANEL_INTERVAL, and production is linear in the
+       delta, so ticking sixty times a second bought nothing but sixty
+       frames a second of an idle desktop. Between frames it now waits a
+       panel interval — and still asks for a frame to tick in, so a hidden
+       tab parks it exactly as before. */
+    nextFrame() {
+        const busy = typeof ui === 'undefined' || typeof ui.needsFrames !== 'function' || ui.needsFrames();
+        if (busy) {
+            requestAnimationFrame(() => this.loop());
+            return;
+        }
+        setTimeout(() => requestAnimationFrame(() => this.loop()), ui.PANEL_INTERVAL || 100);
     },
 
     manualPraise(event) {

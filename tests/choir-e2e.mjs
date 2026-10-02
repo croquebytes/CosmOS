@@ -104,7 +104,9 @@ async function scenario({ width, height, tag }) {
     step(`[${tag}] the feed renders the release, the welcome and the reactions`);
 
     /* ── Bless ── */
-    const target = postsList.filter({ has: page.locator('.ch-bless') }).first();
+    // Pinned by id: a post arriving at the top would otherwise become .first().
+    const targetId = await postsList.filter({ has: page.locator('.ch-bless') }).first().getAttribute('data-id');
+    const target = win.locator(`.ch-post[data-id="${targetId}"]`);
     const bless = target.locator('.ch-bless');
     const before = Number((await bless.locator('.ch-hal').innerText()).match(/\d+/)[0]);
     await bless.click();
@@ -127,6 +129,13 @@ async function scenario({ width, height, tag }) {
 
     /* ── A post arriving while the window is open takes nothing ── */
     await bless.focus();
+    /* Let the watch catch up with the achievements the ship and the
+       blessing already earned. It posts a few per pass and watermarks the
+       rest (ACH_PER_PASS), so an unlock that lands in the same pass as four
+       others can be the one dropped — a race this test used to lose about
+       half the time at 390px, where nothing above waits a second. */
+    await page.waitForFunction(() => Object.entries(State.achievements || {})
+        .filter(([, a]) => a && a.unlocked).every(([id]) => State.choir.wm.ach.includes(id)), null, { timeout: 4000 });
     const countBefore = await postsList.count();
     await page.evaluate(() => game.unlockAchievement('ACH-S-001'));
     await present();

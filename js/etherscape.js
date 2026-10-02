@@ -1756,11 +1756,25 @@ const Etherscape = (() => {
             this.index = -1;
             this.navigate(start);
             if (!this.refreshTimer) {
-                this.refreshTimer = setInterval(() => {
-                    if (!this.root()) { clearInterval(this.refreshTimer); this.refreshTimer = 0; return; }
+                // Every fifth beat of the shared clock, which rests in a hidden tab.
+                const refresh = () => {
+                    if (!this.root()) { this.stopRefresh(); return; }
                     if (this.current === 'sector://7g/status' && !document.hidden) this.render(this.current, { quiet: true });
-                }, 5000);
+                };
+                if (typeof Heartbeat !== 'undefined') {
+                    let beats = 0;
+                    const off = Heartbeat.every(() => { if (++beats % 5 === 0 || !this.root()) refresh(); });
+                    this.refreshTimer = { off };
+                } else {
+                    this.refreshTimer = setInterval(refresh, 5000);
+                }
             }
+        },
+
+        stopRefresh() {
+            if (this.refreshTimer && typeof this.refreshTimer.off === 'function') this.refreshTimer.off();
+            else clearInterval(this.refreshTimer);
+            this.refreshTimer = 0;
         },
 
         build(el) {
@@ -2106,7 +2120,9 @@ const Etherscape = (() => {
     };
 
     if (hasDOM) {
-        setInterval(() => { try { tick(); } catch (err) { /* the watch never breaks the page */ } }, 1000);
+        // On the desktop's shared 1 Hz clock (js/heartbeat.js), which rests in a hidden tab.
+        const watch = () => { try { tick(); } catch (err) { /* the watch never breaks the page */ } };
+        if (typeof Heartbeat !== 'undefined') Heartbeat.every(watch); else setInterval(watch, 1000);
     }
 
     return {

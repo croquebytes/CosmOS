@@ -55,6 +55,15 @@ const ui = {
        removed when this landed. */
     PANEL_INTERVAL: 100,
 
+    /* Does anything on screen need the loop at frame rate? The core wells
+       (renderCoreView advances per call) and a stabilisation ritual's needle.
+       Everything else is text on the panel tick. See game.nextFrame. */
+    needsFrames() {
+        if (document.getElementById('core-canvas') || document.getElementById('void-core-canvas')) return true;
+        if (this.incidentsAvailable() && Incidents.state().open.some((inc) => inc.labour)) return true;
+        return false;
+    },
+
     update(now = Date.now(), force = false) {
         this.animateCore();
         this.animateVoidCore();
@@ -174,22 +183,30 @@ const ui = {
         const milestoneEl = document.getElementById('operator-next-milestone');
         const sectorEl = document.getElementById('operator-sector-status');
 
-        objectiveEl.innerText = directive?.title || 'Awaiting divine telemetry…';
+        /* This panel sits on the desktop, under every window, and is an
+           aria-live region. Rewriting it ten times a second whether or not
+           anything changed was the one thing an idle desktop with every
+           window shut still laid out at 10Hz — and a live region that is
+           rewritten is a live region that is re-announced. Write on change. */
+        this.setText(objectiveEl, directive?.title || 'Awaiting divine telemetry…');
         objectiveEl.classList.toggle('complete', !!progress.completed);
-        if (fillEl) fillEl.style.width = `${Math.round((progress.ratio || 0) * 100)}%`;
-        if (progressEl) {
-            progressEl.innerText = progress.completed
-                ? `${this.formatNumber(progress.current)} / ${this.formatNumber(progress.target)} — REWARD READY`
-                : `${this.formatNumber(progress.current)} / ${this.formatNumber(progress.target)}`;
+        if (fillEl) {
+            const width = `${Math.round((progress.ratio || 0) * 100)}%`;
+            if (fillEl.style.width !== width) fillEl.style.width = width;
         }
+        this.setText(progressEl, progress.completed
+            ? `${this.formatNumber(progress.current)} / ${this.formatNumber(progress.target)} — REWARD READY`
+            : `${this.formatNumber(progress.current)} / ${this.formatNumber(progress.target)}`);
 
         const milestone = this.getNextMilestone();
         if (milestoneEl) {
-            milestoneEl.innerHTML = `<strong>${milestone.label}</strong><span>${milestone.detail}</span>`;
+            const html = `<strong>${milestone.label}</strong><span>${milestone.detail}</span>`;
+            if (milestoneEl.dataset.html !== html) {
+                milestoneEl.dataset.html = html;
+                milestoneEl.innerHTML = html;
+            }
         }
-        if (sectorEl) {
-            sectorEl.innerText = State.dimensions.void.unlocked ? 'SECTOR 7G: CONTAINED' : 'SECTOR 7G: UNSTABLE';
-        }
+        this.setText(sectorEl, State.dimensions.void.unlocked ? 'SECTOR 7G: CONTAINED' : 'SECTOR 7G: UNSTABLE');
     },
 
     showOperatorBriefing(force = false) {
@@ -682,7 +699,7 @@ const ui = {
         // An archived replay's award is not a number that moves: it is "no".
         if (awardEl && State.reality?.build?.channel !== 'archived') {
             const award = this.formatNumber(game.getPrestigeAward());
-            if (awardEl.innerText !== award) awardEl.innerText = award;
+            this.setText(awardEl, award);
         }
 
         const slot = document.getElementById('ship-cascade-slot');
@@ -1785,7 +1802,7 @@ const ui = {
             if (this.shouldAnimateValue('praise', previous, current)) {
                 this.animateNumberChange(p, previous, current);
             } else {
-                p.innerText = `${this.formatNumber(current)} / ${this.formatNumber(cap)}`;
+                this.setText(p, `${this.formatNumber(current)} / ${this.formatNumber(cap)}`);
             }
 
             // Add warning styling if near cap
@@ -1803,7 +1820,7 @@ const ui = {
         if (o) {
             const current = Math.floor(State.resources.offerings);
             const cap = State.resourceCaps.offerings;
-            o.innerText = `${this.formatNumber(current)} / ${this.formatNumber(cap)}`;
+            this.setText(o, `${this.formatNumber(current)} / ${this.formatNumber(cap)}`);
 
             // Add warning styling if near cap
             const parent = o.closest('.stat-box');
@@ -1820,7 +1837,7 @@ const ui = {
         if (s) {
             const current = Math.floor(State.resources.souls);
             const cap = State.resourceCaps.souls;
-            s.innerText = `${this.formatNumber(current)} / ${this.formatNumber(cap)}`;
+            this.setText(s, `${this.formatNumber(current)} / ${this.formatNumber(cap)}`);
 
             // Add warning styling if near cap
             const parent = s.closest('.stat-box');
@@ -1835,7 +1852,7 @@ const ui = {
             this.previousValues.souls = current;
         }
         if (u) {
-            u.innerText = this.formatNumber(Math.floor((Date.now() - State.startTime) / 1000)) + "s";
+            this.setText(u, this.formatNumber(Math.floor((Date.now() - State.startTime) / 1000)) + "s");
         }
         /* One source of truth for rates.
 
@@ -1846,9 +1863,9 @@ const ui = {
            State.overclockPotency. The number on screen was the one number in
            the game the player could actually read, and it was wrong. */
         const rates = game.getProductionRates();
-        if (pRate) pRate.innerText = this.formatNumber(rates.praise, 1);
-        if (oRate) oRate.innerText = this.formatNumber(rates.offerings, 1);
-        if (sRate) sRate.innerText = this.formatNumber(rates.souls, 1);
+        this.setText(pRate, this.formatNumber(rates.praise, 1));
+        this.setText(oRate, this.formatNumber(rates.offerings, 1));
+        this.setText(sRate, this.formatNumber(rates.souls, 1));
     },
 
     updateLoopPanels() {
@@ -1864,10 +1881,10 @@ const ui = {
         const streakBestEl = document.getElementById('loop-best-streak');
         const streakFillEl = document.getElementById('loop-streak-fill');
 
-        if (streakCountEl) streakCountEl.innerText = this.formatNumber(streakCount);
-        if (streakMultiEl) streakMultiEl.innerText = `${streakMultiplier.toFixed(2)}×`;
-        if (streakBestEl) streakBestEl.innerText = this.formatNumber(loops.bestMiracleStreak || 0);
-        if (streakFillEl) streakFillEl.style.width = `${Math.min(100, streakCount * 2.5)}%`;
+        this.setText(streakCountEl, this.formatNumber(streakCount));
+        this.setText(streakMultiEl, `${streakMultiplier.toFixed(2)}×`);
+        this.setText(streakBestEl, this.formatNumber(loops.bestMiracleStreak || 0));
+        if (streakFillEl) this.setStyle(streakFillEl, 'width', `${Math.min(100, streakCount * 2.5)}%`);
 
         const overclock = loops.overclock || {};
         const overclockCharge = overclock.charge || 0;
@@ -1880,29 +1897,29 @@ const ui = {
 
         if (overclockStatusEl) {
             if (overclockActive) {
-                overclockStatusEl.innerText = `Active (${overclockRemaining}s)`;
+                this.setText(overclockStatusEl, `Active (${overclockRemaining}s)`);
             } else if (overclockCharge >= 100) {
-                overclockStatusEl.innerText = 'Ready to Trigger';
+                this.setText(overclockStatusEl, 'Ready to Trigger');
             } else {
-                overclockStatusEl.innerText = `Charging ${Math.floor(overclockCharge)}%`;
+                this.setText(overclockStatusEl, `Charging ${Math.floor(overclockCharge)}%`);
             }
         }
 
         if (overclockFillEl) {
             const fillValue = overclockActive ? 100 : overclockCharge;
-            overclockFillEl.style.width = `${Math.max(0, Math.min(100, fillValue))}%`;
+            this.setStyle(overclockFillEl, 'width', `${Math.max(0, Math.min(100, fillValue))}%`);
         }
 
         if (overclockBtn) {
             if (overclockActive) {
-                overclockBtn.innerText = `Overclock Active (${overclockRemaining}s)`;
-                overclockBtn.disabled = true;
+                this.setText(overclockBtn, `Overclock Active (${overclockRemaining}s)`);
+                this.setDisabled(overclockBtn, true);
             } else if (overclockCharge >= 100) {
-                overclockBtn.innerText = 'Trigger Overclock';
-                overclockBtn.disabled = false;
+                this.setText(overclockBtn, 'Trigger Overclock');
+                this.setDisabled(overclockBtn, false);
             } else {
-                overclockBtn.innerText = `Trigger Overclock (${Math.floor(overclockCharge)}%)`;
-                overclockBtn.disabled = true;
+                this.setText(overclockBtn, `Trigger Overclock (${Math.floor(overclockCharge)}%)`);
+                this.setDisabled(overclockBtn, true);
             }
         }
 
@@ -1916,42 +1933,42 @@ const ui = {
         const rerollBtn = document.getElementById('btn-reroll-directive');
 
         if (directiveCompletedEl) {
-            directiveCompletedEl.innerText = this.formatNumber(loops.directives?.completed || 0);
+            this.setText(directiveCompletedEl, this.formatNumber(loops.directives?.completed || 0));
         }
 
         if (!directive) {
-            if (directiveTitleEl) directiveTitleEl.innerText = 'Calibrating directive feed...';
-            if (directiveProgressTextEl) directiveProgressTextEl.innerText = '0 / 0';
-            if (directiveFillEl) directiveFillEl.style.width = '0%';
-            if (directiveRewardEl) directiveRewardEl.innerText = 'Reward: --';
-            if (claimBtn) claimBtn.disabled = true;
-            if (rerollBtn) rerollBtn.disabled = true;
+            this.setText(directiveTitleEl, 'Calibrating directive feed...');
+            this.setText(directiveProgressTextEl, '0 / 0');
+            if (directiveFillEl) this.setStyle(directiveFillEl, 'width', '0%');
+            this.setText(directiveRewardEl, 'Reward: --');
+            if (claimBtn) this.setDisabled(claimBtn, true);
+            if (rerollBtn) this.setDisabled(rerollBtn, true);
         } else {
             const progress = (typeof game !== 'undefined' && typeof game.getDirectiveProgress === 'function')
                 ? game.getDirectiveProgress(directive)
                 : { current: 0, target: directive.target || 1, ratio: 0, completed: !!directive.completed };
 
-            if (directiveTitleEl) directiveTitleEl.innerText = directive.title || 'Directive';
+            this.setText(directiveTitleEl, directive.title || 'Directive');
             if (directiveProgressTextEl) {
-                directiveProgressTextEl.innerText = `${this.formatNumber(progress.current)} / ${this.formatNumber(progress.target)}`;
+                this.setText(directiveProgressTextEl, `${this.formatNumber(progress.current)} / ${this.formatNumber(progress.target)}`);
             }
             if (directiveFillEl) {
-                directiveFillEl.style.width = `${Math.max(0, Math.min(100, (progress.ratio || 0) * 100))}%`;
+                this.setStyle(directiveFillEl, 'width', `${Math.max(0, Math.min(100, (progress.ratio || 0) * 100))}%`);
             }
             if (directiveRewardEl) {
-                directiveRewardEl.innerText = (typeof game !== 'undefined' && typeof game.getDirectiveRewardText === 'function')
+                this.setText(directiveRewardEl, (typeof game !== 'undefined' && typeof game.getDirectiveRewardText === 'function')
                     ? game.getDirectiveRewardText(directive)
-                    : 'Reward: --';
+                    : 'Reward: --');
             }
 
-            if (claimBtn) claimBtn.disabled = !progress.completed;
-            if (rerollBtn) rerollBtn.disabled = overclockCharge < 10 || progress.completed;
+            if (claimBtn) this.setDisabled(claimBtn, !progress.completed);
+            if (rerollBtn) this.setDisabled(rerollBtn, overclockCharge < 10 || progress.completed);
         }
 
         const chainEl = document.getElementById('loop-event-chain');
         const bestChainEl = document.getElementById('loop-best-event-chain');
-        if (chainEl) chainEl.innerText = this.formatNumber(loops.divineEventChain || 0);
-        if (bestChainEl) bestChainEl.innerText = this.formatNumber(loops.bestDivineEventChain || 0);
+        this.setText(chainEl, this.formatNumber(loops.divineEventChain || 0));
+        this.setText(bestChainEl, this.formatNumber(loops.bestDivineEventChain || 0));
     },
 
     /* True only for a jump that is large relative to the current rate AND not
@@ -2614,6 +2631,16 @@ const ui = {
         if (node.textContent !== value) node.textContent = value;
     },
 
+    // The same for a reflected property and an inline style: re-setting
+    // `disabled` to what it already is still re-sets the attribute.
+    setDisabled(node, value) {
+        if (node && node.disabled !== !!value) node.disabled = !!value;
+    },
+
+    setStyle(node, prop, value) {
+        if (node && node.style[prop] !== value) node.style[prop] = value;
+    },
+
     renderAutomatons(containerId = 'automaton-list', pool = 'primordial') {
         const container = document.getElementById(containerId);
         if (!container) return;
@@ -2818,17 +2845,17 @@ const ui = {
             const skill = State.skills.divineIntervention;
             if (skill.active && now < skill.endsAt) {
                 const remaining = Math.ceil((skill.endsAt - now) / 1000);
-                diButton.innerText = `Divine Intervention (Active: ${remaining}s)`;
-                diButton.disabled = true;
+                this.setText(diButton, `Divine Intervention (Active: ${remaining}s)`);
+                this.setDisabled(diButton, true);
                 diButton.classList.add('skill-active');
             } else if (now < skill.cooldownEndsAt) {
                 const remaining = Math.ceil((skill.cooldownEndsAt - now) / 1000);
-                diButton.innerText = `Divine Intervention (Cooldown: ${remaining}s)`;
-                diButton.disabled = true;
+                this.setText(diButton, `Divine Intervention (Cooldown: ${remaining}s)`);
+                this.setDisabled(diButton, true);
                 diButton.classList.remove('skill-active');
             } else {
-                diButton.innerText = `Divine Intervention (2× prod, 10m)`;
-                diButton.disabled = false;
+                this.setText(diButton, `Divine Intervention (2× prod, 10m)`);
+                this.setDisabled(diButton, false);
                 diButton.classList.remove('skill-active');
             }
         }
@@ -2839,11 +2866,11 @@ const ui = {
             const skill = State.skills.temporalRift;
             if (now < skill.cooldownEndsAt) {
                 const remaining = Math.ceil((skill.cooldownEndsAt - now) / 1000);
-                trButton.innerText = `Temporal Rift (Cooldown: ${remaining}s)`;
-                trButton.disabled = true;
+                this.setText(trButton, `Temporal Rift (Cooldown: ${remaining}s)`);
+                this.setDisabled(trButton, true);
             } else {
-                trButton.innerText = `Temporal Rift (Simulate 1hr)`;
-                trButton.disabled = false;
+                this.setText(trButton, `Temporal Rift (Simulate 1hr)`);
+                this.setDisabled(trButton, false);
             }
         }
     },
@@ -3203,19 +3230,19 @@ const ui = {
             const praiseRateEl = document.getElementById('dim-val-praise-rate');
             const soulRateEl = document.getElementById('dim-val-soul-rate');
 
-            if (praiseEl) praiseEl.innerText = `${this.formatNumber(Math.floor(State.resources.praise))} / ${this.formatNumber(State.resourceCaps.praise)}`;
-            if (offeringsEl) offeringsEl.innerText = `${this.formatNumber(Math.floor(State.resources.offerings))} / ${this.formatNumber(State.resourceCaps.offerings)}`;
-            if (soulsEl) soulsEl.innerText = `${this.formatNumber(Math.floor(State.resources.souls))} / ${this.formatNumber(State.resourceCaps.souls)}`;
+            this.setText(praiseEl, `${this.formatNumber(Math.floor(State.resources.praise))} / ${this.formatNumber(State.resourceCaps.praise)}`);
+            this.setText(offeringsEl, `${this.formatNumber(Math.floor(State.resources.offerings))} / ${this.formatNumber(State.resourceCaps.offerings)}`);
+            this.setText(soulsEl, `${this.formatNumber(Math.floor(State.resources.souls))} / ${this.formatNumber(State.resourceCaps.souls)}`);
 
             // Second of the three divergent copies of the production formula.
             const primordialRates = game.getProductionRates();
             const praisePerSec = primordialRates.praise;
             const soulPerSec = primordialRates.souls;
 
-            if (praiseRateEl) praiseRateEl.innerText = this.formatNumber(praisePerSec, 1);
-            if (soulRateEl) soulRateEl.innerText = this.formatNumber(soulPerSec, 1);
+            this.setText(praiseRateEl, this.formatNumber(praisePerSec, 1));
+            this.setText(soulRateEl, this.formatNumber(soulPerSec, 1));
             const offeringRateEl = document.getElementById('dim-val-offering-rate');
-            if (offeringRateEl) offeringRateEl.innerText = this.formatNumber(primordialRates.offerings, 1);
+            this.setText(offeringRateEl, this.formatNumber(primordialRates.offerings, 1));
 
             // Update automaton counts
             const seraphCountEl = document.getElementById('dim-seraph-count');
@@ -3223,10 +3250,10 @@ const ui = {
             const seraphProdEl = document.getElementById('dim-seraph-prod');
             const cherubProdEl = document.getElementById('dim-cherub-prod');
 
-            if (seraphCountEl) seraphCountEl.innerText = this.formatNumber(State.automatons.seraphCount);
-            if (cherubCountEl) cherubCountEl.innerText = this.formatNumber(State.automatons.cherubCount);
-            if (seraphProdEl) seraphProdEl.innerText = this.formatNumber(praisePerSec, 1);
-            if (cherubProdEl) cherubProdEl.innerText = this.formatNumber(soulPerSec, 1);
+            this.setText(seraphCountEl, this.formatNumber(State.automatons.seraphCount));
+            this.setText(cherubCountEl, this.formatNumber(State.automatons.cherubCount));
+            this.setText(seraphProdEl, this.formatNumber(praisePerSec, 1));
+            this.setText(cherubProdEl, this.formatNumber(soulPerSec, 1));
 
         } else if (dim === 'void') {
             if (!State.dimensions.void.unlocked) return;
@@ -3240,19 +3267,19 @@ const ui = {
             const darknessRateEl = document.getElementById('dim-val-darkness-rate');
             const echoRateEl = document.getElementById('dim-val-echo-rate');
 
-            if (darknessEl) darknessEl.innerText = `${this.formatNumber(Math.floor(vd.resources.darkness))} / ${this.formatNumber(vd.resourceCaps.darkness)}`;
-            if (shadowsEl) shadowsEl.innerText = `${this.formatNumber(Math.floor(vd.resources.shadows))} / ${this.formatNumber(vd.resourceCaps.shadows)}`;
-            if (echoesEl) echoesEl.innerText = `${this.formatNumber(Math.floor(vd.resources.echoes))} / ${this.formatNumber(vd.resourceCaps.echoes)}`;
+            this.setText(darknessEl, `${this.formatNumber(Math.floor(vd.resources.darkness))} / ${this.formatNumber(vd.resourceCaps.darkness)}`);
+            this.setText(shadowsEl, `${this.formatNumber(Math.floor(vd.resources.shadows))} / ${this.formatNumber(vd.resourceCaps.shadows)}`);
+            this.setText(echoesEl, `${this.formatNumber(Math.floor(vd.resources.echoes))} / ${this.formatNumber(vd.resourceCaps.echoes)}`);
 
             // Third of the three divergent copies.
             const voidRates = game.getProductionRates();
             const darknessPerSec = voidRates.darkness;
             const echoPerSec = voidRates.echoes;
 
-            if (darknessRateEl) darknessRateEl.innerText = this.formatNumber(darknessPerSec, 1);
-            if (echoRateEl) echoRateEl.innerText = this.formatNumber(echoPerSec, 1);
+            this.setText(darknessRateEl, this.formatNumber(darknessPerSec, 1));
+            this.setText(echoRateEl, this.formatNumber(echoPerSec, 1));
             const shadowRateEl = document.getElementById('dim-val-shadow-rate');
-            if (shadowRateEl) shadowRateEl.innerText = this.formatNumber(voidRates.shadows, 1);
+            this.setText(shadowRateEl, this.formatNumber(voidRates.shadows, 1));
 
             this.renderAutomatons('void-automaton-list', 'void');
             this.renderRepeatables('void-repeatable-list', 'void');
@@ -3264,10 +3291,10 @@ const ui = {
             const wraithProdEl = document.getElementById('dim-wraith-prod');
             const phantomProdEl = document.getElementById('dim-phantom-prod');
 
-            if (wraithCountEl) wraithCountEl.innerText = this.formatNumber(vd.automatons.wraithCount);
-            if (phantomCountEl) phantomCountEl.innerText = this.formatNumber(vd.automatons.phantomCount);
-            if (wraithProdEl) wraithProdEl.innerText = this.formatNumber(darknessPerSec, 1);
-            if (phantomProdEl) phantomProdEl.innerText = this.formatNumber(echoPerSec, 1);
+            this.setText(wraithCountEl, this.formatNumber(vd.automatons.wraithCount));
+            this.setText(phantomCountEl, this.formatNumber(vd.automatons.phantomCount));
+            this.setText(wraithProdEl, this.formatNumber(darknessPerSec, 1));
+            this.setText(phantomProdEl, this.formatNumber(echoPerSec, 1));
         }
     },
 
@@ -4091,7 +4118,7 @@ Title on file: ${esc(doc.endTitle)}</pre>
         const led = document.getElementById('tray-incident-led');
         if (led) {
             const lit = summary.open > 0;
-            led.hidden = !summary.everFiled;
+            if (led.hidden !== !summary.everFiled) led.hidden = !summary.everFiled;
             led.classList.toggle('is-lit', lit);
             led.classList.toggle('is-outage', lit && summary.worst === 1 && !summary.onHold);
             led.classList.toggle('is-held', lit && summary.onHold);
@@ -4106,12 +4133,12 @@ Title on file: ${esc(doc.endTitle)}</pre>
 
         const line = document.getElementById('operator-incidents');
         if (line) {
-            line.hidden = !summary.everFiled;
+            if (line.hidden !== !summary.everFiled) line.hidden = !summary.everFiled;
             const text = summary.open > 0
                 ? `${summary.open} ${summary.onHold ? 'HELD' : 'OPEN'} · WORST SEV-${summary.worst}`
                 : 'QUEUE CLEAR';
             const valueEl = line.querySelector('[data-role="count"]');
-            if (valueEl && valueEl.innerText !== text) valueEl.innerText = text;
+            this.setText(valueEl, text);
             line.classList.toggle('is-alarm', summary.open > 0 && !summary.onHold);
         }
 
@@ -4136,7 +4163,7 @@ Title on file: ${esc(doc.endTitle)}</pre>
         ])]);
         if (signature !== this.incidentSignature) {
             this.incidentSignature = signature;
-            host.hidden = !summary.everFiled;
+            if (host.hidden !== !summary.everFiled) host.hidden = !summary.everFiled;
             host.innerHTML = this.incidentQueueHtml(views, summary);
         }
 
@@ -4151,14 +4178,14 @@ Title on file: ${esc(doc.endTitle)}</pre>
                 : v.severity === 1
                     ? `OUTAGE — ${v.line} on backup · on-call rota contains it in ${this.formatClock(v.remaining)}`
                     : `Escalates to ${v.nextSeverity === 1 ? 'OUTAGE' : `SEV-${v.nextSeverity}`} in ${this.formatClock(v.remaining)}`;
-            if (clock && clock.innerText !== clockText) clock.innerText = clockText;
+            this.setText(clock, clockText);
 
             const pay = row.querySelector('[data-role="pay"]');
             if (pay) {
                 const text = v.cost
                     ? `Pay ${this.formatNumber(v.cost.amount)} ${this.resourceLabel(v.cost.resource)}`
                     : 'Cannot be paid off';
-                if (pay.innerText !== text) pay.innerText = text;
+                this.setText(pay, text);
                 const disabled = !v.cost || !v.cost.affordable;
                 if (pay.disabled !== disabled) pay.disabled = disabled;
             }
@@ -4728,8 +4755,13 @@ Title on file: ${esc(doc.endTitle)}</pre>
     }
 };
 
-// Update upgrade affordability styling every second (lightweight)
-setInterval(() => {
-    ui.updateUpgradesAffordability();
-    ui.updateDesktopIcons();
-}, 1000);
+// Update upgrade affordability styling every second (lightweight), on the
+// shared clock (js/heartbeat.js) that rests while the tab is hidden.
+{
+    const refreshDesktop = () => {
+        ui.updateUpgradesAffordability();
+        ui.updateDesktopIcons();
+    };
+    if (typeof Heartbeat !== 'undefined') Heartbeat.every(refreshDesktop);
+    else setInterval(refreshDesktop, 1000);
+}
