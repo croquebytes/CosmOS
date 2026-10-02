@@ -74,6 +74,17 @@ try {
     await scenePage.getByRole('button', { name: 'Perform Miracle' }).waitFor();
 
     await scenePage.evaluate(() => {
+        /* Record the title the instant the scene renders. The scene opens a
+           probe-round-trip after the trigger (V4), and its own timers move
+           it past the login phase within seconds; reading the title later,
+           on a loaded machine, could catch the transcript instead. */
+        window.__advFirstTitle = null;
+        new MutationObserver(() => {
+            if (window.__advFirstTitle === null) {
+                const t = document.getElementById('adv-title');
+                if (t) window.__advFirstTitle = t.textContent;
+            }
+        }).observe(document.getElementById('system-modal-layer'), { childList: true, subtree: true, characterData: true });
         ui.dismissSystemModal();
         // Put the save where the trigger fires from, then let it fire.
         State.totalStats.soulsGained = 800000;
@@ -88,7 +99,7 @@ try {
 
     const scene = await scenePage.evaluate((openedInTime) => {
         const opened = openedInTime && ui.isAdversarySceneOpen();
-        const loginTitle = (document.getElementById('adv-title') || {}).textContent;
+        const loginTitle = window.__advFirstTitle;
 
         // Drive to the choice, answer it, and require the scene to TERMINATE.
         let guard = 0;

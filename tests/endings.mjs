@@ -697,8 +697,10 @@ check('the hook table stays honest: the finale fires no bark trigger of its own'
     for (const src of [finUi, finGame]) {
         assert.ok(!/triggerAdversaryBark\(/.test(src), 'the finale fires a bark');
     }
-    const env = boot();
-    assert.equal(env.AdversaryHookedTriggers.length, 16, 'the hooked trigger list changed');
+    /* The list itself is pinned by tests/adversary-scene.mjs (set equality
+       against what the code fires). A count here was a proxy and broke when
+       Patience.exe legitimately made three of his casino triggers reachable;
+       what this test owns is the source check above. */
 });
 
 /* ── Content ───────────────────────────────────────────────────────────── */
