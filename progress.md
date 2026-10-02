@@ -1289,4 +1289,21 @@ Deterministic, replay-exact. ~2 in 3 Stable builds and 96% of Nightly now
 touch the Void. Curve moved ~2% at 240h (push=1 22/68/311; push=3 27/84/390;
 Nightly 29/117/689); golden recaptured intentionally; Economy table updated.
 
-Fate barks in Patience.exe: still building at time of writing.
+**Fate deals Patience.exe** (agent slice, merged). `PatienceDealer` in
+js/solitaire.js maps 79 of 80 CasinoHostBarks and all 12 lore whispers to
+real table moments (deal, par, clear, near miss, streaks, Mulligans,
+conceding, idle, tapping the dealer); Fate speaks from a strip under the
+toolbar that never takes focus. CAS-HOST-042 (the pity chip) is
+deliberately unreachable — its `effect` pays, and barks never pay. Fixed a
+cooldown bug (0-second authored cooldowns were read as 10s). NULL.OPERATOR's
+three Fate lines (ADV-BARK-04, ADV-L-15/16) are reachable for curious and
+complicit standing, and Fate answers him (CAS-HOST-081–084). Settings ›
+Dealer Chatter. Casino achievements stay unreachable on purpose (ACH-021
+carries a reward). 41 + 12 tests, 56/56 mutants. DOC-NEW-12 rewritten to
+describe the table that exists.
+
+**Integration:** two cross-slice test assumptions fixed (an endings proxy
+count on the hook table; a non-atomic title read in the smoke test that
+flaked under load). `npm test`: 479 node assertions over 14 suites, golden
+unchanged, 6 browser suites (smoke, Patience 12, Archived 10, media 23,
+layout 7, endings 20).
