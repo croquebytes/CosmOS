@@ -91,6 +91,7 @@ const system = {
         // No authored plaque yet: `glyph` names a CSS-drawn mark instead.
         solitaire: { label: 'Patience.exe', glyph: 'patience', hint: 'Golf solitaire, dealt from the arcana' },
         mediaplayer: { label: 'Sacred Media Player', glyph: 'mediaplayer', hint: 'Operator orientation tapes' },
+        choir: { label: 'Choir', glyph: 'choir', hint: 'What the Created are saying about your builds' },
         settings: { label: 'Divine Settings', art: 'settings', hint: 'Save, prestige, and display' }
     },
 
@@ -302,6 +303,7 @@ const system = {
             const button = document.createElement('button');
             button.className = 'start-menu-action';
             button.type = 'button';
+            button.dataset.app = id; // lets an app badge its own entry (Choir's unread count)
             button.innerHTML = `
                 <span class="start-menu-icon">${this.appGlyph(id)}</span>
                 <span><strong>${meta.label}</strong><small>${meta.hint}</small></span>
@@ -409,7 +411,8 @@ const system = {
             taskmgr: { width: 860, height: 560 },
             recyclebin: { width: 700, height: 560 },
             solitaire: { width: 660, height: 590 },
-            mediaplayer: { width: 820, height: 600 }
+            mediaplayer: { width: 820, height: 600 },
+            choir: { width: 560, height: 640 }
         };
 
         return appSizes[id] || { width: 620, height: 560 };
@@ -1291,6 +1294,11 @@ const system = {
                 title: 'Sacred Media Player',
                 initialHTML: `<div class="mplayer" id="mplayer-root"></div>`,
                 onOpen: () => MediaPlayerView.open()
+            },
+            'choir': {
+                title: 'Choir - Celestial Status Board',
+                initialHTML: `<div class="choir" id="choir-root"></div>`,
+                onOpen: () => ChoirView.open()
             }
         };
         return configs[id] || { title: 'Unknown App', initialHTML: 'ERROR' };

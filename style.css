@@ -6977,3 +6977,440 @@ body.performance-mode .pt-dealer.is-fresh .pt-dealer-line {
     height: 100%;
     object-fit: cover;
 }
+
+/* ============================================================
+   CHOIR — js/choir.js
+
+   A public status board, the way a 2003 message board looked when the
+   institution ran it: a struck-brass masthead, posts as vellum cards with
+   a raised bevel, a sunken well for the Operator's approved statuses, a
+   status bar of counts. Avatars are square plates with a bevel;
+   assets/choir/<persona>.webp replaces a plate when one is installed.
+   ============================================================ */
+.choir-icon,
+.app-glyph--choir {
+    background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2096%2096'%3E%3Cdefs%3E%3ClinearGradient%20id='i'%20x1='0'%20y1='0'%20x2='0'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23364356'/%3E%3Cstop%20offset='1'%20stop-color='%23121823'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle%20cx='48'%20cy='48'%20r='42'%20fill='none'%20stroke='%23dec483'%20stroke-opacity='.4'%20stroke-width='2'/%3E%3Cpath%20d='M15%2020h66a5%205%200%200%201%205%205v38a5%205%200%200%201-5%205H42l-15%2012%203-12H15a5%205%200%200%201-5-5V25a5%205%200%200%201%205-5z'%20fill='url(%23i)'%20stroke='%23b4914a'%20stroke-width='2.5'/%3E%3Cg%20fill='%23e6dfcf'%20stroke='%2377592b'%20stroke-width='1.4'%3E%3Ccircle%20cx='30'%20cy='46'%20r='5.5'/%3E%3Ccircle%20cx='66'%20cy='46'%20r='5.5'/%3E%3Ccircle%20cx='48'%20cy='42'%20r='6.5'/%3E%3Cpath%20d='M21%2062a9%208%200%200%201%2018%200z'/%3E%3Cpath%20d='M57%2062a9%208%200%200%201%2018%200z'/%3E%3Cpath%20d='M37.5%2062a10.5%2010%200%200%201%2021%200z'/%3E%3C/g%3E%3Cg%20fill='none'%20stroke='%23dec483'%20stroke-width='1.8'%3E%3Cellipse%20cx='30'%20cy='36.5'%20rx='5.5'%20ry='1.8'/%3E%3Cellipse%20cx='66'%20cy='36.5'%20rx='5.5'%20ry='1.8'/%3E%3Cellipse%20cx='48'%20cy='31'%20rx='6.5'%20ry='2'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+.app-glyph--choir {
+    display: inline-block;
+    background-position: center;
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+#icon-choir,
+.start-menu-action[data-app="choir"] {
+    position: relative;
+}
+
+/* The unread count: a struck plate on the plaque, never a pulse. */
+.choir-badge {
+    position: absolute;
+    top: 0;
+    right: 12px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    box-sizing: border-box;
+    color: var(--cos-halo);
+    background: linear-gradient(180deg, #b8462f, #8e2f1c);
+    border: 1px solid var(--cos-brass-300);
+    border-radius: var(--cos-radius);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+    font: bold 10px/16px var(--cos-font-machine);
+    text-align: center;
+    text-shadow: none;
+    pointer-events: none;
+}
+
+.start-menu-action[data-app="choir"] .choir-badge {
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
+}
+
+.window-content.app-choir {
+    padding: 0;
+    overflow: hidden;
+}
+
+.choir {
+    height: 100%;
+    container: choir / inline-size;
+}
+
+.ch {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    color: var(--cos-ink);
+}
+
+.ch-masthead {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--cos-vellum-500);
+    box-shadow: 0 1px 0 var(--cos-vellum-100);
+}
+
+.ch-brand {
+    color: var(--cos-brass-900);
+    font: bold 14px var(--cos-font-display);
+    letter-spacing: 0.34em;
+}
+
+.ch-tagline {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--cos-ink-dim);
+    font: 10px var(--cos-font-machine);
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.ch-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 10px;
+}
+
+/* ── The Operator's approved statuses: a sunken well ── */
+.ch-compose {
+    margin-bottom: 10px;
+    padding: 9px 10px;
+    background: var(--cos-vellum-200);
+    border: 2px solid;
+    border-color: var(--cos-vellum-500) var(--cos-vellum-100) var(--cos-vellum-100) var(--cos-vellum-500);
+}
+
+.ch-compose[hidden] {
+    display: none;
+}
+
+.ch-compose-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font: 13px var(--cos-font-display);
+}
+
+.ch-compose-head small {
+    margin-left: 4px;
+    color: var(--cos-ink-dim);
+    font: 10px var(--cos-font-machine);
+}
+
+.ch-compose-options {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-top: 8px;
+}
+
+.ch-option,
+.ch-bless {
+    color: var(--cos-ink);
+    background: linear-gradient(180deg, var(--cos-vellum-100), var(--cos-vellum-300));
+    border: 1px solid;
+    border-color: var(--cos-vellum-100) var(--cos-vellum-500) var(--cos-vellum-500) var(--cos-vellum-100);
+    border-radius: var(--cos-radius);
+    box-shadow: 0 0 0 1px rgba(62, 47, 22, 0.18);
+    cursor: pointer;
+}
+
+.ch-option {
+    width: 100%;
+    padding: 6px 9px;
+    text-align: left;
+    font: 12px/1.4 var(--cos-font-display);
+}
+
+.ch-option:hover,
+.ch-bless:hover {
+    box-shadow: 0 0 0 1px var(--cos-brass-500);
+}
+
+.ch-option:active,
+.ch-bless:active {
+    border-color: var(--cos-vellum-500) var(--cos-vellum-100) var(--cos-vellum-100) var(--cos-vellum-500);
+    background: var(--cos-vellum-300);
+}
+
+.ch-option:focus-visible,
+.ch-bless:focus-visible,
+.ch-thread-toggle:focus-visible,
+.ch-link:focus-visible {
+    outline: 1px dotted var(--cos-ink);
+    outline-offset: 2px;
+}
+
+/* ── The feed ── */
+.ch-feed {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ch-post {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 10px;
+    padding: 9px 10px 8px;
+    background: var(--cos-vellum-100);
+    border: 1px solid var(--cos-vellum-500);
+    border-radius: var(--cos-radius);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.ch-post.is-player {
+    background: var(--cos-vellum-200);
+    border-left: 3px solid var(--cos-brass-500);
+}
+
+.ch-body {
+    min-width: 0;
+}
+
+.ch-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 6px;
+}
+
+.ch-name {
+    color: var(--cos-ink);
+    font: bold 13px var(--cos-font-display);
+}
+
+.ch-handle {
+    color: var(--cos-ink-dim);
+    font: 11px var(--cos-font-machine);
+    overflow-wrap: anywhere;
+}
+
+.ch-unverified {
+    padding: 0 4px;
+    color: var(--cos-ink-dim);
+    border: 1px dashed var(--cos-ink-dim);
+    font: 9px/14px var(--cos-font-machine);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.ch-new {
+    padding: 0 4px;
+    color: var(--cos-halo);
+    background: var(--cos-verd-600);
+    font: bold 9px/14px var(--cos-font-machine);
+    letter-spacing: 0.12em;
+}
+
+.ch-meta {
+    margin-top: 1px;
+    color: var(--cos-ink-dim);
+    font: 10px var(--cos-font-machine);
+    letter-spacing: 0.03em;
+}
+
+.ch-text {
+    margin: 6px 0 0;
+    color: var(--cos-ink);
+    font: 13px/1.45 var(--cos-font-display);
+    overflow-wrap: anywhere;
+}
+
+.ch-link {
+    color: var(--cos-verd-600);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.ch-linktext {
+    color: var(--cos-ink);
+}
+
+.ch-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    margin-top: 7px;
+}
+
+.ch-bless {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 3px 9px;
+    font: 11px var(--cos-font-machine);
+}
+
+/* The mark on the button is a halo, drawn, not a glyph from the host font. */
+.ch-bless-label::before {
+    content: '';
+    display: inline-block;
+    width: 9px;
+    height: 3px;
+    margin-right: 5px;
+    vertical-align: 3px;
+    border: 1.5px solid var(--cos-brass-700);
+    border-radius: 50%;
+}
+
+.ch-bless.is-blessed {
+    background: linear-gradient(180deg, var(--cos-brass-100), var(--cos-brass-300));
+    border-color: var(--cos-brass-300) var(--cos-brass-700) var(--cos-brass-700) var(--cos-brass-300);
+}
+
+.ch-bless.is-blessed .ch-bless-label {
+    font-weight: bold;
+}
+
+.ch-hal {
+    color: var(--cos-ink-dim);
+    font: 11px var(--cos-font-machine);
+}
+
+.ch-bless .ch-hal {
+    padding-left: 7px;
+    border-left: 1px solid var(--cos-vellum-500);
+}
+
+.ch-thread-toggle {
+    padding: 3px 0;
+    color: var(--cos-verd-600);
+    background: none;
+    border: 0;
+    font: 11px var(--cos-font-machine);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+
+.ch-thread-toggle::before {
+    content: '\25B8\00A0';
+    display: inline-block;
+}
+
+.ch-thread-toggle.is-open::before {
+    content: '\25BE\00A0';
+}
+
+.ch-replies {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 2px 0 2px 10px;
+    border-left: 2px solid var(--cos-brass-500);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ch-replies[hidden] {
+    display: none;
+}
+
+.ch-reply {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 8px;
+}
+
+.ch-reply-body {
+    min-width: 0;
+}
+
+.ch-reply .ch-name {
+    font-size: 12px;
+}
+
+.ch-reply .ch-text {
+    margin-top: 2px;
+    font-size: 12px;
+}
+
+.ch-empty {
+    padding: 32px 10px;
+    color: var(--cos-ink-dim);
+    font: italic 13px var(--cos-font-display);
+    text-align: center;
+}
+
+.ch-status {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 10px;
+    color: var(--cos-ink-dim);
+    border-top: 1px solid var(--cos-vellum-500);
+    box-shadow: inset 0 1px 0 var(--cos-vellum-100);
+    font: 10px var(--cos-font-machine);
+    letter-spacing: 0.06em;
+}
+
+/* ── Avatars: square struck plates, one colourway per account ── */
+.ch-avatar {
+    --ch-plate: var(--cos-iron-700);
+    --ch-mark: var(--cos-vellum-100);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    box-sizing: border-box;
+    overflow: hidden;
+    color: var(--ch-mark);
+    background: var(--ch-plate) center / cover no-repeat;
+    border: 2px solid;
+    border-color: var(--cos-vellum-100) var(--cos-vellum-500) var(--cos-vellum-500) var(--cos-vellum-100);
+    box-shadow: 0 0 0 1px rgba(27, 23, 18, 0.35);
+    font: bold 14px var(--cos-font-display);
+    letter-spacing: 0.02em;
+}
+
+.ch-avatar.is-small {
+    width: 28px;
+    height: 28px;
+    font-size: 10px;
+}
+
+.ch-avatar.has-art .ch-mark {
+    display: none;
+}
+
+.ch-p-times { --ch-plate: var(--cos-iron-800); --ch-mark: var(--cos-vellum-100); }
+.ch-p-sector7g { --ch-plate: var(--cos-iron-900); --ch-mark: var(--cos-verd-300); font-family: var(--cos-font-machine); }
+.ch-p-vesper { --ch-plate: var(--cos-brass-300); --ch-mark: var(--cos-brass-900); }
+.ch-p-throne { --ch-plate: var(--cos-verd-600); --ch-mark: var(--cos-vellum-100); }
+.ch-p-agnes { --ch-plate: var(--cos-vellum-300); --ch-mark: var(--cos-ink); }
+.ch-p-dale { --ch-plate: var(--cos-vellum-400); --ch-mark: var(--cos-ink); }
+.ch-p-hr { --ch-plate: var(--cos-brass-700); --ch-mark: var(--cos-brass-100); }
+.ch-p-instructor { --ch-plate: var(--cos-iron-600); --ch-mark: var(--cos-brass-100); }
+.ch-p-pip { --ch-plate: var(--cos-ichor-300); --ch-mark: var(--cos-ichor-700); }
+.ch-p-fate { --ch-plate: var(--cos-ichor-700); --ch-mark: var(--cos-brass-300); font-style: italic; }
+.ch-p-nulloperator { --ch-plate: var(--cos-void); --ch-mark: var(--cos-ichor-300); font-family: var(--cos-font-machine); }
+.ch-p-halvard { --ch-plate: #8e2f1c; --ch-mark: var(--cos-brass-100); }
+.ch-p-fanclub { --ch-plate: var(--cos-brass-500); --ch-mark: var(--cos-ink); font-size: 11px; }
+.ch-p-operator { --ch-plate: var(--cos-iron-800); --ch-mark: var(--cos-brass-300); }
+.ch-avatar.is-small.ch-p-fanclub { font-size: 8px; }
+
+/* Phones and narrow windows: smaller plates, and the tagline goes. */
+@container choir (max-width: 440px) {
+    .ch-tagline { display: none; }
+    .ch-scroll { padding: 8px; }
+    .ch-post { grid-template-columns: 32px minmax(0, 1fr); gap: 8px; padding: 8px; }
+    .ch-post > .ch-avatar { width: 32px; height: 32px; font-size: 12px; }
+    .ch-replies { padding-left: 8px; }
+    .ch-reply { grid-template-columns: 24px minmax(0, 1fr); }
+    .ch-reply .ch-avatar { width: 24px; height: 24px; }
+}

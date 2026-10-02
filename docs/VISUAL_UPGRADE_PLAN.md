@@ -329,3 +329,23 @@ should be generated clean: the tear is applied on top.
 §5 budgets (2.5 MB for each cinematic, about 1 MB for each 8s tape shot at 960×720)
 that comes to about 40 MB, which is the Steam ceiling. Encode the tapes at a lower
 bitrate than the cinematics; they are meant to look like tape.
+
+## 8. Choir avatars (drop-in slot)
+
+`js/choir.js` (the Choir status board) shows a 40 px square avatar beside every post,
+and a 28 px one in a thread. With no file installed, each account gets a bevelled
+monogram plate in its own colourway, drawn in CSS, so the board is complete without art.
+
+- **File:** `assets/choir/<persona>.webp`, square, made at 80×80 or larger, with no
+  text baked in. The monogram is the fallback, not part of the art.
+- **Probe:** one HEAD request per persona the first time the board draws it. Only an
+  `image/*` content type counts, because Vite answers a missing file with
+  `index.html` and a 200.
+- **Personas:** `times` (The Celestial Times), `sector7g` (Sector 7G Status), `vesper`
+  (a Seraph), `throne` (THRONE-0417), `agnes` and `dale` (mortals), `hr` (CMS Human
+  Resources), `instructor` (the Instructor), `pip` (a cherub), `fate`, `nulloperator`
+  (NULL.OPERATOR, presenting as you), `halvard` (a Dominion), `fanclub` (the Seraph
+  Appreciation Society), `operator` (the player).
+- **Look:** the §1 style block, framed as a cropped headshot or an emblem, the kind of
+  picture a board user uploaded in 2003. NULL.OPERATOR's avatar should be the
+  `operator` one with the symmetry slightly off.
