@@ -4184,48 +4184,16 @@ Annotated by: void_mirror.service (shadow instance)</pre>
     },
 
     // === CASINO HOST BARK DISPLAY ===
+    /* Fate speaks from the dealer strip inside Patience.exe
+       (PatienceView.speak), never as a toast: this used to append a sliding
+       notification to <body> per line, with the line in innerHTML unescaped.
+       The one line that can arrive with the table shut is her parting line
+       (casino_exit, after the window is gone); it goes to the engine log,
+       which writes innerText. */
     displayHostBark(bark) {
         if (!bark) return;
-
-        // Create bark notification
-        const barkDiv = document.createElement('div');
-        barkDiv.className = 'host-bark-notification';
-
-        // Special styling for lore whispers
-        if (bark.context === 'Lore Whisper') {
-            barkDiv.classList.add('lore-whisper');
-        }
-
-        barkDiv.innerHTML = `
-            <div class="host-bark-icon">${this.codeStamp('CAS')}</div>
-            <div class="host-bark-content">
-                <div class="host-bark-name">The Host</div>
-                <div class="host-bark-text">${bark.text}</div>
-            </div>
-        `;
-
-        document.body.appendChild(barkDiv);
-
-        // Slide in
-        setTimeout(() => barkDiv.classList.add('show'), 10);
-
-        // Click to dismiss
-        barkDiv.onclick = () => {
-            barkDiv.classList.remove('show');
-            setTimeout(() => barkDiv.remove(), 300);
-        };
-
-        // Auto-remove after 8 seconds (longer for lore whispers)
-        const duration = bark.context === 'Lore Whisper' ? 12000 : 8000;
-        setTimeout(() => {
-            barkDiv.classList.remove('show');
-            setTimeout(() => barkDiv.remove(), 300);
-        }, duration);
-
-        // Visual feedback
-        if (bark.context === 'Lore Whisper') {
-            this.screenPulse('rgba(218, 165, 32, 0.2)');
-        }
+        if (typeof PatienceView !== 'undefined' && PatienceView.speak(bark)) return;
+        this.log(`[Patience.exe] The house: \u201c${bark.text}\u201d`);
     },
 
     // === SETTINGS FUNCTIONS ===

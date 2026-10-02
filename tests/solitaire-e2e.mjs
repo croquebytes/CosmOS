@@ -10,7 +10,12 @@
  * So this buys it through the shop UI, opens it from the desktop, plays by
  * mouse and by keyboard, and reloads to check it is still there.
  *
- * Screenshots land in output/solitaire/ (gitignored).
+ * It also checks Fate, the house, who deals here (tests/fate.mjs proves her
+ * moments): she speaks from a strip inside the window on opening, a line
+ * arriving never moves the cards or takes focus, and keyboard play carries on
+ * underneath her.
+ *
+ * Screenshots land in output/solitaire/ and output/fate/ (gitignored).
  */
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
@@ -18,7 +23,9 @@ import { chromium } from 'playwright';
 
 const baseUrl = process.env.COSMOS_TEST_URL || 'http://localhost:5173';
 const OUT = 'output/solitaire';
+const FATE = 'output/fate';
 mkdirSync(OUT, { recursive: true });
+mkdirSync(FATE, { recursive: true });
 
 const browser = await chromium.launch({ headless: true, args: ['--use-gl=angle', '--use-angle=swiftshader'] });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -69,6 +76,27 @@ try {
     await page.locator('#win-solitaire').waitFor();
     step('opens from the Genesis menu');
 
+    /* ── Fate speaks on opening, from inside the window ── */
+    const opening = await page.evaluate(() => {
+        const strip = document.querySelector('#win-solitaire #pt-dealer');
+        const line = document.getElementById('pt-dealer-line');
+        const spoken = CasinoHostBarks.find((b) => b.id === strip?.dataset.bark);
+        return {
+            inWindow: !!strip && !strip.hidden,
+            text: line?.textContent || '',
+            moment: spoken ? PatienceDealer.route(spoken) : null,
+            expected: spoken?.text,
+            focusables: strip ? strip.querySelectorAll('button, a, input, select, textarea, [tabindex]').length : -1,
+            toasts: document.querySelectorAll('.host-bark-notification').length,
+        };
+    });
+    assert.equal(opening.inWindow, true, 'the dealer strip is inside Patience.exe');
+    assert.equal(opening.moment, 'casino_first_visit', 'the first opening is a house rule');
+    assert.equal(opening.text, opening.expected, 'the line shown is the line chosen');
+    assert.equal(opening.focusables, 0, 'nothing in the strip can take focus');
+    assert.equal(opening.toasts, 0, 'no toast');
+    step(`Fate speaks on opening: "${opening.text}"`);
+
     /* ── Pin a deal so the run is reproducible ── */
     await page.evaluate(() => { PatienceApp.deal(20260930); PatienceView.banner = null; PatienceView.render(); });
     assert.equal(await page.locator('#win-solitaire .pt-column').count(), 7);
@@ -111,6 +139,59 @@ try {
         assert.equal(await page.evaluate(() => PatienceApp.current().moves.at(-1)), `p${target}`);
     }
     step('arrows select, Enter plays, Space draws');
+
+    /* ── A line arriving never moves the cards or takes focus ── */
+    await page.waitForTimeout(2100); // her two-second floor
+    const feltTop = () => page.evaluate(() => document.getElementById('pt-felt').getBoundingClientRect().top);
+    const topBefore = await feltTop();
+    await page.locator('#pt-dealer').click();
+    await page.locator('#pt-dealer').click();
+    assert.equal(await page.evaluate(() => document.getElementById('pt-dealer').dataset.bark), 'CAS-HOST-065',
+        'tapping the dealer twice is "Tap the dealer again"');
+    assert.equal(await feltTop(), topBefore, 'the table did not move when she spoke');
+    assert.equal(await page.evaluate(() => !!document.activeElement?.closest?.('#pt-dealer')), false,
+        'focus is not in the strip');
+    before = await moves();
+    await page.keyboard.press('Space');
+    assert.equal(await moves(), before + 1, 'Space still draws after she speaks');
+    // And with a card focused by the keyboard path, a line leaves it alone.
+    const focusBefore = await page.evaluate(() => {
+        const card = document.querySelector('#win-solitaire button.pt-card');
+        card.focus();
+        return card.getAttribute('aria-label');
+    });
+    await page.evaluate(() => {
+        game.hostDialogue().lastBarkTime = 0;
+        game.playHostBark(CasinoHostBarks.find((b) => b.id === 'CAS-HOST-003')); // two lines where the last was one
+    });
+    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), focusBefore,
+        'a line arriving did not move focus');
+    assert.equal(await feltTop(), topBefore, 'a longer line did not move the table either');
+    // Narrow the window (not the viewport) until that line wraps, and check again.
+    const wrapped = await page.evaluate(() => {
+        const win = document.getElementById('win-solitaire');
+        const width = win.style.width;
+        win.style.width = '500px';
+        const say = (id) => {
+            game.hostDialogue().lastBarkTime = 0;
+            game.playHostBark(CasinoHostBarks.find((b) => b.id === id));
+            const line = document.getElementById('pt-dealer-line');
+            return { top: document.getElementById('pt-felt').getBoundingClientRect().top,
+                lines: Math.round(line.scrollHeight / parseFloat(getComputedStyle(line).lineHeight)) };
+        };
+        const short = say('CAS-HOST-071');
+        const long = say('CAS-HOST-003');
+        win.style.width = width;
+        return { short, long };
+    });
+    assert.ok(wrapped.long.lines > wrapped.short.lines, `fixture: the long line wraps (${wrapped.short.lines} vs ${wrapped.long.lines})`);
+    assert.equal(wrapped.long.top, wrapped.short.top, 'a wrapped line did not push the table down');
+    before = await moves();
+    await page.keyboard.press('Space');
+    assert.equal(await moves(), before + 1, 'and the keyboard still plays');
+    await page.waitForTimeout(600); // let her line finish arriving
+    await page.screenshot({ path: `${FATE}/fate-1440.png` });
+    step('a line never moves the table or takes focus; keyboard play continues');
 
     /* ── Divine Mulligan: undo, paid in Praise ── */
     await page.evaluate(() => { State.resources.praise = State.resourceCaps.praise; PatienceView.renderControls(); });
@@ -183,6 +264,43 @@ try {
     await page.locator('#win-solitaire .pt-stock').click();
     assert.equal(await moves(), before + 1, 'stock is tappable at 390');
     await page.screenshot({ path: `${OUT}/patience-390.png` });
+    // Fate at phone width: the strip keeps its height and clamps the line.
+    // A one-line line, then the longest greeting (two lines here): the table
+    // must not move between them.
+    const say = (id) => page.evaluate((lineId) => {
+        game.hostDialogue().lastBarkTime = 0;
+        game.playHostBark(CasinoHostBarks.find((b) => b.id === lineId));
+        return document.getElementById('pt-felt').getBoundingClientRect().top;
+    }, id);
+    const shortTop = await say('CAS-HOST-071');
+    const longTop = await say('CAS-HOST-003');
+    assert.equal(longTop, shortTop, 'a longer line did not push the table down at 390');
+    // Every line in the table, at phone width, is shown whole: not clamped,
+    // not cut off by the strip's fixed height.
+    const cut = await page.evaluate(() => {
+        const strip = document.getElementById('pt-dealer');
+        const line = document.getElementById('pt-dealer-line');
+        const out = [];
+        for (const bark of CasinoHostBarks) {
+            game.hostDialogue().lastBarkTime = 0;
+            game.playHostBark(bark);
+            const clamped = line.scrollHeight > line.clientHeight + 1;
+            const clipped = line.getBoundingClientRect().bottom > strip.getBoundingClientRect().bottom + 0.5;
+            if (clamped || clipped) out.push(bark.id);
+        }
+        return out;
+    });
+    assert.deepEqual(cut, [], `lines cut off at 390: ${cut.join(', ')}`);
+    const strip390 = await page.evaluate(() => {
+        const s = document.getElementById('pt-dealer').getBoundingClientRect();
+        const w = document.getElementById('win-solitaire').getBoundingClientRect();
+        return { inside: s.left >= w.left && s.right <= w.right,
+            overflow: document.documentElement.scrollWidth > window.innerWidth };
+    });
+    assert.equal(strip390.inside, true, 'the strip fits the window at 390');
+    assert.equal(strip390.overflow, false, 'no horizontal page scroll with her speaking');
+    await page.waitForTimeout(600); // let her line finish arriving
+    await page.screenshot({ path: `${FATE}/fate-390.png` });
     step(`fits at 390px (cards ${fit.cardWidth.toFixed(1)}px wide)`);
 
     /* ── Reload: the app and its record persist ── */
@@ -203,6 +321,22 @@ try {
     await page.locator('#icon-solitaire').click();
     await page.locator('#win-solitaire .pt-tableau').waitFor();
     step('reload keeps the app, the stats and the round in progress');
+
+    /* ── Dealer chatter off, from Divine Settings ── */
+    await page.evaluate(() => system.openApp('settings'));
+    await page.locator('#dealer-chatter').waitFor();
+    assert.equal(await page.locator('#dealer-chatter').isChecked(), true, 'on by default');
+    await page.locator('#dealer-chatter').click();
+    assert.equal(await page.evaluate(() => State.settings.dealerChatter), false, 'the checkbox turned her off');
+    assert.equal(await page.locator('#pt-dealer').isHidden(), true, 'the strip goes with her');
+    const silent = await page.evaluate(() => {
+        game.hostDialogue().lastBarkTime = 0;
+        return PatienceDealer.say(['casino_enter']) === null && game.attemptLoreWhisper(1) === null;
+    });
+    assert.equal(silent, true, 'no line plays with chatter off');
+    await page.locator('#dealer-chatter').click();
+    assert.equal(await page.locator('#pt-dealer').isVisible(), true);
+    step('Dealer Chatter in Divine Settings silences her and hides the strip');
 
     assert.deepEqual(errors, [], `console errors: ${errors.join(' | ')}`);
     step('no console errors');

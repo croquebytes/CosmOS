@@ -1,7 +1,7 @@
 /* ============================================================
    PATIENCE.EXE — Golf solitaire, dealt from the celestial arcana
 
-   Three objects, in dependency order, so each can be tested without the one
+   Four objects, in dependency order, so each can be tested without the one
    after it:
 
      PatienceRules   pure and DOM-free. A round is a seed plus a move log,
@@ -14,6 +14,8 @@
                      pricing, and the normaliser for State.casino.solitaire.
      PatienceApp     the only part that touches State or game — settlement,
                      mulligans, and the shop/unlock reconciliation.
+     PatienceDealer  Fate, the house. Maps the CasinoHostBarks to moments at
+                     this table, after the ledger has settled. Never pays.
      PatienceView    rendering and input. Nothing above it reads the DOM.
    ============================================================ */
 
@@ -518,6 +520,357 @@ const PatienceApp = {
 };
 
 /* ============================================================
+   PatienceDealer — Fate's table.
+
+   CasinoHostBarks is 80 lines from a character the lines call Fate and "the
+   house", written for a casino that was never built and has since been cut
+   (DESIGN_DIRECTION.md §7). Patience.exe is a casino in everything but name:
+   rounds, a wager paid in Praise, streaks, a house that pays less the longer
+   you stay. So she deals it.
+
+   This object maps every line to a real moment at this table, and nothing
+   else. The router (cooldowns, weighting, the record of what was said)
+   stays in game.js; the strip she speaks from is PatienceView's. It never
+   reads the DOM and never changes what a round pays — it is called after
+   the ledger has settled, with the settlement it returned.
+
+   A line's MOMENT is its entry in ROUTES, or its authored trigger. MOMENTS
+   lists every moment this code fires, and tests/fate.mjs asserts that every
+   line in the table routes to one of them or is listed in UNREACHABLE with
+   its reason — so a line added later cannot fall out of reach silently.
+
+   Pacing. Her lines replace one another in a fixed strip rather than
+   stacking, and the router already holds two seconds between any two of
+   them and each line's own authored cooldown. On top of that, AMBIENT
+   moments — the ones nobody did anything to cause — wait until the strip
+   has been quiet for QUIET_MS, so she never talks over her own last line.
+   ============================================================ */
+const PatienceDealer = {
+    QUIET_MS: 6000,
+    RETURN_SOON_MS: 120000,            // "Returning so soon?"
+    RETURN_LONG_MS: 6 * 3600000,       // "Welcome back. I didn't move."
+    IDLE_MS: 30000,                    // casino_idle_30s, by its name
+    HOT_RUN: 10,                       // plays in a row without a draw
+    NEAR_MISS_MAX: 2,                  // finishing 1-2 cards from a clear
+    LOSE_BIG_AT: 15,                   // under par with this many left or more
+    WHISPER_CHANCE: 0.05,              // per settled round
+    REPLY_DELAY_MS: 2500,              // she answers him a beat later
+    TAP_WINDOW_MS: 8000,
+
+    /* Lines whose moment is not their authored trigger. Mostly the eighteen
+       'casino_special_event' lines, each read for what it is about. */
+    ROUTES: {
+        'CAS-HOST-049': 'casino_return_long',        // "I didn't move."
+        'CAS-HOST-050': 'casino_return_soon',        // "Returning so soon?"
+        'CAS-HOST-063': 'casino_concede',            // "Cash out? Sensible."
+        'CAS-HOST-064': 'casino_read_odds',          // "You're reading the odds?"
+        'CAS-HOST-069': 'casino_read_odds',          // "Odds panel open."
+        'CAS-HOST-065': 'casino_tap_dealer',         // "Tap the dealer again..."
+        'CAS-HOST-066': 'casino_mulligan',           // "the 'double down' button"
+        'CAS-HOST-070': 'casino_mulligan',           // "You can't bribe Fate."
+        'CAS-HOST-077': 'casino_mulligan_undo',      // "Betting the minimum..." (5%)
+        'CAS-HOST-078': 'casino_mulligan_reshuffle', // "Betting the maximum..." (15%)
+        'CAS-HOST-075': 'casino_mulligan_reshuffle', // "Dealer's choice?" — she shuffles
+        'CAS-HOST-067': 'casino_spread_spent',       // "here for fairness"
+        'CAS-HOST-076': 'casino_decline_mulligan',   // "This chip... Keep it."
+        'CAS-HOST-068': 'casino_jackpot',            // a clear at full Grace
+        'CAS-HOST-071': 'casino_hot_run',            // "The table is hot."
+        'CAS-HOST-072': 'casino_win_after_mulligan', // "every win is a loan"
+        'CAS-HOST-073': 'casino_fatigue',            // "You can walk away anytime."
+        'CAS-HOST-079': 'casino_fatigue',            // "best move is not playing"
+        'CAS-HOST-074': 'casino_tie',                // "A tie!" — exactly at par
+        'CAS-HOST-080': 'casino_second_voice',       // after NULL.OPERATOR speaks
+    },
+
+    /* Streak lines that name their count say it only at that count. */
+    STREAK: {
+        'CAS-HOST-035': 5, 'CAS-HOST-038': 10,
+        'CAS-HOST-039': 3, 'CAS-HOST-040': 5, 'CAS-HOST-041': 10, 'CAS-HOST-042': 15,
+    },
+
+    UNREACHABLE: {
+        'CAS-HOST-042': 'Fifteen rounds under par, then "Here—take a free chip": the line narrates a grant '
+            + '(its `effect` adds five Fate Tokens). Barks never pay, and Fate Tokens buy nothing, so '
+            + 'playing it would put a lie in the dealer\'s mouth.',
+    },
+
+    /* Every moment this code fires, and where. */
+    MOMENTS: {
+        casino_first_visit: 'Patience.exe opens for the first time ever; the rest of the house rules are read out over that visit\'s deals',
+        casino_return_soon: 'opened within RETURN_SOON_MS of last being open',
+        casino_return_long: 'opened after RETURN_LONG_MS or more away',
+        casino_enter: 'opened at any other time',
+        casino_exit: 'the window closes (the table is gone, so the line goes to the engine log)',
+        casino_bet_prompt: 'a new round is dealt (not the deal that comes with opening)',
+        casino_fatigue: 'the first deal of a visit at which Grace is under 100%',
+        casino_idle_30s: 'a round is open, the table is on top, the player is present, nothing played for IDLE_MS; once per lull',
+        casino_hot_run: 'HOT_RUN plays in a row without a draw',
+        casino_read_odds: 'the pointer rests on the Grace pane, the payout rate; once per visit',
+        casino_tap_dealer: 'the dealer strip is clicked twice within TAP_WINDOW_MS',
+        casino_mulligan: 'a Divine Mulligan is paid for',
+        casino_mulligan_undo: 'a Divine Mulligan undo is paid for',
+        casino_mulligan_reshuffle: 'a Divine Mulligan reshuffle is paid for',
+        casino_spread_spent: 'no moves remain, but an affordable Mulligan could still turn it; once per visit',
+        casino_decline_mulligan: 'the round is filed while a Mulligan was on offer and affordable',
+        casino_concede: 'a round in play is conceded for a new deal',
+        casino_rare_whisper: 'a round settles: WHISPER_CHANCE, ahead of every other line',
+        casino_win_streak: 'a round takes the par streak to 3 or more',
+        casino_lose_streak: 'a round takes the run under par to 3, 5 or 10',
+        casino_win_after_mulligan: 'a par round in which a Mulligan was paid',
+        casino_near_miss: 'a round ends 1 or 2 cards from a clear',
+        casino_win_big: 'the spread is cleared',
+        casino_jackpot: 'the spread is cleared at full Grace (joins casino_win_big)',
+        casino_tie: 'a round ends exactly at par',
+        casino_win_small: 'a round ends at par or under, uncleared',
+        casino_lose_small: 'a round ends over par with fewer than LOSE_BIG_AT left',
+        casino_lose_big: 'a round ends with LOSE_BIG_AT or more left',
+        casino_rival: 'REPLY_DELAY_MS after one of NULL.OPERATOR\'s lines about her plays at the table',
+        casino_second_voice: 'the same moment (joins casino_rival)',
+    },
+
+    AMBIENT: ['casino_bet_prompt', 'casino_idle_30s', 'casino_hot_run', 'casino_read_odds'],
+
+    /* Per window session. Persistent memory is game.hostDialogue(). */
+    visit: null,
+
+    freshRound() { return { mulligans: 0, hot: false }; },
+
+    route(line) { return this.ROUTES[line.id] || line.trigger; },
+
+    /* The lines that may answer `keys` given `ctx`, before cooldowns. */
+    lines(keys, ctx = {}) {
+        return CasinoHostBarks.filter((line) => {
+            if (this.UNREACHABLE[line.id]) return false;
+            const moment = this.route(line);
+            if (!keys.includes(moment)) return false;
+            if (Array.isArray(ctx.only) && moment === 'casino_first_visit' && !ctx.only.includes(line.id)) return false;
+            if (line.answers) return ctx.answers === line.answers;
+            const at = this.STREAK[line.id];
+            if (at !== undefined) return ctx.streak === at;
+            if (moment === 'casino_win_streak' || moment === 'casino_lose_streak') {
+                // Unnumbered streak lines cover every count a numbered one doesn't.
+                const claimed = CasinoHostBarks.some((other) => other.id !== line.id &&
+                    this.route(other) === moment && !this.UNREACHABLE[other.id] &&
+                    this.STREAK[other.id] === ctx.streak);
+                return ctx.streak >= 3 && !claimed;
+            }
+            return true;
+        });
+    },
+
+    say(keys, ctx = {}, now = Date.now()) {
+        if (keys.some((k) => this.AMBIENT.includes(k)) &&
+            now - game.hostDialogue().lastBarkTime < this.QUIET_MS) return null;
+        const bark = game.pickHostBark(this.lines(keys, ctx), now);
+        return bark ? game.playHostBark(bark, false, now) : null;
+    },
+
+    touch(now) {
+        game.hostDialogue().lastSeenAt = now;
+        if (!this.visit) return;
+        this.visit.lastActionAt = now;
+        this.visit.idleSpoken = false;
+    },
+
+    /* NULL.OPERATOR speaks at her table through his own router — gated on
+       contact and his standing, capped per line — and if he did, she answers
+       a beat later. The calls stay literal so tests/adversary-scene.mjs can
+       read them off the source. */
+    answer(line, now) {
+        if (line && this.visit) this.visit.reply = { answers: line.id, due: now + this.REPLY_DELAY_MS };
+        return line;
+    },
+
+    /* ── Moments ─────────────────────────────────────────────────────── */
+
+    onOpen(now = Date.now()) {
+        const memo = game.hostDialogue();
+        const first = State.casino.visited !== true;
+        const gap = memo.lastSeenAt ? now - memo.lastSeenAt : Infinity;
+        this.visit = {
+            first,
+            intros: first ? this.lines(['casino_first_visit']).map((l) => l.id) : [],
+            lastActionAt: now,
+            idleSpoken: false,
+            oddsRead: false,
+            spentNoted: false,
+            fatigueNoted: false,
+            taps: 0,
+            tapAt: 0,
+            reply: null,
+            round: this.freshRound(),
+        };
+        // Also opens DOC-NEW-10 and DOC-NEW-12 ("Fate's Casino — House Rules").
+        State.casino.visited = true;
+        memo.visits += 1;
+        memo.lastSeenAt = now;
+
+        let bark = null;
+        if (first) {
+            bark = this.say(['casino_first_visit'], {}, now);
+            if (bark) this.visit.intros = this.visit.intros.filter((id) => id !== bark.id);
+        } else if (gap < this.RETURN_SOON_MS) {
+            bark = this.say(['casino_return_soon'], {}, now);
+        } else if (gap >= this.RETURN_LONG_MS) {
+            bark = this.say(['casino_return_long'], {}, now);
+        }
+        if (!bark) bark = this.say(['casino_enter'], {}, now);
+        this.answer(game.triggerAdversaryBark('casino_enter'), now);
+        return bark;
+    },
+
+    onClose(now = Date.now()) {
+        game.hostDialogue().lastSeenAt = now;
+        this.visit = null;
+        return this.say(['casino_exit'], {}, now);
+    },
+
+    onDeal(now = Date.now()) {
+        this.touch(now);
+        const visit = this.visit;
+        if (!visit) return null;
+        visit.round = this.freshRound();
+
+        if (visit.intros.length) {
+            const bark = this.say(['casino_first_visit'], { only: visit.intros }, now);
+            if (bark) {
+                visit.intros = visit.intros.filter((id) => id !== bark.id);
+                return bark;
+            }
+        }
+        const grace = PatienceApp.nextMultiplier(now);
+        if (grace >= 1) visit.fatigueNoted = false;
+        else if (!visit.fatigueNoted) {
+            const bark = this.say(['casino_fatigue'], {}, now);
+            if (bark) { visit.fatigueNoted = true; return bark; }
+        }
+        return this.say(['casino_bet_prompt'], {}, now);
+    },
+
+    onPlay(run, { settled = false } = {}, now = Date.now()) {
+        this.touch(now);
+        if (settled || !this.visit || run !== this.HOT_RUN || this.visit.round.hot) return null;
+        this.visit.round.hot = true;
+        return this.say(['casino_hot_run'], {}, now);
+    },
+
+    onDraw(now = Date.now()) {
+        this.touch(now);
+    },
+
+    onMulligan(kind, { settled = false } = {}, now = Date.now()) {
+        this.touch(now);
+        if (this.visit) this.visit.round.mulligans += 1;
+        if (settled) return null;
+        return this.say(['casino_mulligan', kind === 'undo' ? 'casino_mulligan_undo' : 'casino_mulligan_reshuffle'], {}, now);
+    },
+
+    /* Every losing round passes through here, so once a visit, and only
+       when the Mulligan on offer is one the player could actually pay. */
+    onSpent(now = Date.now()) {
+        const visit = this.visit;
+        if (!visit || visit.spentNoted) return null;
+        if (!PatienceApp.canMulligan('undo') && !PatienceApp.canMulligan('reshuffle')) return null;
+        const bark = this.say(['casino_spread_spent'], {}, now);
+        if (bark) visit.spentNoted = true;
+        return bark;
+    },
+
+    onReadOdds(now = Date.now()) {
+        if (!this.visit || this.visit.oddsRead) return null;
+        const bark = this.say(['casino_read_odds'], {}, now);
+        if (bark) this.visit.oddsRead = true;
+        return bark;
+    },
+
+    onTapDealer(now = Date.now()) {
+        const visit = this.visit;
+        if (!visit) return null;
+        const again = visit.taps > 0 && now - visit.tapAt <= this.TAP_WINDOW_MS;
+        visit.taps = again ? visit.taps + 1 : 1;
+        visit.tapAt = now;
+        if (!again) return null;
+        const bark = this.say(['casino_tap_dealer'], {}, now);
+        if (bark) visit.taps = 0;
+        return bark;
+    },
+
+    /* `result` is PatienceApp.settle()'s return. `how`: 'natural' (the rules
+       ended it), 'filed' (stuck, and the player filed it) or 'conceded'
+       (abandoned mid-play for a new deal). The streak bookkeeping happens
+       whether or not she is allowed to speak. */
+    onSettle(result, { how = 'natural', declined = false } = {}, now = Date.now()) {
+        if (!result) return null;
+        this.touch(now);
+        const memo = game.hostDialogue();
+        memo.loseStreak = result.parMet ? 0 : memo.loseStreak + 1;
+        const round = this.visit ? this.visit.round : this.freshRound();
+        if (this.visit) this.visit.round = this.freshRound();
+
+        const left = PatienceRules.TABLEAU_CARDS - result.cleared;
+        const chain = [];
+        if (result.parMet && result.streak >= 3) chain.push([['casino_win_streak'], { streak: result.streak }]);
+        if (!result.parMet && memo.loseStreak >= 3) chain.push([['casino_lose_streak'], { streak: memo.loseStreak }]);
+        if (how === 'conceded') chain.push([['casino_concede']]);
+        if (how === 'filed' && declined) chain.push([['casino_decline_mulligan']]);
+        if (result.parMet && round.mulligans > 0) chain.push([['casino_win_after_mulligan']]);
+        if (!result.won && left >= 1 && left <= this.NEAR_MISS_MAX) chain.push([['casino_near_miss']]);
+        if (result.won) {
+            chain.push([result.multiplier >= 1 ? ['casino_win_big', 'casino_jackpot'] : ['casino_win_big']]);
+        } else {
+            if (left === PatienceLedger.PAR) chain.push([['casino_tie']]);
+            chain.push([[result.parMet ? 'casino_win_small'
+                : (left >= this.LOSE_BIG_AT ? 'casino_lose_big' : 'casino_lose_small')]]);
+        }
+
+        let bark = game.attemptLoreWhisper(this.WHISPER_CHANCE, now);
+        for (const [keys, ctx] of chain) {
+            if (bark) break;
+            bark = this.say(keys, ctx, now);
+        }
+
+        if (result.parMet && result.streak === 5) this.answer(game.triggerAdversaryBark('casino_win_streak_5'), now);
+        if (!result.parMet && memo.loseStreak === 5) this.answer(game.triggerAdversaryBark('casino_lose_streak_5'), now);
+        return bark;
+    },
+
+    /* Once a second while the window is up. `top`: Patience is the top
+       window. `inRound`: a round is in play with no message box over it. */
+    tick(now = Date.now(), { top = false, inRound = false } = {}) {
+        const visit = this.visit;
+        if (!visit) return null;
+        game.hostDialogue().lastSeenAt = now;
+        if (visit.reply && now >= visit.reply.due) {
+            const reply = visit.reply;
+            visit.reply = null;
+            return this.say(['casino_rival', 'casino_second_voice'], { answers: reply.answers }, now);
+        }
+        const present = typeof game.isPresent === 'function' ? game.isPresent(now) : true;
+        if (top && inRound && present && !visit.idleSpoken && now - visit.lastActionAt >= this.IDLE_MS) {
+            const bark = this.say(['casino_idle_30s'], {}, now);
+            if (bark) visit.idleSpoken = true;
+            return bark;
+        }
+        return null;
+    },
+
+    /* ── The setting ─────────────────────────────────────────────────── */
+    setChatter(on) {
+        if (!State.settings || typeof State.settings !== 'object') return;
+        State.settings.dealerChatter = on === true;
+        if (typeof PatienceView !== 'undefined') PatienceView.syncDealer();
+        this.syncSettingsUI();
+        if (typeof State.save === 'function') State.save();
+    },
+
+    syncSettingsUI() {
+        if (typeof document === 'undefined') return;
+        const box = document.getElementById('dealer-chatter');
+        if (box) box.checked = game.dealerChatterOn();
+    },
+};
+
+/* ============================================================
    PatienceView — the table.
 
    Card-art hooks, for when authored art replaces the drawn faces:
@@ -527,12 +880,15 @@ const PatienceApp = {
      .pt-card-back      the stock's reverse
      .pt-felt           the table surface
      #pt-glyph-<suit>   the four house sigils (inline SVG symbols)
+     #pt-glyph-house    Fate's mark on the dealer strip
+     .pt-dealer         the strip she speaks from (.is-whisper, .is-stale)
      .patience-icon / .app-glyph--patience   desktop and taskbar marks
    ============================================================ */
 const PatienceView = {
     selected: 0,
     banner: null,      // { kind: 'result'|'stuck', result }
     refreshTimer: null,
+    staleTimer: null,
 
     GLYPHS: {
         seraph: '<circle cx="12" cy="12" r="3.6"/>' +
@@ -546,6 +902,10 @@ const PatienceView = {
             '<circle cx="12" cy="21" r="2"/><circle cx="3" cy="12" r="2"/>',
         cherub: '<path d="M12 .8 14.6 9.4 23.2 12 14.6 14.6 12 23.2 9.4 14.6.8 12 9.4 9.4Z"/>',
         dominion: '<path d="M2.6 18.2 4 6.6l4.6 5.2L12 4l3.4 7.8 4.6-5.2 1.4 11.6Z"/><rect x="2.6" y="19.4" width="18.8" height="2.4"/>',
+        // Not a suit: the house. A card pip with an open eye in it.
+        house: '<path d="M12 1 22 12 12 23 2 12Z" fill="none" stroke="currentColor" stroke-width="1.8"/>' +
+            '<path d="M5.6 12Q12 5.4 18.4 12Q12 18.6 5.6 12Z" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
+            '<circle cx="12" cy="12" r="2.4"/>',
     },
 
     sprite() {
@@ -570,6 +930,7 @@ const PatienceView = {
                 <button type="button" class="win-btn pt-btn" data-pt="undo"></button>
                 <button type="button" class="win-btn pt-btn" data-pt="reshuffle"></button>
             </div>
+            ${this.dealerStrip()}
             <div class="pt-felt" id="pt-felt"></div>
             <div class="pt-statusbar" id="pt-status" aria-live="polite"></div>
         `;
@@ -578,19 +939,94 @@ const PatienceView = {
         root.addEventListener('keyup', (event) => {
             if (event.code === 'Space') event.preventDefault();
         });
+        // Resting on the Grace pane is reading the odds, and she notices.
+        root.addEventListener('mouseover', (event) => {
+            if (event.target && event.target.closest && event.target.closest('.pt-pane--grace')) PatienceDealer.onReadOdds();
+        });
 
         if (!PatienceApp.current()) PatienceApp.deal();
         this.banner = null;
         this.render();
+        this.syncDealer();
+        PatienceDealer.onOpen();
 
         clearInterval(this.refreshTimer);
         // Mulligan prices follow the Praise cap, and Grace recovers in real
         // time, so the controls live on a slow tick while the window is up.
+        // The dealer keeps her own clock on the same tick.
         this.refreshTimer = setInterval(() => {
             if (!this.root()) { clearInterval(this.refreshTimer); this.refreshTimer = null; return; }
             this.renderControls();
             this.renderStatus();
+            PatienceDealer.tick(Date.now(), {
+                top: typeof system !== 'undefined' && typeof system.getTopWindowId === 'function'
+                    && system.getTopWindowId() === PatienceApp.APP_ID,
+                inRound: !!PatienceApp.current() && !this.banner,
+            });
         }, 1000);
+    },
+
+    /* system.closeApp calls this after the window is gone, so her parting
+       line has nowhere to land but the engine log. */
+    close() {
+        clearInterval(this.refreshTimer);
+        this.refreshTimer = null;
+        clearTimeout(this.staleTimer);
+        this.staleTimer = null;
+        PatienceDealer.onClose();
+    },
+
+    /* ── The dealer's strip ──────────────────────────────────────────────
+       A fixed-height inset under the toolbar, so a line arriving never moves
+       a card under the pointer. Nothing in it can take focus, and nothing
+       here ever calls focus(): she talks, she does not interrupt. A click
+       on it is the "tap the dealer" CAS-HOST-065 is about. */
+    dealerStrip() {
+        return `
+            <div class="pt-dealer" id="pt-dealer" data-pt="dealer" ${game.dealerChatterOn() ? '' : 'hidden'}>
+                <span class="pt-dealer-plate" aria-hidden="true">
+                    <svg class="pt-dealer-sigil" focusable="false"><use href="#pt-glyph-house"/></svg>
+                    <b>The House</b>
+                </span>
+                <p class="pt-dealer-line" id="pt-dealer-line" aria-live="polite" aria-atomic="true"></p>
+            </div>`;
+    },
+
+    syncDealer() {
+        const strip = document.getElementById('pt-dealer');
+        if (strip) strip.hidden = !game.dealerChatterOn();
+    },
+
+    /* ui.displayHostBark routes here. Returns false when the table is not
+       open, so the caller can file the line elsewhere. textContent only:
+       authored text never reaches innerHTML from this path. */
+    speak(bark) {
+        if (typeof document === 'undefined' || !bark) return false;
+        const strip = document.getElementById('pt-dealer');
+        const line = document.getElementById('pt-dealer-line');
+        if (!strip || !line || !this.root()) return false;
+
+        const whisper = bark.context === 'LoreWhisper';
+        // "(whisper)" is a stage direction in the data, not something she says.
+        const text = whisper ? String(bark.text).replace(/^\(whisper\)\s*/, '') : String(bark.text);
+        line.textContent = '';
+        if (whisper) {
+            const aside = document.createElement('span');
+            aside.className = 'pt-dealer-aside';
+            aside.textContent = 'leaning in — ';
+            line.appendChild(aside);
+        }
+        line.appendChild(document.createTextNode(text));
+        line.title = text;
+        strip.dataset.bark = bark.id;
+        strip.classList.toggle('is-whisper', whisper);
+        strip.classList.remove('is-stale', 'is-fresh');
+        void strip.offsetWidth; // restart the arrival animation
+        strip.classList.add('is-fresh');
+        clearTimeout(this.staleTimer);
+        this.staleTimer = setTimeout(() => strip.classList.add('is-stale'), 15000);
+        if (whisper) this.cue('eventAppear');
+        return true;
     },
 
     onClick(event) {
@@ -601,8 +1037,9 @@ const PatienceView = {
         else if (action === 'draw') this.draw();
         else if (action === 'deal') this.newDeal();
         else if (action === 'undo' || action === 'reshuffle') this.mulligan(action);
-        else if (action === 'file') this.finish(PatienceApp.settle());
+        else if (action === 'file') this.file();
         else if (action === 'dismiss') { this.banner = null; this.newDeal(); }
+        else if (action === 'dealer') PatienceDealer.onTapDealer();
     },
 
     /* A run of plays climbs the same bell ladder as a Divine Event chain.
@@ -626,14 +1063,18 @@ const PatienceView = {
         this.flash('');
         this.run = (this.run || 0) + 1;
         this.cue('eventClaim', { chain: this.run });
-        this.after(PatienceApp.act(`p${col}`));
+        const out = PatienceApp.act(`p${col}`);
+        PatienceDealer.onPlay(this.run, { settled: !!out?.result });
+        this.after(out);
     },
 
     draw() {
         if (this.banner?.kind === 'result') return;
         this.run = 0;
         this.cue('click');
-        this.after(PatienceApp.act('d'));
+        const out = PatienceApp.act('d');
+        PatienceDealer.onDraw();
+        this.after(out);
     },
 
     mulligan(kind) {
@@ -642,7 +1083,15 @@ const PatienceView = {
         ui.log(`[Patience] Divine Mulligan: ${kind === 'undo' ? 'move withdrawn' : 'stock reshuffled'} for ${ui.formatNumber(out.cost)} Praise.`);
         this.cue('purchase');
         this.banner = null;
+        PatienceDealer.onMulligan(kind, { settled: !!out.result });
         this.after(out);
+    },
+
+    /* "File the round" on a spent spread. Whether a Mulligan was still on
+       offer is read BEFORE settling, because settling ends the round. */
+    file() {
+        const declined = PatienceApp.canMulligan('undo') || PatienceApp.canMulligan('reshuffle');
+        this.finish(PatienceApp.settle(), { how: 'filed', declined });
     },
 
     newDeal() {
@@ -650,11 +1099,17 @@ const PatienceView = {
         if (state && state.moves.length) {
             // Conceding, or filing a spent spread, is paid like any finish and
             // costs a round of fatigue — so it reports what it paid.
+            const stuck = PatienceRules.isStuck(state);
+            const declined = stuck && (PatienceApp.canMulligan('undo') || PatienceApp.canMulligan('reshuffle'));
             const result = PatienceApp.settle();
-            if (result) this.announce(result, true);
+            if (result) {
+                this.announce(result, true);
+                PatienceDealer.onSettle(result, { how: stuck ? 'filed' : 'conceded', declined });
+            }
         }
         this.banner = null;
         PatienceApp.deal();
+        PatienceDealer.onDeal();
         this.render();
     },
 
@@ -663,17 +1118,20 @@ const PatienceView = {
         if (out.result) this.finish(out.result);
         else {
             const state = PatienceApp.current();
+            const wasSpent = this.banner?.kind === 'stuck';
             this.banner = (state && PatienceRules.isStuck(state)) ? { kind: 'stuck' } : null;
+            if (this.banner && !wasSpent) PatienceDealer.onSpent();
             this.render();
         }
     },
 
-    finish(result) {
-        if (!result) { this.banner = null; PatienceApp.deal(); this.render(); return; }
+    finish(result, meta = { how: 'natural' }) {
+        if (!result) { this.banner = null; PatienceApp.deal(); PatienceDealer.onDeal(); this.render(); return; }
         this.banner = { kind: 'result', result };
         this.run = 0;
         this.cue(result.won ? 'achievement' : 'document', result.won ? { tier: 'Gold' } : undefined);
         this.announce(result, false);
+        PatienceDealer.onSettle(result, meta);
         this.render();
     },
 
@@ -836,7 +1294,7 @@ const PatienceView = {
             <span class="pt-pane">Left ${state ? PatienceRules.tableauLeft(state) : 0}</span>
             <span class="pt-pane">Par ${PatienceLedger.PAR} &middot; streak ${ledger.parStreak}</span>
             <span class="pt-pane">Rounds ${ledger.rounds} &middot; clears ${ledger.wins} &middot; best ${ledger.bestScore === null ? '&mdash;' : ledger.bestScore}</span>
-            <span class="pt-pane ${grace < 100 ? 'is-low' : ''}" title="Payout rate. The first three rounds each hour pay in full.">Grace ${grace}%</span>
+            <span class="pt-pane pt-pane--grace ${grace < 100 ? 'is-low' : ''}" title="Payout rate. The first three rounds each hour pay in full.">Grace ${grace}%</span>
             <span class="pt-pane pt-pane--note" id="pt-status-note">${ui.escapeHtml(note)}</span>
         `;
     },

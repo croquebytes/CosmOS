@@ -289,6 +289,11 @@ const State = {
         autosaveInterval: 30000,      // milliseconds (default 30s)
         performanceMode: false,       // reduce animations if true
         briefingSeen: false,
+        /* Fate, the dealer at Patience.exe, speaks from a strip inside that
+           window. Off silences every one of her lines. Read through
+           game.dealerChatterOn(), which puts anything but a real boolean back
+           to this default. Added without a SAVE_VERSION bump, like audio. */
+        dealerChatter: true,
         /* Read and normalised by js/audio.js (keep DEFAULTS there in step).
            Added without a SAVE_VERSION bump on purpose: mergeInto recurses
            into plain objects, so an older save simply gains these defaults. */
@@ -415,12 +420,16 @@ const State = {
             highScore: 0
         },
 
-        // Host dialogue system
+        // Host dialogue system — Fate, dealing at Patience.exe. Normalised by
+        // game.hostDialogue(); the moments are mapped by PatienceDealer.
         hostDialogue: {
             lastBarkId: null,
             lastBarkTime: 0,
             barkCooldowns: {}, // { lineId: timestamp }
-            loreWhispersHeard: []
+            loreWhispersHeard: [],
+            lastSeenAt: 0,     // the table was last open at (return lines)
+            visits: 0,         // times Patience.exe has been opened
+            loseStreak: 0      // rounds in a row under par (the ledger keeps the par streak)
         }
     },
 
@@ -2532,7 +2541,16 @@ const CasinoHostBarks = [
     { id: 'CAS-HOST-077', context: 'Special', trigger: 'casino_special_event', text: "Betting the minimum is still betting your time.", weight: 2, cooldown: 5 },
     { id: 'CAS-HOST-078', context: 'Special', trigger: 'casino_special_event', text: "Betting the maximum is still betting your pride.", weight: 2, cooldown: 5 },
     { id: 'CAS-HOST-079', context: 'Special', trigger: 'casino_special_event', text: "Sometimes the best move is not playing. We don't offer that option.", weight: 2, cooldown: 5 },
-    { id: 'CAS-HOST-080', context: 'Special', trigger: 'casino_special_event', text: "If you hear a second voice in my mouth, no you didn't.", weight: 2, cooldown: 5 }
+    { id: 'CAS-HOST-080', context: 'Special', trigger: 'casino_special_event', text: "If you hear a second voice in my mouth, no you didn't.", weight: 2, cooldown: 5 },
+
+    /* RIVALRY (4 lines). NULL.OPERATOR has three lines about her and she had
+       none about him. Each answers one of his, a beat after he speaks at her
+       table — `answers` names the line. PatienceDealer queues the reply only
+       when his line actually played. */
+    { id: 'CAS-HOST-081', context: 'Rival', trigger: 'casino_rival', answers: 'ADV-BARK-04', text: "Contractor. I bill by the outcome, darling. He works for free—and invoices you anyway.", weight: 2, cooldown: 30 },
+    { id: 'CAS-HOST-082', context: 'Rival', trigger: 'casino_rival', answers: 'ADV-BARK-04', text: "In-house? Sweetheart, a reflection that won't leave the building is called a tenant.", weight: 2, cooldown: 30 },
+    { id: 'CAS-HOST-083', context: 'Rival', trigger: 'casino_rival', answers: 'ADV-L-15', text: "He's right, for once. I flirt with everyone. He only flirts with you.", weight: 2, cooldown: 30 },
+    { id: 'CAS-HOST-084', context: 'Rival', trigger: 'casino_rival', answers: 'ADV-L-16', text: "A hammer. How like him. The house prefers a velvet rope.", weight: 2, cooldown: 30 }
 ];
 
 // === ADVERSARY SCENE ===
@@ -2699,6 +2717,7 @@ const AdversaryBarkPolicy = {
             'void_upgrade_bought', 'achievement_unlocked', 'buy_seraph',
             'praise_spike_event', 'prestige_count_6', 'prestige_count_8',
             'taskmgr_end_process_attempt',
+            'casino_enter', 'casino_win_streak_5', 'casino_lose_streak_5',
         ],
         complicit: [
             'open_recycle_bin', 'hover_patch_file', 'prestige_prompt',
@@ -2707,6 +2726,7 @@ const AdversaryBarkPolicy = {
             'buy_seraph', 'enter_void', 'open_docs_folder',
             'open_taskmgr_after_contact', 'praise_spike_event',
             'prestige_count_6', 'prestige_count_8', 'taskmgr_end_process_attempt',
+            'casino_enter', 'casino_win_streak_5', 'casino_lose_streak_5',
         ],
     },
 };
@@ -2721,20 +2741,22 @@ const AdversaryHookedTriggers = [
     'open_recycle_bin', 'hover_patch_file', 'open_docs_folder',
     'open_settings', 'achievement_unlocked',
     'souls_threshold', 'offerings_spent_large', 'praise_spike_event',
+    /* Fired from PatienceDealer in js/solitaire.js: Fate's table is
+       Patience.exe. Curious and complicit hear them; hostile stays rare. */
+    'casino_enter', 'casino_win_streak_5', 'casino_lose_streak_5',
 ];
 
 /* Deliberately NOT hooked, and why — so the next reader does not assume these
    were missed:
-     casino_enter, casino_win_streak_5, casino_lose_streak_5 — no Casino app
-       exists. Blocks ADV-BARK-04, ADV-L-15, ADV-L-16, all 80 CasinoHostBarks
-       and all 12 lore whispers.
      idle_60s (ADV-L-01) — good line, wrong cadence for an idle game.
      toggle_music (ADV-L-03) — no music to toggle; the game ships silent.
      warning_popup, seraph_self_awareness_event, void_depth_50, attempt_resign
        (ADV-L-05, -18, -19, -20) — no such events exist yet.
-   That is 9 of the 25 Adversary lines still unreachable; the other 16 play.
-   tests/adversary-scene.mjs pins those 9 by id, so a TENTH falling out of the
-   hook table fails the suite rather than passing quietly. */
+   That is 6 of the 25 Adversary lines still unreachable; the other 19 play.
+   (casino_enter, casino_win_streak_5 and casino_lose_streak_5 were here until
+   Patience.exe became Fate's table: ADV-BARK-04, ADV-L-15 and ADV-L-16 now
+   play there.) tests/adversary-scene.mjs pins those 6 by id, so a SEVENTH
+   falling out of the hook table fails the suite rather than passing quietly. */
 
 // === ACHIEVEMENT LIST (40 achievements across 5 tiers) ===
 const AchievementList = [

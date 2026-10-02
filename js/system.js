@@ -408,7 +408,7 @@ const system = {
             adorationshop: { width: 650, height: 560 },
             taskmgr: { width: 860, height: 560 },
             recyclebin: { width: 700, height: 560 },
-            solitaire: { width: 660, height: 540 },
+            solitaire: { width: 660, height: 590 },
             mediaplayer: { width: 820, height: 600 }
         };
 
@@ -713,11 +713,10 @@ const system = {
             recyclebin: 'open_recycle_bin',
             notepad: 'open_docs_folder',
             settings: 'open_settings',
-            /* No `casino:` entry — there is no Casino app. ADV-BARK-04 ("Fate
-               is a contractor. I'm in-house.") stays unreachable, along with
-               the 80 CasinoHostBarks and 12 lore whispers, until one exists.
-               Wiring a trigger to an app id that is never opened would put a
-               line in AdversaryHookedTriggers that nothing can fire. */
+            /* No `solitaire:` entry: Patience.exe is Fate's table, and
+               PatienceDealer.onOpen fires 'casino_enter' itself, because she
+               answers ADV-BARK-04 ("Fate is a contractor. I'm in-house.")
+               only when it actually played — which this table discards. */
         }[id];
         if (advTrigger) {
             game.triggerAdversaryBark(advTrigger);
@@ -734,6 +733,8 @@ const system = {
             delete this.windows[id];
             delete this.windowStates[id];
             this.updateTaskbar();
+            // The dealer's parting line, after the table is gone.
+            if (id === 'solitaire' && typeof PatienceView !== 'undefined') PatienceView.close();
         }
     },
 
@@ -893,6 +894,11 @@ const system = {
                                     <option value="scientific">Scientific (1.50e6, 2.30e9)</option>
                                 </select>
                             </div>
+                            <div class="setting-row">
+                                <label for="dealer-chatter">Dealer Chatter:</label>
+                                <input type="checkbox" id="dealer-chatter" class="setting-checkbox" checked onchange="PatienceDealer.setChatter(this.checked)">
+                                <span class="setting-desc">The house speaks at the Patience.exe table.</span>
+                            </div>
                         </div>
 
                         <h3>Sound Settings</h3>
@@ -981,6 +987,7 @@ const system = {
                     ui.updateStats();
                     ui.updatePrestigeInfo();
                     ui.updateSettingsUI();
+                    if (typeof PatienceDealer !== 'undefined') PatienceDealer.syncSettingsUI();
                 }
             },
             'mandates': {
