@@ -592,6 +592,19 @@ const State = {
         watched: []
     },
 
+    /* === DEV TAINT === js/devtools.js (never in a release build). Any
+       Dev Console action flips `tainted`, so a tester's balance or
+       achievement report can be discounted: the run was edited, not played.
+       It lives in the save so it travels with an export, and a release
+       build that loads a tainted save still carries the mark. `actions` is
+       the count, `since` the first one. Added without a SAVE_VERSION bump,
+       like audio: mergeInto deep-merges these defaults. */
+    dev: {
+        tainted: false,
+        actions: 0,
+        since: 0
+    },
+
     // === ACHIEVEMENTS (Tracked) ===
     achievementProgress: {
         // Counters for achievement conditions

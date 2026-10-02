@@ -4338,6 +4338,8 @@ window.render_game_to_text = () => {
     const rates = game.getProductionRates(Date.now(), true);
 
     return JSON.stringify({
+        // A save edited by the Dev Console: discount any report built from it.
+        devTainted: !!(State.dev && State.dev.tainted),
         mode: Object.keys(system.windows).length ? 'desktop_with_open_apps' : 'desktop',
         coordinateSystem: 'DOM desktop; origin top-left; x increases right, y increases down.',
         resources: {

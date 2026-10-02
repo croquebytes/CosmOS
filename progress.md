@@ -1427,3 +1427,51 @@ three further runs — watch for it.
 - **Fixes:** Choir no longer drops achievement posts past its per-pass cap;
   the audio timer sleeps while the tab is hidden.
 - `npm test` is green.
+
+## 2026-10-02 — Session 9 (branch `feat/dev-console`): the Dev Console
+- **Built the Dev Console** (`js/devtools.js`, guide in `docs/DEV_CONSOLE.md`): a
+  "CMS FIELD ENGINEER MODE — NOT FOR PRODUCTION" section at the bottom of Divine
+  Settings, in 11 groups: unlock everything, a media test bench, progression
+  jumps (caps, Divinity, real ships, presets, the ending gate), attended and
+  offline time with a presence override, incidents and cascade, the NULL.OPERATOR
+  arc, world apps, achievements, save states (slots A/B/C, Z for undo, text
+  export/import, Fresh save, a link builder), audio, and overlays (idle meter,
+  state inspector, production breakdown).
+- **Gating:** shows on `localhost` / `127.0.0.1` / `[::1]` or with `?dev=1`
+  (held for the tab). Absent from a release build: `npm run build:release`
+  (`vite build --mode release`) leaves `js/devtools.js` out and strips its
+  `<script>` tag; the settings app mounts it only behind `typeof DevTools`.
+  **`dist/` is committed: rebuild it with `build:release`.** A plain `npm run
+  build` includes the console.
+- **Taint:** any edit sets `State.dev.tainted` (schema default, no `SAVE_VERSION`
+  bump), saved with the run, a DEV mark on the desktop, `devTainted` in
+  `render_game_to_text()`. Playing media, cues, snapshots and exports do not taint.
+- **Shareable links:** `?dev=1&unlockAll=1&reboot=12&cinematics=always` and 14
+  more parameters (`fresh`, `mirror`, `preset`, `standing`, `caps`, `mail`,
+  `incident`, `cascade`, `presence`, `attended`, `open`, …). They apply once, in a
+  fixed order, then are stripped from the address.
+- **Idle cost:** nothing is scheduled while the panel is closed. The meter and the
+  inspector ride the shared Heartbeat and let go; `idle-e2e` is unchanged.
+- **Where the handoff was off:**
+  - "Reboot 13 + an archived ship" cannot occur: Archived opens at 12, the replay
+    ships at 14. The `ending` preset reaches 14 with the gate open.
+  - "Reboot N" is two counters (`prestigeLevel` and `achievementProgress.
+    prestige_count`); every path here moves both by shipping for real.
+  - Caps are registry-owned, so ×N is a permanent `dev` modifier record.
+  - `State.save()` stamps `lastUpdateTime`, so "away" rewrites the stored save and
+    reloads (dropping `testMode`, which hides the report).
+  - The game's `exportSave` throws on characters above U+00FF (em dashes are in
+    cascade and ending labels); snapshots use UTF-8 base64 instead.
+  - Cinematics are 5 scenes + 4 loops, not one V1–V7 list; Mail has 65 messages,
+    not 61.
+- **Verification:** `tests/devtools.mjs` (38, vm), `tests/devtools-e2e.mjs` (51,
+  browser), `tests/release-build.mjs` (6: builds both flavours, checks the release
+  output and the tracked `dist/` carry no trace of it). `npm test` green, golden
+  still "Economy unchanged".
+- **Trap:** editing `vite.config.js` restarts the dev server, and a running
+  `npm test` gets `ERR_CONNECTION_REFUSED`. Leave config and `js/` alone while the
+  suite runs.
+- **Noticed, not fixed:** the settings label "0 of 4 reels seen" is stale (5 scenes);
+  `docs/PERFORMANCE.md` "Not covered" predates the audio-timer fix; `state.js` says
+  the finale's earliest reboot is 13 (it is 14); a letter typed on a focused
+  `<select>` anywhere in the game can fire a desktop shortcut.
