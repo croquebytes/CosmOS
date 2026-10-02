@@ -879,7 +879,19 @@ const audio = (() => {
             G = buildGraph(ctx);
             ctx.onstatechange = syncSettingsUI;
             applyLevels(0);
-            setInterval(() => { updateAmbient(); updateMusic(); }, AMBIENT_UPDATE_MS);
+            /* Rests while the tab is hidden, like the shared heartbeat: the
+               context is suspended then, so there is nothing to update, and an
+               idle hidden tab should not wake at all (docs/PERFORMANCE.md). */
+            let ambientTimer = null;
+            const startAmbient = () => {
+                if (ambientTimer === null) ambientTimer = setInterval(() => { updateAmbient(); updateMusic(); }, AMBIENT_UPDATE_MS);
+            };
+            const stopAmbient = () => { if (ambientTimer !== null) { clearInterval(ambientTimer); ambientTimer = null; } };
+            if (!document.hidden) startAmbient();
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) stopAmbient();
+                else { startAmbient(); updateAmbient(); updateMusic(); }
+            });
         } catch (err) {
             ctx = null;
             G = null;

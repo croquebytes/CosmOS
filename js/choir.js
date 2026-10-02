@@ -789,12 +789,15 @@ const Choir = (() => {
         }
         w.end = endings.length;
 
-        // Achievements, a few per pass.
+        /* Achievements, a few per pass. One over the cap is NOT marked seen:
+           it waits for the next pass (a second later) instead of being
+           dropped. It used to be marked and skipped, so a reboot that
+           unlocked five at once lost two posts for good. */
         let posted = 0;
         for (const id of read.achievements()) {
             if (w.ach.includes(id)) continue;
+            if (posted >= ACH_PER_PASS) break;
             w.ach.push(id);
-            if (posted >= ACH_PER_PASS) continue;
             const secret = achievement(id).tier === 'Secret';
             n += record(s, `ach:${id}`, secret ? 'ach.secret' : 'ach', { id }, level);
             posted++;

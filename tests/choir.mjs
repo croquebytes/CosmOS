@@ -528,18 +528,24 @@ check('a save from before Choir wakes to the current build, not a backlog', () =
     assert.equal(ps.filter((p) => p.k === 'ach' || p.k === 'ach.secret').length, 0, 'old achievements are history');
 });
 
-check('a burst of achievements posts three; the rest are not news later either', () => {
+check('a burst of achievements posts three a pass, and the rest on the next — none lost', () => {
+    /* It used to post three and DROP the rest for good. The feed caps how
+       many go up per pass so a burst does not flood it, but each one is
+       still news a second later; a lost post was a bug, not pacing. */
     const env = fresh();
     env.Choir.observe(Date.now());
     ship(env);
     env.game.checkAchievements();
-    env.Choir.observe(Date.now());
-    const before = posts(env).filter((p) => p.k === 'ach' || p.k === 'ach.secret').length;
+    for (let i = 0; i < 4; i++) env.Choir.observe(Date.now() + i * 1000);
+    const count = () => posts(env).filter((p) => p.k === 'ach' || p.k === 'ach.secret').length;
+    const before = count();
     for (const id of ['ACH-S-001', 'ACH-S-003', 'ACH-S-004', 'ACH-033', 'ACH-034']) env.game.unlockAchievement(id);
-    env.Choir.observe(Date.now());
-    env.Choir.observe(Date.now() + 1000);
-    const after = posts(env).filter((p) => p.k === 'ach' || p.k === 'ach.secret').length;
-    assert.equal(after - before, 3);
+    env.Choir.observe(Date.now() + 5000);
+    assert.equal(count() - before, 3, 'a single pass posts at most three');
+    env.Choir.observe(Date.now() + 6000);
+    assert.equal(count() - before, 5, 'the other two are posted on the next pass, not dropped');
+    env.Choir.observe(Date.now() + 7000);
+    assert.equal(count() - before, 5, 'and never twice');
 });
 
 /* ── Presence ──────────────────────────────────────────────────────────── */
