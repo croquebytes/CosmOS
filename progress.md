@@ -1240,3 +1240,16 @@ layout 7); `test:audio` 14 separately. dist rebuilt.
 2. Generate Krea reels per §7 and drop them in — V2 *Ship the Build* first.
 3. V3 / V4 / V7 cinematic hooks (cascade, mirror login, SEV-1).
 4. The two Archived design questions above.
+
+### Decisions (user, 2026-10-01)
+- **Archived replays carry no extra stakes.** Shipping a replay dirty rarely
+  adds a scar (scars are once-per-id-ever), and that is accepted: Archived pays
+  0 Divinity and is a lore mode, so a penalty would make a no-reward mode
+  strictly worse. Do not add replay scars or replay rewards.
+- **Old saves start with empty release history.** Accepted. Archived fills in
+  after one more ship; no reconstructed or guessed history.
+- V3 / V4 / V7 cinematic hooks shipped (45ed8bb): dialog loops for the cascade
+  alert and the SEV-1 dialog, and Mirror Login before the Adversary scene,
+  with a presentation-counter guard so a slow probe cannot re-run a finished
+  scene. PR #2 open against `main` (which was still at 9db0b7e; it carries
+  sessions 5 and 6).
