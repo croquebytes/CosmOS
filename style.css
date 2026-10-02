@@ -6783,6 +6783,25 @@ body.performance-mode .pt-flourish {
     }
 }
 
+/* Phones in portrait: the window is maximised and far taller than the deck
+   needs, which left a hand's breadth of empty vellum under the transport.
+   The deck goes first and the shelf fills that space as a list of spines,
+   instead of a cramped strip scrolled sideways above the screen. Short or
+   desktop windows keep the strip. Placed after the container rules so it
+   wins on order at equal specificity. */
+@media (max-width: 900px) and (orientation: portrait) and (min-height: 640px) {
+    .mp-deck { order: 1; }
+
+    .mp-shelf {
+        order: 2;
+        flex-direction: column;
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    .mp-shelf li { flex: 0 0 auto; }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .cine-caption,
     .mp.is-vhs .mp-picture,

@@ -441,11 +441,17 @@ try {
         const fit = await p.evaluate(() => {
             const w = document.querySelector('#win-mediaplayer');
             const screen = document.querySelector('#win-mediaplayer .mp-screen').getBoundingClientRect();
+            const shelf = document.querySelector('#win-mediaplayer .mp-shelf');
+            const transport = document.querySelector('#win-mediaplayer .mp-transport, #win-mediaplayer .mp-controls') || document.querySelector('#win-mediaplayer .mp-scrub');
             return { scroll: document.documentElement.scrollWidth, win: w.getBoundingClientRect().width, screenW: screen.width,
-                shelfRow: getComputedStyle(document.querySelector('#win-mediaplayer .mp-shelf')).flexDirection };
+                shelfDir: getComputedStyle(shelf).flexDirection,
+                shelfBelow: shelf.getBoundingClientRect().top >= transport.getBoundingClientRect().bottom - 1,
+                shelfFills: w.getBoundingClientRect().bottom - shelf.getBoundingClientRect().bottom < 80 };
         });
         assert.ok(fit.scroll <= 390, 'no horizontal page scroll');
-        assert.equal(fit.shelfRow, 'row', 'the shelf lies along the top on a phone');
+        assert.equal(fit.shelfDir, 'column', 'on a portrait phone the shelf is a list of spines');
+        assert.ok(fit.shelfBelow, 'on a portrait phone the shelf sits under the transport');
+        assert.ok(fit.shelfFills, 'the shelf fills the space that was empty vellum');
         assert.ok(fit.screenW > 250, `the screen keeps its size (${fit.screenW}px)`);
         await clearToasts(p);
         await p.screenshot({ path: `${OUT}/player-t1-vhs-390.png` });
@@ -453,7 +459,7 @@ try {
         await p.waitForTimeout(250);
         await clearToasts(p);
         await p.screenshot({ path: `${OUT}/player-t1-clean-390.png` });
-        step('at 390×844 the player fits: shelf on top, screen full width');
+        step('at 390×844 the player fits: screen first, the shelf fills the space below');
         await phone.close();
     }
 
