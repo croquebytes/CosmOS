@@ -1503,3 +1503,17 @@ three further runs — watch for it.
   found headings in the dimmed ink at 4.27:1; they are full ink now. Lines the
   window's edge cuts to a sliver are skipped (their background includes the chrome).
 - `npm test` is green: 37 suites; golden still "Economy unchanged".
+
+### Session 9, part 3 (2026-10-02): the video test, and the standing recheck
+- **Video test (one approved job, no direction approved):** Seedance 2.0 Mini, 480p,
+  4 s, T2 shot 2 from the SERAPH keyframe (`docs/VIDEO_TOOLS_PLAN.md` §Test result).
+  It drifted off the keyframe's design (brass organ-pipe feathers became soft naturalistic
+  ones), unfolded in about 2 s against the shipped reel's slow build, and spread past a
+  4:3 crop. Not suitable for tape shots in this style. Cost not visible (no price field,
+  no balance tool). Next candidates, each needing its own quote: Seedance 2.5 `draft: true`
+  at 4:3, Seedance 2.0 Fast, or no video for the tape shots.
+- **Standing recheck** (`docs/STANDING_DRIFT.md`, `tools/standing_sim.mjs`): not toward
+  hostile. Standing saturates both ways: passive players end hostile, anyone who opens
+  Notepad and buys a Void upgrade an hour ends +11 complicit by reboot 3 to 8, whatever the
+  Mirror Login answer, and curious is unreachable. Lifetime caps per act plus a -6 ship
+  drift cap fix it in the sim. Awaiting a decision before it is built.
