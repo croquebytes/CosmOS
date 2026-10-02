@@ -6190,6 +6190,14 @@ body.performance-mode .pt-dealer.is-fresh .pt-dealer-line {
     z-index: 5;
 }
 
+/* Toasts and notifications float above every layer (z 10000+), which put a
+   "Document Unlocked" card across the middle of Ship the Build. While a
+   full-frame reel holds the stage they step aside; everything they announce
+   is still filed in Notepad, the achievements list and the engine log. */
+body:has(#system-modal-layer .cine-stage:not(.is-hosted)) :is(.document-notification, .achievement-toast, #achievement-overflow) {
+    visibility: hidden;
+}
+
 .cine-screen {
     position: relative;
     width: min(100vw, calc(100vh * 16 / 9));

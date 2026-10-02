@@ -86,6 +86,9 @@ try {
             }
         }).observe(document.getElementById('system-modal-layer'), { childList: true, subtree: true, characterData: true });
         ui.dismissSystemModal();
+        // This smoke tests the scene, not its V4 reel: with the real reel
+        // installed in assets/video/ it would hold the scene for 6 seconds.
+        if (typeof media !== 'undefined') media.setCinematics('off');
         // Put the save where the trigger fires from, then let it fire.
         State.totalStats.soulsGained = 800000;
         State.dimensions.void.unlocked = true;

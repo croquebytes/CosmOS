@@ -49,6 +49,18 @@ const watch = (page) => {
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 };
 
+/* Every context starts with an EMPTY video folder, answered the way Vite
+   answers a missing file (index.html, status 200). The real reels now live in
+   assets/video/, and these checks are about the hooks' behaviour with and
+   without a file, so absence is staged rather than assumed. A check that
+   needs a reel routes that one file after this, and the later route wins. */
+async function newContext(opts) {
+    const ctx = await browser.newContext(opts);
+    await ctx.route('**/assets/video/**', (route) =>
+        route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>CosmOS</title>' }));
+    return ctx;
+}
+
 let passed = 0;
 const step = (name) => { passed++; console.log(`  ok    ${name}`); };
 
@@ -86,7 +98,7 @@ try {
     console.log('\nSacred Media Player and cinematics (browser)\n');
 
     /* ── 1. Zero assets: the game is unchanged ─────────────────────────── */
-    const desk = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const desk = await newContext({ viewport: { width: 1440, height: 900 } });
     const page = await freshTestPage(desk);
     await armStageWatch(page);
 
@@ -280,7 +292,7 @@ try {
 
     /* ── 4b. Dialog loops (V3, V7) and the Mirror Login opener (V4) ───── */
     {
-        const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+        const ctx = await newContext({ viewport: { width: 1440, height: 900 } });
         const p = await freshTestPage(ctx);
         const outageView = () => p.evaluate(() => {
             State.automatons.seraphCount = Math.max(1, State.automatons.seraphCount);
@@ -300,7 +312,7 @@ try {
     if (reel) {
         // A fresh page: probes are cached for the session, so a file has to be
         // installed before the first time anything asks for it.
-        const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+        const ctx = await newContext({ viewport: { width: 1440, height: 900 } });
         for (const stem of ['sev1-alarm', 'cascade-tier2']) {
             await ctx.route(`**/assets/video/loop__${stem}__512.webm`, (route) =>
                 route.fulfill({ status: 200, contentType: 'video/webm', body: reel }));
@@ -344,7 +356,7 @@ try {
 
     /* ── 4c. A slow probe cannot present the Adversary scene twice ────── */
     {
-        const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+        const ctx = await newContext({ viewport: { width: 1440, height: 900 } });
         // The reel is "not installed", but the answer takes 1.5s to arrive.
         await ctx.route('**/assets/video/cine__mirror-login__720.*', async (route) => {
             await new Promise((r) => setTimeout(r, 1500));
@@ -388,7 +400,7 @@ try {
 
     /* ── 5. Reduced motion shows the poster for 1.5s instead ───────────── */
     {
-        const rm = await browser.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' });
+        const rm = await newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' });
         const p = await freshTestPage(rm);
         await p.route('**/assets/video/cine__first-seraph__720.webp', (route) =>
             route.fulfill({ status: 200, contentType: 'image/png', body: poster }));
@@ -409,12 +421,16 @@ try {
 
     /* ── 6. A fresh boot with no reel boots as before ──────────────────── */
     {
-        const cold = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+        const cold = await newContext({ viewport: { width: 1280, height: 800 } });
         const p = await cold.newPage();
         watch(p);
         const t0 = Date.now();
         await p.goto(baseUrl, { waitUntil: 'domcontentloaded' });
         await p.getByRole('heading', { name: /Reality failed its overnight integrity check/ }).waitFor({ timeout: 8000 });
+        // The overlay fades for a second after the desktop appears; wait for
+        // it to leave rather than racing it (it lost by ~100ms once the
+        // missing-reel probe got faster).
+        await p.locator('#boot-overlay').waitFor({ state: 'detached', timeout: 3000 });
         const ms = Date.now() - t0;
         assert.equal(await p.locator('#boot-overlay').count(), 0, 'the boot overlay is gone');
         assert.equal(await p.locator('.cine-stage').count(), 0);
@@ -425,7 +441,7 @@ try {
 
     /* ── 7. Phone ──────────────────────────────────────────────────────── */
     {
-        const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+        const phone = await newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
         const p = await freshTestPage(phone);
         await p.evaluate(() => {
             system.closeApp('console');
@@ -461,6 +477,44 @@ try {
         await p.screenshot({ path: `${OUT}/player-t1-clean-390.png` });
         step('at 390×844 the player fits: screen first, the shelf fills the space below');
         await phone.close();
+    }
+
+    /* ── 7. The reels actually installed in assets/video/ decode ─────── */
+    {
+        const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+        const p = await ctx.newPage();
+        watch(p);
+        await p.goto(`${baseUrl}/?testMode=1`, { waitUntil: 'domcontentloaded' });
+        const report = await p.evaluate(async () => {
+            const stems = [
+                ...Object.values(MediaCatalog.scenes).map((s) => s.webm),
+                ...Object.values(MediaCatalog.loops).map((l) => l.webm),
+            ];
+            const out = [];
+            for (const url of stems) {
+                const head = await fetch(url, { method: 'HEAD', cache: 'no-cache' });
+                const type = head.headers.get('content-type') || '';
+                if (!/^video\//.test(type)) { out.push({ url, installed: false }); continue; }
+                const v = document.createElement('video');
+                v.muted = true; v.preload = 'metadata'; v.src = url;
+                const meta = await new Promise((res) => {
+                    v.onloadedmetadata = () => res({ w: v.videoWidth, h: v.videoHeight, d: v.duration });
+                    v.onerror = () => res(null);
+                    setTimeout(() => res(null), 8000);
+                });
+                out.push({ url, installed: true, meta });
+            }
+            return out;
+        });
+        const installed = report.filter((r) => r.installed);
+        for (const r of installed) {
+            assert.ok(r.meta, `${r.url} is installed but does not decode`);
+            assert.ok(r.meta.d >= 3, `${r.url} is ${r.meta.d}s long`);
+            assert.ok(r.meta.w >= 960 && r.meta.h >= 540 && Math.abs(r.meta.w / r.meta.h - 16 / 9) < 0.02,
+                `${r.url} is ${r.meta.w}x${r.meta.h}, not 16:9 at the contract size`);
+        }
+        step(`installed reels decode at the contract size (${installed.length} of ${report.length} installed)`);
+        await ctx.close();
     }
 
     assert.deepEqual(errors, [], 'no console errors');

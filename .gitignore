@@ -4,3 +4,8 @@ output/
 
 # Playwright MCP scratch output
 .playwright-mcp/
+
+# Krea generation masters: raw renders and 2K PNG keyframes stay local (~100 MB).
+# The committed .webp keyframes and MANIFEST.md are the provenance.
+assets/src/video/*.mp4
+assets/src/video/*.png
