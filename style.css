@@ -344,7 +344,6 @@ html {
     filter: saturate(1.1);
 }
 
-.host-bark-icon,
 .doc-notif-icon {
     display: flex;
     align-items: center;
@@ -446,12 +445,56 @@ html {
     padding: 0 12px;
     display: flex;
     align-items: center;
+    gap: 8px;
     background: var(--cos-void);
     border: 1px solid var(--cos-iron-700);
     border-radius: var(--cos-radius);
     color: var(--cos-verd-300);
     font: 11px var(--cos-font-machine);
     letter-spacing: 0.07em;
+}
+
+/* The speaker in the tray: one click silences the choir. */
+.tray-audio {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 18px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--cos-radius);
+    color: inherit;
+    cursor: pointer;
+}
+
+.tray-audio:hover {
+    border-color: var(--cos-iron-600);
+}
+
+.tray-audio:focus-visible {
+    outline: 1px dotted currentColor;
+    outline-offset: 1px;
+}
+
+.tray-audio svg {
+    display: block;
+    width: 14px;
+    height: 14px;
+}
+
+.tray-audio .tray-audio-x,
+.tray-audio.is-muted .tray-audio-waves {
+    display: none;
+}
+
+.tray-audio.is-muted .tray-audio-x {
+    display: inline;
+}
+
+.tray-audio.is-muted {
+    color: var(--cos-alarm);
 }
 
 /* Windows */
@@ -1059,6 +1102,19 @@ body.resizing-window {
 }
 
 /* Achievement Toast Notifications */
+.achievement-overflow {
+    position: fixed;
+    right: 20px;
+    z-index: 11000;
+    padding: 4px 10px;
+    color: var(--cos-brass-100);
+    background: var(--cos-iron-900);
+    border: 1px solid var(--cos-brass-500);
+    font: 11px/1.4 var(--cos-font-machine);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
 .achievement-toast {
     position: fixed;
     top: auto;
@@ -2619,6 +2675,80 @@ body.resizing-window {
     font-style: italic;
 }
 
+/* ── Sound settings: a trackbar cut into the vellum, a brass slider cap ── */
+.audio-settings {
+    margin: 15px 0;
+}
+
+.setting-range {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    min-width: 90px;
+    max-width: 240px;
+    height: 20px;
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
+.setting-range::-webkit-slider-runnable-track {
+    height: 4px;
+    background: var(--cos-vellum-200);
+    border: 1px solid;
+    border-color: var(--win-border-dark) var(--win-border-light) var(--win-border-light) var(--win-border-dark);
+}
+
+.setting-range::-moz-range-track {
+    height: 4px;
+    background: var(--cos-vellum-200);
+    border: 1px solid;
+    border-color: var(--win-border-dark) var(--win-border-light) var(--win-border-light) var(--win-border-dark);
+}
+
+.setting-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 11px;
+    height: 19px;
+    margin-top: -9px;
+    background: linear-gradient(180deg, var(--cos-brass-100), var(--cos-brass-300));
+    border: 1px solid;
+    border-color: var(--cos-halo) var(--cos-brass-700) var(--cos-brass-700) var(--cos-halo);
+    box-shadow: 1px 1px 0 var(--cos-brass-900);
+}
+
+.setting-range::-moz-range-thumb {
+    width: 9px;
+    height: 17px;
+    border-radius: 0;
+    background: linear-gradient(180deg, var(--cos-brass-100), var(--cos-brass-300));
+    border: 1px solid;
+    border-color: var(--cos-halo) var(--cos-brass-700) var(--cos-brass-700) var(--cos-halo);
+    box-shadow: 1px 1px 0 var(--cos-brass-900);
+}
+
+.setting-range:focus-visible {
+    outline: 1px dotted var(--cos-ink);
+    outline-offset: 2px;
+}
+
+.setting-range:disabled {
+    cursor: default;
+    opacity: 0.45;
+}
+
+/* Keeps the master trackbar in line with the two that carry a toggle. */
+.setting-checkbox-spacer {
+    flex: 0 0 18px;
+}
+
+.setting-value {
+    min-width: 34px;
+    font: 10px var(--cos-font-machine);
+    color: var(--cos-ink-dim);
+    text-align: right;
+}
+
 .system-actions {
     display: flex;
     gap: 10px;
@@ -3073,85 +3203,6 @@ body.performance-mode .crt-overlay {
 
 .recyclebin-info strong {
     color: #333;
-}
-
-/* ========================================
-   CASINO HOST BARK NOTIFICATIONS
-   ======================================== */
-
-.host-bark-notification {
-    position: fixed;
-    top: 80px;
-    right: -400px;
-    width: 350px;
-    background: linear-gradient(135deg, #1a1a2e, #2d1b3d);
-    border: 3px solid;
-    border-color: #8a2be2 #6a1ba2 #6a1ba2 #8a2be2;
-    border-radius: 8px;
-    padding: 15px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-    font-family: var(--cos-font-machine);
-    z-index: 10000;
-    cursor: pointer;
-    transition: right 0.4s ease-out;
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
-}
-
-.host-bark-notification.show {
-    right: 20px;
-}
-
-.host-bark-notification.lore-whisper {
-    background: linear-gradient(135deg, #2d1810, #3d2818);
-    border-color: #daa520 #b8860b #b8860b #daa520;
-    animation: whisperGlow 2s ease-in-out infinite;
-}
-
-@keyframes whisperGlow {
-    0%, 100% {
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-    }
-    50% {
-        box-shadow: 0 8px 32px rgba(218, 165, 32, 0.6);
-    }
-}
-
-.host-bark-icon {
-    font-size: 32px;
-    width: 40px;
-    text-align: center;
-    flex-shrink: 0;
-}
-
-.host-bark-content {
-    flex: 1;
-}
-
-.host-bark-name {
-    font-size: 12px;
-    font-weight: bold;
-    color: #daa520;
-    margin-bottom: 6px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.lore-whisper .host-bark-name {
-    color: #ffd700;
-}
-
-.host-bark-text {
-    font-size: 13px;
-    color: #e0e0e0;
-    line-height: 1.5;
-    font-style: italic;
-}
-
-.lore-whisper .host-bark-text {
-    color: #f0e68c;
-    font-weight: 500;
 }
 
 /* Operator shift context */
@@ -3686,15 +3737,6 @@ kbd {
         height: 28px;
         font-size: 10px;
         padding: 0 6px;
-    }
-
-    .host-bark-notification {
-        width: calc(100vw - 24px);
-        right: -110vw;
-    }
-
-    .host-bark-notification.show {
-        right: 12px;
     }
 
     .operator-status {
@@ -4381,6 +4423,132 @@ kbd {
     to   { opacity: 1; transform: translateY(0); }
 }
 
+/* ── SCN-ADV-002: End of Shift ───────────────────────────────────────────
+   Phases 1 and 2 are the Mirror Login's own classes. Phase 3 returns to
+   the institution's vellum to file the result, so its type is ink on
+   vellum (--cos-ink / --cos-ink-dim), never the inverse tokens. */
+
+/* "Outgoing Operator" does not fit the login's 92px label track. */
+.fin-scene .adv-field { grid-template-columns: 150px 1fr; }
+
+.fin-scene.fin-phase-credits {
+    max-width: 640px;
+    cursor: default;
+    color: var(--cos-ink);
+}
+.fin-phase-credits .rn-head h2 { color: var(--cos-ink); }
+.fin-phase-credits .briefing-eyebrow { color: var(--cos-brass-700); }
+.fin-phase-credits .adv-hint { padding-top: 0; }
+
+/* The roll. A real end-credits crawl would leave nothing on screen to
+   read; this one rises into place and stays, which is the final frame. */
+.fin-roll {
+    margin: 10px 18px 0;
+    padding: 12px 0 10px;
+    border-top: 1px solid var(--cos-vellum-400);
+    border-bottom: 1px solid var(--cos-vellum-400);
+    overflow: hidden;
+}
+.fin-roll-inner {
+    margin: 0;
+    display: grid;
+    gap: 3px;
+    animation: fin-roll-in 3.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.fin-roll-inner.is-still { animation: none; }
+.fin-credit {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    font: 11.5px/1.5 var(--cos-font-machine);
+}
+.fin-credit dt {
+    text-align: right;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--cos-ink-dim);
+}
+.fin-credit dd { margin: 0; color: var(--cos-ink); }
+
+@keyframes fin-roll-in {
+    from { transform: translateY(70px); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
+}
+
+/* Armed after a beat, like the Mirror Login's choice row: a click already
+   in flight from mashing through the transcript falls through. */
+.fin-close.is-arming { pointer-events: none; opacity: 0.5; }
+
+/* In Recovered Documents. */
+.fin-doc .fin-letter p { margin: 0 0 10px; font: 13px/1.6 var(--cos-font-display); }
+.fin-doc .fin-doc-head {
+    margin: 18px 0 8px;
+    font: bold 11px var(--cos-font-machine);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+.fin-doc .rn-list { padding: 0; }
+.fin-doc .fin-roll-inner { margin-top: 12px; }
+
+/* Regressions signed, when the relationship is hostile. */
+.rn-attrib {
+    display: block;
+    margin-top: 1px;
+    color: var(--cos-ichor-700);
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+}
+
+/* ── The post-game mark ──────────────────────────────────────────────────
+   Where a test build's watermark sits: bottom right, above the taskbar,
+   under every window. Plain machine type, no ornament — authentic, not a
+   trophy. */
+.build-watermark {
+    position: absolute;
+    right: 18px;
+    bottom: 44px;
+    z-index: 1;
+    display: grid;
+    justify-items: end;
+    gap: 1px;
+    pointer-events: none;
+    color: var(--cos-ink-inv);
+    opacity: 0.72;
+    font: 11px/1.35 var(--cos-font-machine);
+    letter-spacing: 0.04em;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+.build-watermark span:first-child { font-weight: bold; }
+
+/* The rivet on every window title bar records the handover.
+   Hostile: one cold iron rivet, nobody's glow but yours.
+   Curious: a second rivet beside it — two signatures on one fixing.
+   Complicit: his colour. */
+body[data-ending="hostile"] .window-title-bar::before {
+    background: radial-gradient(circle at 32% 30%, var(--cos-ink-inv), var(--cos-iron-500) 62%, var(--cos-iron-900));
+    box-shadow: none;
+}
+body[data-ending="curious"] .window-title-bar::before {
+    margin-right: 9px;
+    box-shadow:
+        0 0 5px rgba(222, 196, 131, 0.45),
+        10px 0 0 0 var(--cos-verd-500);
+}
+body[data-ending="complicit"] .window-title-bar::before {
+    background: radial-gradient(circle at 32% 30%, var(--cos-ichor-300), var(--cos-ichor-700) 62%, var(--cos-void));
+    box-shadow: 0 0 6px rgba(144, 99, 219, 0.55);
+}
+body[data-ending="complicit"] .build-watermark { color: var(--cos-ichor-300); }
+
+@media (prefers-reduced-motion: reduce) {
+    .fin-roll-inner { animation: none; }
+}
+
+@media (max-width: 640px) {
+    .fin-scene .adv-field { grid-template-columns: 1fr; gap: 4px; }
+    .build-watermark { right: 10px; font-size: 10px; }
+}
+
 /* ── Barks ───────────────────────────────────────────────────────────── */
 
 .adversary-bark-layer {
@@ -4429,4 +4597,2383 @@ body.start-menu-open .adversary-bark-layer { z-index: 9000; }
 @media (prefers-reduced-motion: reduce) {
     .adv-line, .adv-welcome-line, .adv-error-line { animation: none; }
     .adversary-bark { transition: none; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   CERTIFICATION, STABILITY AND SHIPPING
+
+   Three surfaces for one decision: which Mandate path is live, how close the
+   build is to a cascade, and the release dialog where both are settled.
+   Everything here reuses the existing token layer and .code-stamp / bevel
+   vocabulary — a certified path is brass, a lapsed one is vellum going grey,
+   and anything degrading is alarm.
+   ════════════════════════════════════════════════════════════════════════ */
+
+.code-stamp.is-live {
+    border-color: var(--cos-verd-500);
+    background: rgba(66, 144, 125, 0.16);
+    color: var(--cos-verd-600);
+}
+
+/* ── The certification header in the Mandates window ── */
+.certification-panel {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--cos-iron-600);
+    border-radius: 2px;
+    background: rgba(18, 24, 35, 0.5);
+}
+
+.cert-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.cert-current {
+    color: var(--cos-brass-300);
+    font: bold 12px var(--cos-font-display);
+    text-transform: capitalize;
+}
+
+.cert-list { margin: 0; padding: 0; list-style: none; }
+
+.cert-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(76, 92, 115, 0.28);
+}
+
+.cert-row:last-child { border-bottom: 0; }
+.cert-branch { color: var(--cos-ink-inv); font-size: 11px; text-transform: capitalize; }
+.cert-owned { color: var(--cos-ink-inv-dim); font: 10px var(--cos-font-machine); white-space: nowrap; }
+.cert-row.is-dormant .cert-branch { color: var(--cos-ink-inv-dim); }
+
+.cert-foot,
+.cert-none {
+    margin: 8px 0 0;
+    color: var(--cos-ink-inv-dim);
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+.cert-none { margin: 0; }
+
+/* A dormant branch is legible but visibly switched off. Opacity rather than
+   a colour override so the purchased/locked/unaffordable states underneath
+   keep reading as themselves. */
+.mandate-branch.is-lapsed { opacity: 0.78; }
+.mandate-branch.is-dormant { opacity: 0.55; }
+
+.mandate-branch.is-certified {
+    border-left: 2px solid var(--cos-brass-500);
+    padding-left: 8px;
+}
+
+/* ── Stability meter in the Universal Engine ── */
+.reality-stability { margin: 8px 0 10px; }
+
+.stability-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 5px;
+}
+
+.stability-trend {
+    color: var(--cos-ink-inv-dim);
+    font: 10px var(--cos-font-machine);
+    text-align: right;
+}
+
+.stability-track {
+    height: 5px;
+    border: 1px solid var(--cos-iron-600);
+    border-radius: 1px;
+    background: var(--cos-abyss);
+    overflow: hidden;
+}
+
+.stability-fill {
+    height: 100%;
+    background: var(--cos-verd-500);
+    transition: width 240ms linear, background-color 400ms ease;
+}
+
+.reality-stability.tier-1 .stability-fill { background: var(--cos-brass-500); }
+.reality-stability.tier-2 .stability-fill,
+.reality-stability.tier-3 .stability-fill { background: var(--cos-alarm); }
+
+.stability-note {
+    margin: 5px 0 0;
+    color: var(--cos-alarm);
+    font: 10px var(--cos-font-machine);
+}
+
+#prestige-stability.is-alarm { color: var(--cos-alarm); }
+
+/* ── The ship dialog ──
+
+   .system-dialog is a LIGHT surface (color #111 on --win-bg), so everything
+   here reads against vellum and uses --cos-ink / --cos-ink-dim. The first
+   draft inherited the dark-panel inks used elsewhere in this file and shipped
+   light-on-light; caught by looking at it. */
+.ship-dialog { max-width: 560px; }
+
+.ship-head { padding: 16px 18px 10px; }
+.ship-head h2 { margin: 0 0 5px; font: 700 20px/1.2 var(--cos-font-display); color: var(--cos-ink); }
+
+.ship-cascade,
+.ship-scars,
+.ship-clean {
+    margin: 0 18px 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--cos-vellum-400);
+    border-left: 3px solid var(--cos-brass-500);
+    background: rgba(180, 145, 74, 0.08);
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--cos-ink);
+}
+
+.ship-cascade {
+    border-left-color: var(--cos-alarm);
+    background: rgba(212, 85, 58, 0.09);
+}
+
+.ship-scars p,
+.ship-cascade p { margin: 6px 0 0; color: var(--cos-ink-dim); }
+.ship-scars ul { margin: 8px 0 0; padding-left: 17px; color: var(--cos-ink); }
+.ship-scars li { margin-bottom: 3px; }
+
+.ship-clean {
+    border-left-color: var(--cos-verd-500);
+    background: rgba(66, 144, 125, 0.09);
+    color: var(--cos-verd-700);
+    font: 11px var(--cos-font-machine);
+}
+
+.ship-cert { padding: 0 18px 6px; }
+.ship-cert .briefing-eyebrow { color: var(--cos-brass-700); }
+.ship-paths { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+
+/* No default selection — the button that ships stays disabled until one of
+   these is pressed. See ui.openShipDialog. */
+.ship-path {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas: 'name status' 'note status';
+    align-items: center;
+    gap: 2px 12px;
+    padding: 8px 11px;
+    border: 1px solid var(--cos-vellum-400);
+    background: rgba(255, 255, 255, 0.35);
+    color: var(--cos-ink);
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+}
+
+.ship-path:hover { border-color: var(--cos-brass-500); background: rgba(180, 145, 74, 0.1); }
+
+.ship-path.is-selected {
+    border-color: var(--cos-brass-700);
+    background: rgba(180, 145, 74, 0.22);
+    box-shadow: inset 0 0 0 1px var(--cos-brass-500);
+}
+
+.ship-path-name { grid-area: name; font: 600 13px var(--cos-font-display); text-transform: capitalize; }
+.ship-path-note { grid-area: note; color: var(--cos-ink-dim); font: 10px var(--cos-font-machine); }
+.ship-path-status {
+    grid-area: status;
+    color: var(--cos-brass-700);
+    font: 10px var(--cos-font-machine);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+}
+
+.ship-dialog .system-dialog-actions button[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* The channel picker grew the dialog past a laptop's height once the release
+   history is open; the dialog scrolls rather than pushing its own buttons off
+   the screen. */
+.ship-dialog { max-height: calc(100vh - 28px); overflow-y: auto; }
+
+/* ── Where the next build comes from ──
+   Same vellum, same inks as the path picker below it: these are the two
+   choices that shape the next run, and they should read as a pair. */
+.ship-next { padding: 0 18px 12px; }
+.ship-next .briefing-eyebrow { color: var(--cos-brass-700); }
+.ship-channels { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+.ship-channel {
+    flex: 1 1 110px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 7px 10px;
+    border: 1px solid var(--cos-vellum-400);
+    background: rgba(255, 255, 255, 0.35);
+    color: var(--cos-ink);
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+}
+.ship-channel:hover:not([disabled]) { border-color: var(--cos-brass-500); background: rgba(180, 145, 74, 0.1); }
+.ship-channel.is-selected {
+    border-color: var(--cos-brass-700);
+    background: rgba(180, 145, 74, 0.22);
+    box-shadow: inset 0 0 0 1px var(--cos-brass-500);
+}
+.ship-channel[disabled] { opacity: 0.5; cursor: not-allowed; }
+.ship-channel-name { font: 600 13px var(--cos-font-display); }
+.ship-channel-terms { color: var(--cos-ink-dim); font: 10px var(--cos-font-machine); }
+
+/* The release history. A ledger, not a card grid: one row per shipped build,
+   machine type, ruled like the changelog it came from. */
+.ship-archive {
+    margin-top: 10px;
+    border: 1px solid var(--cos-vellum-400);
+    border-left: 3px solid var(--cos-ichor-500);
+    background: rgba(255, 255, 255, 0.28);
+}
+.archive-head,
+.archive-row {
+    display: grid;
+    grid-template-columns: 62px 64px 1fr auto;
+    gap: 2px 10px;
+    align-items: baseline;
+}
+.archive-head {
+    padding: 5px 10px;
+    border-bottom: 1px solid var(--cos-vellum-400);
+    color: var(--cos-ink-dim);
+    font: 9.5px var(--cos-font-machine);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.archive-list { max-height: 196px; overflow-y: auto; }
+.archive-row {
+    width: 100%;
+    padding: 6px 10px;
+    border: 0;
+    border-bottom: 1px dotted var(--cos-vellum-400);
+    background: transparent;
+    color: var(--cos-ink);
+    text-align: left;
+    cursor: pointer;
+    font: 11px/1.4 var(--cos-font-machine);
+}
+.archive-row:last-child { border-bottom: 0; }
+.archive-row:hover { background: rgba(180, 145, 74, 0.1); }
+.archive-row.is-selected { background: rgba(180, 145, 74, 0.24); box-shadow: inset 3px 0 0 var(--cos-brass-700); }
+.archive-row:focus-visible { outline: 1px dotted var(--cos-ink); outline-offset: -2px; }
+.archive-version { font-weight: bold; }
+.archive-channel { color: var(--cos-ink-dim); }
+.archive-meta { color: var(--cos-ink-dim); text-transform: capitalize; }
+.archive-dirty { color: var(--cos-verd-700); text-align: right; }
+.archive-dirty.is-dirty { color: var(--cos-alarm); }
+.archive-when { grid-column: 3; color: var(--cos-ink-dim); font-size: 10px; }
+.archive-note {
+    grid-column: 4;
+    color: var(--cos-ink-dim);
+    font-size: 9.5px;
+    letter-spacing: 0.06em;
+    text-align: right;
+    text-transform: uppercase;
+}
+.archive-row.is-annotated .archive-note { color: var(--cos-brass-700); }
+
+@media (max-width: 520px) {
+    .archive-head { display: none; }
+    .archive-row { grid-template-columns: auto 1fr; }
+    .archive-meta { grid-column: 1 / -1; }
+    .archive-when { display: none; }
+    .archive-dirty { grid-column: 1; text-align: left; }
+    .archive-note { grid-column: 2; }
+}
+
+/* ── An archived replay's release notes ── */
+.rn-archive-stamp {
+    margin: 0 18px 10px;
+    padding: 8px 12px;
+    border: 1px solid var(--cos-vellum-400);
+    border-left: 3px solid var(--cos-alarm);
+    background: rgba(212, 85, 58, 0.07);
+    color: var(--cos-ink);
+}
+.rn-archive-stamp.is-filed { border-left-color: var(--cos-brass-500); background: rgba(180, 145, 74, 0.08); }
+.rn-archive-stamp p { margin: 6px 0 0; color: var(--cos-ink-dim); font: 11.5px/1.5 var(--cos-font-machine); }
+
+/* ── NULL.OPERATOR's annotations, in Recovered Documents ──
+   The viewer is pre-wrap for the shipped markdown files; this document is
+   real markup, so it opts back out. */
+.arc-doc { white-space: normal; }
+.arc-header {
+    margin: 0 0 14px !important;
+    padding: 8px 10px;
+    border: 1px solid #b9b2a4;
+    background: #f4efe4;
+    white-space: pre-wrap;
+}
+.arc-notes { margin: 0; padding: 0; list-style: none; }
+.arc-note { margin: 0 0 12px; }
+.arc-entry { font-weight: bold; }
+.arc-mark { display: inline-block; width: 14px; color: #a3321f; }
+.arc-regression .arc-mark { color: #7a4fa0; }
+.arc-line {
+    margin: 4px 0 0 14px;
+    padding: 2px 0 2px 10px;
+    border-left: 2px solid #444;
+    font-style: italic;
+}
+.arc-who { font-style: normal; font-weight: bold; letter-spacing: 0.04em; }
+.arc-clean { font-style: italic; }
+.arc-signoff { margin-top: 16px; color: #555; }
+
+/* ── The unsolicited cascade alert ── */
+.cascade-alert { max-width: 480px; }
+.cascade-body { padding: 16px 18px; }
+.cascade-body h2 { margin: 9px 0 8px; font: 700 18px/1.25 var(--cos-font-display); color: var(--cos-ink); }
+.cascade-body p { margin: 0 0 8px; font-size: 12px; line-height: 1.6; color: var(--cos-ink); }
+.cascade-advice { color: var(--cos-ink-dim) !important; }
+
+/* ── The production breakdown ("provenance sheet") ──
+
+   A property sheet the Sacred OS files for any rate or storage readout. Same
+   material as .system-dialog: an iron titlebar over a LIGHT vellum body, so
+   every ink here is --cos-ink / --cos-ink-dim, never the dark-panel inks —
+   the ship dialog shipped light-on-light once by inheriting those. Numbers
+   use tabular figures so a column of ×24.50 and ×1.0040 lines up. */
+[data-breakdown] { cursor: help; }
+[data-breakdown]:focus-visible {
+    outline: 1px dotted var(--cos-brass-500);
+    outline-offset: 2px;
+}
+.stat-rate[data-breakdown]:hover,
+.stat-value[data-breakdown]:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
+
+.breakdown-panel {
+    position: fixed;
+    z-index: 9450; /* over windows and the taskbar, under the modal layer */
+    width: min(420px, calc(100vw - 32px));
+    overflow: auto;
+    overscroll-behavior: contain;
+    color: var(--cos-ink);
+    background: var(--win-bg);
+    border: 2px solid;
+    border-color: var(--win-border-light) var(--win-border-dark) var(--win-border-dark) var(--win-border-light);
+    box-shadow: 3px 3px 0 #000, 0 14px 40px rgba(0, 0, 0, 0.5);
+    font: 11px/1.4 var(--cos-font-machine);
+    user-select: text;
+    animation: breakdownIn 110ms ease-out;
+}
+.breakdown-panel[hidden] { display: none; }
+.breakdown-panel * { user-select: text; }
+
+@keyframes breakdownIn {
+    from { opacity: 0; transform: translateY(-3px); }
+    to { opacity: 1; transform: none; }
+}
+
+.bd-titlebar {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    height: 22px;
+    padding: 2px 3px 2px 7px;
+    color: var(--cos-brass-100);
+    background: linear-gradient(180deg, var(--cos-iron-700), var(--cos-iron-900));
+    border-bottom: 1px solid var(--cos-brass-700);
+    font: bold 10px var(--cos-font-machine);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+.bd-titlebar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Hover never needs a close box; a pinned (clicked or tapped) sheet does. */
+.bd-close {
+    display: none;
+    width: 17px;
+    height: 15px;
+    place-items: center;
+    flex: none;
+    color: var(--cos-ink);
+    background: var(--win-bg);
+    border: 1px solid;
+    border-color: #fff #555 #555 #fff;
+    font: bold 10px/1 var(--cos-font-machine);
+    cursor: pointer;
+}
+.breakdown-panel.is-pinned .bd-close { display: grid; }
+
+.bd-body { padding: 8px 10px 9px; }
+
+.bd-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 6px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid var(--cos-vellum-500);
+}
+.bd-eyebrow {
+    color: var(--cos-ink-dim);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.bd-total {
+    color: var(--cos-brass-700);
+    font: 700 17px var(--cos-font-display);
+    white-space: nowrap;
+}
+
+.bd-alert {
+    margin: 0 0 7px;
+    padding: 5px 7px;
+    border: 1px solid var(--cos-alarm);
+    border-left-width: 3px;
+    background: rgba(212, 85, 58, 0.09);
+    color: var(--cos-ink);
+    font-size: 10px;
+    line-height: 1.5;
+}
+.bd-alert .code-stamp { margin-right: 4px; }
+
+.bd-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+}
+.bd-table thead th {
+    padding: 0 0 3px 8px;
+    color: var(--cos-ink-dim);
+    font: 9px var(--cos-font-machine);
+    letter-spacing: 0.08em;
+    text-align: right;
+    text-transform: uppercase;
+}
+.bd-table thead th:first-child { text-align: left; padding-left: 0; }
+.bd-table thead th:nth-child(2) { padding-right: 10px; }
+.bd-table td { padding: 2px 0; vertical-align: top; }
+.bd-table td.bd-label { padding-right: 8px; overflow-wrap: anywhere; }
+.bd-factor,
+.bd-running { text-align: right; white-space: nowrap; }
+.bd-table td.bd-factor { padding-right: 10px; color: var(--cos-ink); }
+.bd-running { color: var(--cos-ink-dim); min-width: 5.5em; }
+
+.bd-section th {
+    padding: 7px 0 2px;
+    color: var(--cos-brass-700);
+    border-bottom: 1px solid var(--cos-vellum-400);
+    font: bold 9px var(--cos-font-machine);
+    letter-spacing: 0.1em;
+    text-align: left;
+    text-transform: uppercase;
+}
+.bd-group td { padding-top: 3px; }
+.bd-group .bd-label { color: var(--cos-ink); }
+.bd-item td { padding-top: 0; padding-bottom: 1px; font-size: 10px; }
+.bd-table .bd-item td.bd-label { padding-left: 12px; color: var(--cos-ink-dim); position: relative; }
+.bd-item .bd-label::before {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 0;
+    width: 5px;
+    height: 0.7em;
+    border-left: 1px solid var(--cos-vellum-500);
+    border-bottom: 1px solid var(--cos-vellum-500);
+}
+.bd-table .bd-item td.bd-factor { color: var(--cos-ink-dim); }
+
+.bd-table .bd-group.is-alarm td.bd-label,
+.bd-table .bd-group.is-alarm td.bd-factor { color: var(--cos-alarm); }
+.bd-group.is-residue .bd-label { color: var(--cos-ink-dim); font-style: italic; }
+
+/* "Why?" lands here: the throttle rows are marked, not just scrolled to. */
+.bd-section.is-focus th { color: var(--cos-alarm); border-bottom-color: var(--cos-alarm); }
+tr.is-focus td { background: rgba(212, 85, 58, 0.08); }
+
+.bd-final th,
+.bd-final td {
+    padding-top: 5px;
+    border-top: 2px double var(--cos-vellum-500);
+    color: var(--cos-ink);
+    font: bold 11px var(--cos-font-machine);
+    text-align: left;
+}
+.bd-final td { text-align: right; color: var(--cos-brass-700); }
+
+.bd-stamp {
+    min-width: 0;
+    margin-left: 5px;
+    padding: 0 3px;
+    font-size: 8px;
+    vertical-align: 1px;
+}
+.code-stamp.is-residue {
+    border-color: var(--cos-vellum-500);
+    background: rgba(151, 140, 118, 0.14);
+    color: var(--cos-ink-dim);
+}
+
+.bd-note {
+    display: block;
+    color: var(--cos-ink-dim);
+    font-size: 9px;
+}
+
+.bd-foot,
+.bd-empty {
+    margin: 7px 0 0;
+    color: var(--cos-ink-dim);
+    font-size: 9px;
+    line-height: 1.45;
+}
+.bd-empty { font-size: 11px; color: var(--cos-ink); }
+
+/* The "Why?" next to a cascade stamp. Sized as a stamp, not a full-width
+   .win-btn, so it reads as an annotation on the readout. */
+.win-btn.stability-why {
+    display: inline-block;
+    width: auto;
+    margin: 0 auto 0 6px;
+    padding: 1px 6px;
+    font-size: 9px;
+    letter-spacing: 0.04em;
+}
+
+@media (max-width: 520px) {
+    .breakdown-panel { font-size: 10px; }
+    .bd-total { font-size: 15px; }
+    .bd-running { min-width: 4.5em; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .breakdown-panel { animation: none; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   INCIDENTS — js/incidents.js, drawn by ui.renderIncidentTriage.
+
+   The queue lives inside Task Manager, which is a LIGHT vellum surface, and
+   the SEV-1 dialog is a .system-dialog, which is light too — so both read in
+   --cos-ink / --cos-ink-dim. The dark-panel inks are only for the two pieces
+   that sit on iron: the tray lamp and the operator panel line. The one dark
+   object inside the vellum is the stabilisation scope, on purpose: it is an
+   instrument, and instruments are glass.
+   ════════════════════════════════════════════════════════════════════════ */
+
+.taskmgr-incidents {
+    margin-bottom: 6px;
+    padding: 7px 8px 8px;
+    border: 2px solid;
+    border-color: var(--cos-abyss) var(--cos-iron-600) var(--cos-iron-600) var(--cos-abyss);
+    background: var(--cos-vellum-100);
+    color: var(--cos-ink);
+    max-height: 58%;
+    overflow-y: auto;
+    flex: none;
+}
+
+.taskmgr-incidents[hidden] { display: none; }
+
+.incident-queue-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+}
+
+.incident-queue-count {
+    color: var(--cos-ink-dim);
+    font: 10px var(--cos-font-machine);
+}
+
+/* Task Manager is a LIGHT vellum surface: ink, never the dark-panel inks. */
+/* Inherits the report header's light ink: that panel is dark iron, not vellum. */
+.offline-held {
+    margin-top: 8px;
+}
+
+.incident-hold-note {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 6px 0 2px;
+    padding: 6px 8px;
+    color: var(--cos-ink);
+    background: rgba(180, 145, 74, 0.14);
+    border: 1px solid var(--cos-brass-500);
+    font: 11px/1.45 var(--cos-font-display);
+}
+
+.incident-queue-note {
+    margin: 5px 0 7px;
+    color: var(--cos-ink-dim);
+    font: italic 11px/1.45 var(--cos-font-display);
+}
+
+.incident-row {
+    margin-top: 6px;
+    padding: 7px 9px 8px;
+    border: 1px solid var(--cos-vellum-400);
+    border-left: 3px solid var(--cos-brass-500);
+    background: rgba(180, 145, 74, 0.07);
+}
+
+.incident-row.sev-2 {
+    border-left-color: var(--cos-alarm);
+    background: rgba(212, 85, 58, 0.06);
+}
+
+/* An outage breathes. Slowly — a lamp on a console, not a siren. */
+.incident-row.sev-1 {
+    border-left-color: var(--cos-alarm);
+    background: rgba(212, 85, 58, 0.11);
+    animation: incidentOutage 2.4s ease-in-out infinite;
+}
+
+.incident-row.has-prophet {
+    border-left-color: var(--cos-verd-500);
+    background: rgba(66, 144, 125, 0.08);
+}
+
+@keyframes incidentOutage {
+    0%, 100% { box-shadow: inset 3px 0 0 rgba(212, 85, 58, 0); }
+    50% { box-shadow: inset 3px 0 0 rgba(212, 85, 58, 0.55); }
+}
+
+.incident-row-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    font: 10px var(--cos-font-machine);
+}
+
+.incident-row.sev-3 .incident-sev {
+    border-color: var(--cos-brass-700);
+    color: var(--cos-brass-700);
+}
+
+.incident-process {
+    color: var(--cos-ink);
+    font-weight: bold;
+}
+
+.incident-status {
+    color: var(--cos-alarm);
+    font-weight: bold;
+}
+
+.incident-row.has-prophet .incident-status { color: var(--cos-verd-600); }
+
+.incident-clock {
+    margin-left: auto;
+    color: var(--cos-ink-dim);
+    font-variant-numeric: tabular-nums;
+}
+
+.incident-row.sev-1 .incident-clock {
+    color: var(--cos-alarm);
+    font-weight: bold;
+}
+
+.incident-title {
+    margin-top: 5px;
+    color: var(--cos-ink);
+    font: 700 13px/1.3 var(--cos-font-display);
+}
+
+.incident-id {
+    margin-right: 4px;
+    color: var(--cos-ink-dim);
+    font: 10px var(--cos-font-machine);
+}
+
+.incident-desc {
+    margin: 3px 0 0;
+    color: var(--cos-ink);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.incident-effect {
+    margin: 3px 0 0;
+    color: var(--cos-ink-dim);
+    font: 10px var(--cos-font-machine);
+}
+
+.incident-actions {
+    margin-top: 7px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+/* A struck vellum key, bevelled the way the rest of the chrome is. */
+.incident-btn {
+    padding: 4px 9px;
+    background: var(--win-bg);
+    border: 2px solid;
+    border-color: var(--win-border-light) var(--win-border-dark) var(--win-border-dark) var(--win-border-light);
+    color: var(--cos-ink);
+    font: bold 10px var(--cos-font-machine);
+    cursor: pointer;
+}
+
+.incident-btn:hover:not(:disabled) { background: var(--cos-brass-100); }
+
+.incident-btn:active:not(:disabled) {
+    border-color: var(--win-border-dark) var(--win-border-light) var(--win-border-light) var(--win-border-dark);
+}
+
+.incident-btn:disabled {
+    color: var(--cos-ink-dim);
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.incident-btn:focus-visible {
+    outline: 1px dotted var(--cos-ink);
+    outline-offset: -4px;
+}
+
+.incident-btn.is-labour { background: linear-gradient(var(--cos-brass-100), var(--cos-brass-300)); }
+.incident-btn.is-debt { color: var(--cos-brass-900); }
+.incident-btn.is-sacrifice { color: var(--cos-ichor-700); }
+
+/* ── The stabilisation scope ── */
+.incident-labour {
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid var(--cos-vellum-500);
+    background: rgba(255, 255, 255, 0.35);
+}
+
+.labour-track {
+    position: relative;
+    height: 22px;
+    overflow: hidden;
+    border: 2px solid;
+    border-color: var(--cos-abyss) var(--cos-iron-500) var(--cos-iron-500) var(--cos-abyss);
+    background:
+        repeating-linear-gradient(90deg, rgba(138, 200, 182, 0.08) 0 1px, transparent 1px 10%),
+        radial-gradient(ellipse at 50% 120%, rgba(144, 99, 219, 0.28), transparent 70%),
+        var(--cos-abyss);
+}
+
+.labour-band {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-left: 1px solid var(--cos-verd-300);
+    border-right: 1px solid var(--cos-verd-300);
+    background: linear-gradient(180deg, rgba(138, 200, 182, 0.85), rgba(66, 144, 125, 0.6));
+    box-shadow: 0 0 12px rgba(138, 200, 182, 0.7), inset 0 0 8px rgba(244, 239, 228, 0.35);
+}
+
+.labour-marker {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 3px;
+    margin-left: -1px;
+    background: var(--cos-brass-100);
+    box-shadow: 0 0 6px var(--cos-brass-300), 0 0 14px rgba(222, 196, 131, 0.6);
+}
+
+.labour-track.is-hit { animation: labourHit 260ms ease-out; }
+.labour-track.is-miss { animation: labourMiss 260ms ease-out; }
+
+@keyframes labourHit {
+    0% { box-shadow: inset 0 0 0 40px rgba(138, 200, 182, 0.35); }
+    100% { box-shadow: inset 0 0 0 40px rgba(138, 200, 182, 0); }
+}
+
+@keyframes labourMiss {
+    0% { box-shadow: inset 0 0 0 40px rgba(212, 85, 58, 0.45); transform: translateX(-2px); }
+    50% { transform: translateX(2px); }
+    100% { box-shadow: inset 0 0 0 40px rgba(212, 85, 58, 0); transform: none; }
+}
+
+.labour-readout {
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.labour-pips { display: flex; flex-wrap: wrap; gap: 3px; }
+
+.labour-pips i {
+    width: 9px;
+    height: 9px;
+    border: 1px solid var(--cos-ink-dim);
+    background: var(--cos-vellum-100);
+}
+
+.labour-pips i.is-set {
+    border-color: var(--cos-verd-700);
+    background: var(--cos-verd-500);
+    box-shadow: 0 0 4px rgba(66, 144, 125, 0.6);
+}
+
+.labour-align { min-width: 92px; padding: 6px 14px; }
+
+.labour-hint {
+    margin: 5px 0 0;
+    color: var(--cos-ink-dim);
+    font: 10px var(--cos-font-machine);
+}
+
+/* ── Tray lamp: sits on iron, so dark-panel inks ── */
+.tray-incident-led {
+    margin-right: 10px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: none;
+    border: 0;
+    color: var(--cos-ink-inv-dim);
+    font: 10px var(--cos-font-machine);
+    letter-spacing: 0.07em;
+    cursor: pointer;
+}
+
+.tray-incident-led[hidden] { display: none; }
+
+.led-lamp {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--cos-iron-600);
+    box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.6);
+}
+
+.tray-incident-led.is-lit { color: #f2b8a8; }
+
+.tray-incident-led.is-lit .led-lamp {
+    background: var(--cos-alarm);
+    box-shadow: 0 0 6px var(--cos-alarm), 0 0 12px rgba(212, 85, 58, 0.5);
+}
+
+.tray-incident-led.is-outage .led-lamp { animation: blink 1s steps(2, start) infinite; }
+
+/* Held: the lamp stays on but cools to brass — present, not urgent. */
+.tray-incident-led.is-held { color: var(--cos-brass-300); }
+.tray-incident-led.is-held .led-lamp {
+    background: var(--cos-brass-500);
+    box-shadow: 0 0 5px rgba(180, 145, 74, 0.55);
+}
+
+/* ── Operator panel line: also on iron ── */
+.operator-incidents {
+    width: 100%;
+    margin-top: 10px;
+    padding: 6px 9px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    background: rgba(16, 26, 37, 0.8);
+    border: 1px solid #405369;
+    color: #9eb0c0;
+    font: bold 10px 'Courier New', monospace;
+    cursor: pointer;
+}
+
+.operator-incidents[hidden] { display: none; }
+.operator-incidents.is-alarm { border-color: var(--cos-alarm); color: #f2b8a8; }
+.operator-incidents.is-alarm .operator-kicker { color: #f2b8a8; }
+
+/* ── The unsolicited SEV-1 dialog: light vellum ── */
+.incident-alert { max-width: 540px; }
+.incident-alert-body { padding: 16px 18px 4px; color: var(--cos-ink); }
+
+.incident-alert-stamps {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+}
+
+.incident-alert-id {
+    color: var(--cos-ink-dim);
+    font: 10px var(--cos-font-machine);
+}
+
+.incident-alert-body h2 {
+    margin: 10px 0 8px;
+    color: var(--cos-ink);
+    font: 700 19px/1.25 var(--cos-font-display);
+}
+
+.incident-alert-body p {
+    margin: 0 0 8px;
+    color: var(--cos-ink);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.incident-alert-impact {
+    padding: 8px 10px;
+    border-left: 3px solid var(--cos-alarm);
+    background: rgba(212, 85, 58, 0.09);
+}
+
+.incident-alert-body .incident-alert-advice { color: var(--cos-ink-dim); }
+
+.incident-alert-actions { flex-wrap: wrap; }
+
+.incident-alert-actions button[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* ── Recycle Bin artifacts ── */
+.recyclebin-item.item-artifact { border-left: 3px solid var(--cos-brass-500); }
+
+@media (max-width: 520px) {
+    .taskmgr-incidents { max-height: none; }
+    .incident-clock { margin-left: 0; width: 100%; }
+    .incident-actions .incident-btn { flex: 1 1 100%; text-align: left; }
+    .incident-alert-actions button { flex: 1 1 100%; }
+    /* The ritual first: on a phone the primary is the one under the thumb. */
+    .incident-alert-actions .dialog-primary { order: -1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .incident-row.sev-1,
+    .tray-incident-led.is-outage .led-lamp,
+    .labour-track.is-hit,
+    .labour-track.is-miss { animation: none; }
+}
+
+/* ============================================================
+   PATIENCE.EXE — Golf solitaire on the altar cloth
+
+   The window keeps the house grammar: a struck-brass toolbar on vellum, a
+   sunken well for the play surface, a status bar of sunken panes. The well
+   is the one dark surface, because cards read best on a dark cloth — the
+   old green baize, re-dyed as the void between stars.
+
+   Art hooks (see PatienceView in js/solitaire.js): .pt-card-art takes
+   --pt-card-art per [data-suit][data-rank]; .pt-card-back, .pt-felt,
+   #pt-glyph-<suit>, .patience-icon and .app-glyph--patience are each one
+   rule to replace.
+   ============================================================ */
+.patience-icon,
+.app-glyph--patience {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Cdefs%3E%3ClinearGradient id='v' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23f4efe4'/%3E%3Cstop offset='1' stop-color='%23d5cbb6'/%3E%3C/linearGradient%3E%3ClinearGradient id='i' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23364356'/%3E%3Cstop offset='1' stop-color='%23121823'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='48' cy='48' r='42' fill='none' stroke='%23dec483' stroke-opacity='.4' stroke-width='2'/%3E%3Cg transform='rotate(-14 42 52)'%3E%3Crect x='18' y='20' width='42' height='60' rx='4' fill='url(%23i)' stroke='%23b4914a' stroke-width='2.5'/%3E%3Crect x='23' y='25' width='32' height='50' rx='2' fill='none' stroke='%2377592b' stroke-width='1.5'/%3E%3Ccircle cx='39' cy='50' r='7' fill='none' stroke='%23dec483' stroke-width='2'/%3E%3C/g%3E%3Cg transform='rotate(9 56 50)'%3E%3Crect x='36' y='16' width='42' height='60' rx='4' fill='url(%23v)' stroke='%2377592b' stroke-width='2.5'/%3E%3Cg fill='%2377592b' transform='translate(43 32) scale(1.17)'%3E%3Ccircle cx='12' cy='12' r='3.6'/%3E%3Cpath d='M12 .8 13.7 7.2 12 8.4 10.3 7.2Z' transform='rotate(0 12 12)'/%3E%3Cpath d='M12 .8 13.7 7.2 12 8.4 10.3 7.2Z' transform='rotate(60 12 12)'/%3E%3Cpath d='M12 .8 13.7 7.2 12 8.4 10.3 7.2Z' transform='rotate(120 12 12)'/%3E%3Cpath d='M12 .8 13.7 7.2 12 8.4 10.3 7.2Z' transform='rotate(180 12 12)'/%3E%3Cpath d='M12 .8 13.7 7.2 12 8.4 10.3 7.2Z' transform='rotate(240 12 12)'/%3E%3Cpath d='M12 .8 13.7 7.2 12 8.4 10.3 7.2Z' transform='rotate(300 12 12)'/%3E%3C/g%3E%3Ctext x='41' y='29' font-family='Georgia,serif' font-weight='bold' font-size='11' fill='%2377592b'%3EA%3C/text%3E%3C/g%3E%3C/svg%3E");
+}
+
+.app-glyph--patience {
+    display: inline-block;
+    background-position: center;
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.window-content.app-solitaire {
+    padding: 0;
+    overflow: hidden;
+}
+
+.patience {
+    --pt-pile-w: clamp(46px, 11vw, 72px);
+    --pt-seraph: var(--cos-brass-700);
+    --pt-throne: var(--cos-verd-600);
+    --pt-cherub: var(--cos-ichor-700);
+    --pt-dominion: #8e2f1c;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.pt-sprite {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+}
+
+/* ── Toolbar ── */
+.pt-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--cos-vellum-500);
+    box-shadow: 0 1px 0 var(--cos-vellum-100);
+}
+
+.patience .win-btn.pt-btn {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    width: auto;
+    margin: 0;
+    padding: 5px 10px;
+    white-space: nowrap;
+}
+
+.pt-btn small {
+    color: var(--cos-verd-300);
+    font-size: 10px;
+}
+
+/* ── The dealer's strip: Fate, the house ──
+   A sunken plate under the toolbar, the same bevel as the status panes. Its
+   height is FIXED so a line arriving never moves a card under the pointer;
+   long lines clamp, and the full text is in the title. Ink on vellum. */
+.pt-dealer {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    height: 42px;
+    margin: 6px 8px 0;
+    padding: 3px 10px 3px 4px;
+    border: 1px solid;
+    border-color: var(--cos-vellum-500) var(--cos-vellum-100) var(--cos-vellum-100) var(--cos-vellum-500);
+    background: linear-gradient(180deg, var(--cos-vellum-200), var(--cos-vellum-100));
+    overflow: hidden;
+    cursor: default;
+}
+
+.pt-dealer[hidden] {
+    display: none;
+}
+
+.pt-dealer-plate {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 0 8px 0 4px;
+    border-right: 1px solid var(--cos-vellum-500);
+    box-shadow: 1px 0 0 var(--cos-vellum-100);
+    color: var(--cos-brass-700);
+    font: bold 8px var(--cos-font-machine);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.pt-dealer-sigil {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+}
+
+.pt-dealer-line {
+    display: -webkit-box;
+    margin: 0;
+    overflow: hidden;
+    color: var(--cos-ink);
+    font: italic 13px/1.3 var(--cos-font-display);
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.pt-dealer-aside {
+    color: var(--cos-ink-dim);
+    font: 10px var(--cos-font-machine);
+    font-style: normal;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.pt-dealer.is-fresh .pt-dealer-line {
+    animation: pt-dealer-in 0.45s ease-out;
+}
+
+/* After a while the line stays, dimmed, rather than vanishing: she said it. */
+.pt-dealer.is-stale .pt-dealer-line {
+    color: var(--cos-ink-dim);
+}
+
+/* A lore whisper: the house leans in, and the light changes. */
+.pt-dealer.is-whisper {
+    background: linear-gradient(180deg, var(--cos-vellum-200), color-mix(in srgb, var(--cos-ichor-300) 22%, var(--cos-vellum-100)));
+}
+
+.pt-dealer.is-whisper .pt-dealer-plate,
+.pt-dealer.is-whisper .pt-dealer-line {
+    color: var(--cos-ichor-700);
+}
+
+@keyframes pt-dealer-in {
+    0% { opacity: 0; transform: translateX(-6px); }
+    100% { opacity: 1; transform: none; }
+}
+
+/* ── The well ── */
+.pt-felt {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    margin: 8px;
+    padding: 14px 12px 12px;
+    border: 2px solid;
+    border-color: var(--cos-vellum-500) var(--cos-vellum-100) var(--cos-vellum-100) var(--cos-vellum-500);
+    background:
+        radial-gradient(1px 1px at 12% 18%, rgba(255, 247, 222, 0.7), transparent 2px),
+        radial-gradient(1px 1px at 68% 9%, rgba(255, 247, 222, 0.5), transparent 2px),
+        radial-gradient(1px 1px at 87% 64%, rgba(255, 247, 222, 0.55), transparent 2px),
+        radial-gradient(1px 1px at 31% 82%, rgba(255, 247, 222, 0.4), transparent 2px),
+        radial-gradient(1px 1px at 53% 47%, rgba(207, 170, 244, 0.45), transparent 2px),
+        radial-gradient(ellipse 80% 55% at 50% 0%, rgba(79, 46, 128, 0.38), transparent 70%),
+        linear-gradient(180deg, var(--cos-iron-800), var(--cos-abyss));
+    box-shadow:
+        inset 0 0 0 1px rgba(180, 145, 74, 0.35),
+        inset 0 0 36px rgba(0, 0, 0, 0.55);
+}
+
+.pt-tableau {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: clamp(4px, 1.3vw, 10px);
+    max-width: 540px;
+    margin: 0 auto;
+    align-items: start;
+}
+
+.pt-column {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+/* Percent margins resolve against the column's WIDTH, which is the card's
+   width, so the overlap stays exact at every size: 1.4w tall, 0.35w showing. */
+.pt-column > .pt-card + .pt-card {
+    margin-top: -105%;
+}
+
+.pt-slot {
+    display: block;
+    width: 100%;
+    aspect-ratio: 5 / 7;
+    border: 1px dashed rgba(180, 145, 74, 0.45);
+    border-radius: 4px;
+}
+
+/* ── Cards ── */
+.pt-card {
+    --pt-ink: var(--cos-ink);
+    position: relative;
+    display: block;
+    width: 100%;
+    aspect-ratio: 5 / 7;
+    padding: 0;
+    margin: 0;
+    border: 1px solid var(--cos-brass-700);
+    border-radius: 4px;
+    background: linear-gradient(160deg, var(--cos-vellum-100), var(--cos-vellum-300));
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+    color: var(--pt-ink);
+    font: bold 11px var(--cos-font-display);
+    text-align: left;
+    overflow: hidden;
+    transition: transform 120ms ease-out, box-shadow 120ms ease-out;
+}
+
+.pt-card--seraph { --pt-ink: var(--pt-seraph); }
+.pt-card--throne { --pt-ink: var(--pt-throne); }
+.pt-card--cherub { --pt-ink: var(--pt-cherub); }
+.pt-card--dominion { --pt-ink: var(--pt-dominion); }
+
+.pt-card-corner {
+    position: absolute;
+    top: 2px;
+    left: 3px;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    line-height: 1;
+}
+
+.pt-card-corner--foot {
+    top: auto;
+    left: auto;
+    right: 3px;
+    bottom: 2px;
+    transform: rotate(180deg);
+}
+
+.pt-rank {
+    font: bold clamp(10px, 2.1vw, 13px) var(--cos-font-display);
+    letter-spacing: -0.02em;
+}
+
+.pt-suit-glyph {
+    width: clamp(8px, 1.7vw, 11px);
+    height: clamp(8px, 1.7vw, 11px);
+    flex: 0 0 auto;
+    fill: currentColor;
+    color: inherit;
+}
+
+/* The centre panel. Authored art drops in through --pt-card-art; until then
+   it frames the house sigil like an inset plate. */
+.pt-card-art {
+    position: absolute;
+    inset: 24% 14% 16%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid color-mix(in srgb, var(--pt-ink) 35%, transparent);
+    border-radius: 2px;
+    background: var(--pt-card-art, radial-gradient(circle, rgba(255, 247, 222, 0.9), transparent 70%)) center / cover no-repeat;
+}
+
+.pt-suit-glyph--large {
+    width: 62%;
+    height: 62%;
+}
+
+.pt-card.is-covered {
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.45);
+}
+
+button.pt-card {
+    cursor: pointer;
+}
+
+button.pt-card:hover {
+    transform: translateY(-2px);
+}
+
+button.pt-card:focus-visible,
+.pt-stock:focus-visible {
+    outline: 1px dotted var(--cos-halo);
+    outline-offset: 2px;
+}
+
+.pt-card.is-playable {
+    box-shadow:
+        0 0 0 1px var(--cos-brass-300),
+        0 0 10px rgba(222, 196, 131, 0.55);
+}
+
+/* The 98 focus rectangle: dotted, never a glow. */
+.pt-card.is-selected {
+    outline: 1px dotted var(--cos-halo);
+    outline-offset: 2px;
+}
+
+.pt-card-back {
+    background:
+        radial-gradient(circle at 50% 50%, transparent 0 15%, rgba(222, 196, 131, 0.55) 16% 19%, transparent 20%),
+        repeating-linear-gradient(45deg, rgba(180, 145, 74, 0.24) 0 1px, transparent 1px 7px),
+        repeating-linear-gradient(-45deg, rgba(180, 145, 74, 0.24) 0 1px, transparent 1px 7px),
+        linear-gradient(160deg, var(--cos-iron-700), var(--cos-iron-900));
+    border-color: var(--cos-brass-500);
+    box-shadow:
+        inset 0 0 0 3px var(--cos-iron-900),
+        inset 0 0 0 4px var(--cos-brass-700),
+        0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+/* ── Stock and waste ── */
+.pt-lower {
+    display: grid;
+    grid-template-columns: var(--pt-pile-w) var(--pt-pile-w) minmax(0, 1fr);
+    gap: 18px;
+    align-items: end;
+    max-width: 540px;
+    margin: 20px auto 0;
+}
+
+.pt-stock {
+    position: relative;
+    display: block;
+    width: var(--pt-pile-w);
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+}
+
+.pt-stock:disabled {
+    cursor: default;
+}
+
+.pt-pile-count {
+    position: absolute;
+    left: 50%;
+    bottom: -8px;
+    transform: translateX(-50%);
+    min-width: 24px;
+    padding: 1px 4px;
+    border: 1px solid var(--cos-brass-700);
+    border-radius: 1px;
+    background: var(--cos-iron-900);
+    color: var(--cos-brass-300);
+    font: bold 10px var(--cos-font-machine);
+    text-align: center;
+}
+
+.pt-waste {
+    position: relative;
+    width: var(--pt-pile-w);
+}
+
+.pt-waste-under {
+    position: absolute;
+    inset: 0;
+    transform: translateX(-9px) rotate(-5deg);
+    opacity: 0.8;
+}
+
+.pt-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    color: var(--cos-ink-inv-dim);
+    font: 10px/1.4 var(--cos-font-machine);
+}
+
+.pt-legend-title {
+    color: var(--cos-brass-300);
+    font-weight: bold;
+    letter-spacing: 0.16em;
+}
+
+.pt-keys kbd {
+    display: inline-block;
+    min-width: 16px;
+    padding: 0 3px;
+    border: 1px solid var(--cos-iron-500);
+    border-bottom-width: 2px;
+    border-radius: 2px;
+    background: var(--cos-iron-800);
+    color: var(--cos-ink-inv);
+    font: 9px var(--cos-font-machine);
+    text-align: center;
+}
+
+/* ── Status bar ── */
+.pt-statusbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    padding: 3px 4px 4px;
+    border-top: 1px solid var(--cos-vellum-100);
+    font: 10px var(--cos-font-machine);
+}
+
+.pt-pane {
+    padding: 2px 6px;
+    border: 1px solid;
+    border-color: var(--cos-vellum-500) var(--cos-vellum-100) var(--cos-vellum-100) var(--cos-vellum-500);
+    color: var(--cos-ink);
+    white-space: nowrap;
+}
+
+.pt-pane.is-low {
+    color: #8e2f1c;
+    font-weight: bold;
+}
+
+.pt-pane--note {
+    flex: 1 1 120px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--cos-ink-dim);
+}
+
+/* ── Message box, inside the well ── */
+.pt-banner {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 2;
+    width: min(380px, calc(100% - 24px));
+    transform: translate(-50%, -50%);
+    border: 1px solid var(--cos-brass-700);
+    background: var(--cos-vellum-200);
+    box-shadow:
+        inset 0 0 0 1px var(--cos-vellum-100),
+        0 12px 30px rgba(0, 0, 0, 0.65);
+}
+
+.pt-banner-title {
+    padding: 4px 8px;
+    background: linear-gradient(180deg, var(--cos-iron-700), var(--cos-iron-900));
+    border-bottom: 1px solid var(--cos-brass-700);
+    color: var(--cos-brass-100);
+    font: bold 11px var(--cos-font-machine);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+
+.pt-banner-body {
+    padding: 12px 14px;
+    color: var(--cos-ink);
+    font: 13px/1.45 var(--cos-font-display);
+}
+
+.pt-banner-body p + p {
+    margin-top: 6px;
+}
+
+.pt-banner-pay {
+    color: var(--cos-verd-600);
+    font: bold 11px var(--cos-font-machine);
+}
+
+.pt-banner-note {
+    color: var(--cos-ink-dim);
+    font-size: 12px;
+}
+
+.pt-banner-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+}
+
+/* The win flourish: a halo, and twelve sparks thrown off it. The sparks sit
+   above the message box and outrun it, because halo-on-vellum is invisible. */
+.pt-banner.is-won {
+    animation: pt-halo 1.6s ease-out;
+}
+
+.pt-flourish {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 3;
+    pointer-events: none;
+}
+
+.pt-flourish i {
+    position: absolute;
+    left: -8px;
+    top: -8px;
+    width: 16px;
+    height: 16px;
+    background: var(--cos-brass-300);
+    filter: drop-shadow(0 0 4px rgba(255, 247, 222, 0.9));
+    clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+    opacity: 0;
+    animation: pt-spark 1.5s ease-out forwards;
+}
+
+.pt-flourish i:nth-child(1) { --a: 0deg; }
+.pt-flourish i:nth-child(2) { --a: 30deg; animation-delay: 40ms; }
+.pt-flourish i:nth-child(3) { --a: 60deg; }
+.pt-flourish i:nth-child(4) { --a: 90deg; animation-delay: 40ms; }
+.pt-flourish i:nth-child(5) { --a: 120deg; }
+.pt-flourish i:nth-child(6) { --a: 150deg; animation-delay: 40ms; }
+.pt-flourish i:nth-child(7) { --a: 180deg; }
+.pt-flourish i:nth-child(8) { --a: 210deg; animation-delay: 40ms; }
+.pt-flourish i:nth-child(9) { --a: 240deg; }
+.pt-flourish i:nth-child(10) { --a: 270deg; animation-delay: 40ms; }
+.pt-flourish i:nth-child(11) { --a: 300deg; }
+.pt-flourish i:nth-child(12) { --a: 330deg; animation-delay: 40ms; }
+
+@keyframes pt-spark {
+    0% { opacity: 1; transform: rotate(var(--a)) translateY(0) scale(0.5); }
+    100% { opacity: 0; transform: rotate(var(--a)) translateY(-230px) scale(1.4); }
+}
+
+@keyframes pt-halo {
+    0% { box-shadow: 0 0 28px 8px rgba(255, 247, 222, 0.7), 0 12px 30px rgba(0, 0, 0, 0.65); }
+    100% { box-shadow: 0 0 90px 30px rgba(255, 247, 222, 0), 0 12px 30px rgba(0, 0, 0, 0.65); }
+}
+
+body.performance-mode .pt-flourish {
+    display: none;
+}
+
+body.performance-mode .pt-dealer.is-fresh .pt-dealer-line {
+    animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pt-flourish { display: none; }
+    .pt-banner.is-won { animation: none; }
+    button.pt-card:hover { transform: none; }
+    .pt-dealer.is-fresh .pt-dealer-line { animation: none; }
+}
+
+@media (max-width: 520px) {
+    .pt-toolbar {
+        gap: 4px;
+        padding: 4px;
+    }
+
+    .patience .win-btn.pt-btn {
+        padding: 4px 6px;
+        font-size: 10px;
+    }
+
+    .pt-felt {
+        margin: 4px;
+        padding: 10px 6px 8px;
+    }
+
+    .pt-dealer {
+        margin: 4px 4px 0;
+        padding-right: 6px;
+        gap: 6px;
+    }
+
+    .pt-dealer-plate b {
+        display: none;
+    }
+
+    .pt-dealer-line {
+        font-size: 12px;
+    }
+
+    .pt-lower {
+        gap: 14px;
+        margin-top: 16px;
+    }
+
+    .pt-keys {
+        display: none;
+    }
+}
+
+/* ============================================================
+   CINEMATICS — js/media.js
+
+   A reel occupies the system modal slot while it plays, so it sits inside
+   #system-modal-layer and covers the scrim. overlay is full frame; blend
+   screen-blends a reel with no alpha so its black drops out; window frames
+   it in CosmOS chrome. The cold boot plays inside #boot-overlay instead
+   (.is-hosted). Captions are type, never baked into the reel.
+   ============================================================ */
+.cine-stage {
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    background: var(--cos-void);
+    cursor: pointer;
+    outline: none;
+}
+
+.cine-stage.is-hosted {
+    position: absolute;
+    z-index: 5;
+}
+
+.cine-screen {
+    position: relative;
+    width: min(100vw, calc(100vh * 16 / 9));
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background: #000;
+}
+
+.cine-video,
+.cine-still {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.cine--blend:not(.is-hosted) {
+    /* Over the layer's scrim: dark enough that screen-blended black reads
+       as black, light enough that the desktop is still there behind it. */
+    background: rgba(4, 6, 10, 0.6);
+}
+
+.cine--blend .cine-screen {
+    background: transparent;
+}
+
+.cine--blend .cine-video,
+.cine--blend .cine-still {
+    mix-blend-mode: screen;
+}
+
+.cine-caption {
+    position: absolute;
+    left: 50%;
+    bottom: max(28px, 7vh);
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: min(720px, calc(100vw - 32px));
+    padding: 6px 16px;
+    color: var(--cos-brass-100);
+    background: rgba(4, 6, 10, 0.74);
+    border-top: 1px solid var(--cos-brass-700);
+    border-bottom: 1px solid var(--cos-brass-700);
+    font: 14px/1.45 var(--cos-font-display);
+    letter-spacing: 0.02em;
+    text-align: center;
+    animation: cine-caption-in 900ms ease-out both;
+}
+
+@keyframes cine-caption-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.cine-skip {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    color: var(--cos-ink-inv-dim);
+    font: 10px var(--cos-font-machine);
+    letter-spacing: 0.16em;
+}
+
+.cine--window {
+    /* The modal layer's own scrim is already behind it. */
+    background: transparent;
+}
+
+.cine-window {
+    width: min(560px, calc(100vw - 28px));
+    cursor: pointer;
+}
+
+.cine-window .cine-screen {
+    width: auto;
+    margin: 10px 10px 0;
+    border: 2px solid;
+    border-color: var(--win-border-dark) var(--win-border-light) var(--win-border-light) var(--win-border-dark);
+}
+
+.cine-window .cine-caption {
+    position: static;
+    transform: none;
+    width: auto;
+    max-width: none;
+    margin: 8px 10px 12px;
+    padding: 0;
+    color: var(--cos-ink);
+    background: transparent;
+    border: 0;
+    font-size: 13px;
+}
+
+.cine-window-skip {
+    color: var(--cos-ink-inv-dim);
+    font-weight: normal;
+    letter-spacing: 0.12em;
+}
+
+.cine--window .cine-skip {
+    display: none;
+}
+
+/* ============================================================
+   SACRED MEDIA PLAYER — js/mediaplayer.js
+
+   The house grammar again: vellum chrome, a sunken shelf, a sunken caption
+   well. The screen is the one dark surface, because it is a television.
+   The VHS treatment lives entirely here, behind .mp.is-vhs, so it stays
+   crisp and switchable; reduced motion stops every animation in it.
+   ============================================================ */
+.mediaplayer-icon,
+.app-glyph--mediaplayer {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Cdefs%3E%3ClinearGradient id='i' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23364356'/%3E%3Cstop offset='1' stop-color='%23121823'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='48' cy='48' r='42' fill='none' stroke='%23dec483' stroke-opacity='.4' stroke-width='2'/%3E%3Crect x='11' y='25' width='74' height='48' rx='4' fill='url(%23i)' stroke='%23b4914a' stroke-width='2.5'/%3E%3Crect x='19' y='30' width='58' height='14' rx='1.5' fill='%23e6dfcf' stroke='%2377592b' stroke-width='1.5'/%3E%3Cpath d='M24 37h26' stroke='%2377592b' stroke-width='1.6'/%3E%3Cpath d='M68 32.4l1.1 2.9 3 .2-2.3 1.9.8 3-2.6-1.7-2.6 1.7.8-3-2.3-1.9 3-.2z' fill='%239063db'/%3E%3Crect x='25' y='49' width='46' height='16' rx='8' fill='%23090d15' stroke='%2377592b' stroke-width='1.5'/%3E%3Ccircle cx='35' cy='57' r='5.2' fill='none' stroke='%23dec483' stroke-width='2'/%3E%3Ccircle cx='61' cy='57' r='5.2' fill='none' stroke='%23dec483' stroke-width='2'/%3E%3Ccircle cx='35' cy='57' r='1.7' fill='%23dec483'/%3E%3Ccircle cx='61' cy='57' r='1.7' fill='%23dec483'/%3E%3Cpath d='M29 73l4-5h30l4 5' fill='none' stroke='%2377592b' stroke-width='1.5'/%3E%3C/svg%3E");
+}
+
+.app-glyph--mediaplayer {
+    display: inline-block;
+    background-position: center;
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.window-content.app-mediaplayer {
+    padding: 0;
+    overflow: hidden;
+}
+
+.mplayer {
+    height: 100%;
+    container: mplayer / inline-size;
+}
+
+.mp {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    color: var(--cos-ink);
+}
+
+.mp-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--cos-vellum-500);
+    box-shadow: 0 1px 0 var(--cos-vellum-100);
+}
+
+.mp-brand {
+    color: var(--cos-ink-dim);
+    font: bold 10px var(--cos-font-machine);
+    letter-spacing: 0.18em;
+}
+
+.mp-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--cos-ink);
+    font: 11px var(--cos-font-machine);
+    cursor: pointer;
+}
+
+.mp-body {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 214px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px;
+}
+
+/* ── The shelf: tapes stood on their spines ── */
+.mp-shelf {
+    list-style: none;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px;
+    background: var(--cos-vellum-300);
+    border: 2px solid;
+    border-color: var(--cos-vellum-500) var(--cos-vellum-100) var(--cos-vellum-100) var(--cos-vellum-500);
+}
+
+.mp-tape {
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    column-gap: 8px;
+    row-gap: 2px;
+    padding: 7px 8px 7px 6px;
+    text-align: left;
+    color: var(--cos-ink-inv);
+    background: linear-gradient(180deg, var(--cos-iron-700), var(--cos-iron-900));
+    border: 1px solid var(--cos-iron-900);
+    border-left: 4px solid var(--cos-brass-700);
+    border-radius: var(--cos-radius);
+    font: 11px var(--cos-font-machine);
+    cursor: pointer;
+}
+
+.mp-tape:hover:not(:disabled) {
+    border-left-color: var(--cos-brass-500);
+    background: linear-gradient(180deg, var(--cos-iron-600), var(--cos-iron-800));
+}
+
+.mp-tape:focus-visible {
+    outline: 1px dotted var(--cos-ink);
+    outline-offset: 2px;
+}
+
+.mp-tape-code {
+    grid-row: span 2;
+    align-self: center;
+    padding: 3px 5px;
+    color: var(--cos-ink);
+    background: var(--cos-vellum-200);
+    border: 1px solid var(--cos-brass-700);
+    font-weight: bold;
+}
+
+.mp-tape-title {
+    color: var(--cos-brass-100);
+    font: bold 12px/1.25 var(--cos-font-display);
+}
+
+.mp-tape-meta {
+    color: var(--cos-ink-inv-dim);
+    font-size: 10px;
+    line-height: 1.3;
+}
+
+.mp-tape.is-current {
+    border-left-color: var(--cos-brass-300);
+    box-shadow: inset 0 0 0 1px var(--cos-brass-500);
+}
+
+.mp-tape.is-secret {
+    border-left-color: var(--cos-ichor-500);
+}
+
+.mp-tape.is-secret .mp-tape-title {
+    color: var(--cos-ichor-300);
+}
+
+.mp-tape.is-locked {
+    color: var(--cos-ink-dim);
+    background: var(--cos-vellum-200);
+    border: 1px dashed var(--cos-vellum-500);
+    border-left: 4px solid var(--cos-vellum-500);
+    cursor: default;
+}
+
+.mp-tape.is-locked .mp-tape-code {
+    color: var(--cos-ink-dim);
+    background: transparent;
+    border-color: var(--cos-vellum-500);
+}
+
+.mp-tape.is-locked .mp-tape-title,
+.mp-tape.is-locked .mp-tape-meta {
+    color: var(--cos-ink-dim);
+}
+
+.mp-tape.is-locked .mp-tape-meta {
+    font-style: italic;
+}
+
+.mp-new {
+    color: var(--cos-verd-300);
+    letter-spacing: 0.08em;
+}
+
+/* ── The deck ── */
+.mp-deck {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mp-screen-wrap {
+    flex: 1;
+    min-height: 120px;
+    display: grid;
+    place-items: center;
+    container-type: size;
+}
+
+.mp-screen {
+    position: relative;
+    width: min(100cqw, calc(100cqh * 4 / 3));
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    background: #000;
+    border: 2px solid;
+    border-color: var(--cos-vellum-500) var(--cos-vellum-100) var(--cos-vellum-100) var(--cos-vellum-500);
+    box-shadow: inset 0 0 0 1px #000;
+    cursor: pointer;
+}
+
+.mp-picture {
+    position: absolute;
+    inset: 0;
+}
+
+.mp-slide {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: var(--cos-void);
+}
+
+.mp-move {
+    position: absolute;
+    inset: 0;
+    transform-origin: 50% 50%;
+    will-change: transform;
+}
+
+.mp-art-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.92;
+}
+
+.mp-art-subject,
+.mp-art-fx {
+    position: absolute;
+    left: 50%;
+    top: 46%;
+    aspect-ratio: 1;
+    object-fit: contain;
+    transform: translate(-50%, -50%);
+}
+
+.mp-art-subject {
+    width: 46%;
+    filter: drop-shadow(0 0 18px rgba(144, 99, 219, 0.35));
+}
+
+/* The plaques are 96px pixel art: kept crisp, and smaller. */
+.mp-art-subject[src*="/icons/"] {
+    width: 30%;
+    image-rendering: pixelated;
+}
+
+.mp-art-fx {
+    width: 72%;
+    mix-blend-mode: screen;
+    opacity: 0.85;
+}
+
+.mp-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #000;
+}
+
+.mp-label {
+    position: absolute;
+    left: 4%;
+    bottom: 5%;
+    max-width: 92%;
+    padding: 3px 8px;
+    color: var(--cos-brass-100);
+    background: rgba(4, 6, 10, 0.72);
+    border-left: 3px solid var(--cos-brass-500);
+    font: bold 11px var(--cos-font-machine);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+/* A 1994 title card: corporate blue, struck brass. */
+.mp-card {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 8%;
+    text-align: center;
+    background:
+        radial-gradient(ellipse 70% 55% at 50% 42%, rgba(222, 196, 131, 0.12), transparent 70%),
+        radial-gradient(ellipse at 50% 40%, #142a46, #06101d 72%);
+}
+
+.mp-card-kicker {
+    color: var(--cos-brass-300);
+    font: bold 10px var(--cos-font-machine);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+.mp-card-title {
+    color: var(--cos-halo);
+    font: 700 clamp(18px, 6.5cqw, 36px)/1.1 var(--cos-font-display);
+    text-shadow: 0 2px 0 #000;
+}
+
+.mp-card-rule {
+    width: 42%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--cos-brass-500), transparent);
+}
+
+.mp-card-sub {
+    color: var(--cos-ink-inv);
+    font: 12px var(--cos-font-machine);
+}
+
+.mp-card.is-glitch {
+    background:
+        radial-gradient(ellipse 70% 55% at 50% 42%, rgba(144, 99, 219, 0.2), transparent 70%),
+        radial-gradient(ellipse at 50% 40%, #2a1240, var(--cos-void) 72%);
+}
+
+/* ── VHS: scanlines, chroma, tracking, the deck's own OSD ── */
+.mp-fx,
+.mp-track,
+.mp-osd,
+.mp-counter {
+    position: absolute;
+    pointer-events: none;
+    display: none;
+}
+
+.mp-fx {
+    inset: 0;
+    background:
+        repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.24) 0 1px, transparent 1px 3px),
+        radial-gradient(ellipse at center, transparent 56%, rgba(0, 0, 0, 0.5));
+}
+
+.mp-track {
+    left: 0;
+    right: 0;
+    top: -12%;
+    height: 9%;
+    background: linear-gradient(180deg, transparent, rgba(255, 247, 222, 0.06) 35%, rgba(255, 247, 222, 0.13) 50%, rgba(255, 247, 222, 0.05) 65%, transparent);
+    animation: mp-track 7.5s linear infinite;
+}
+
+.mp-osd {
+    top: 6%;
+    left: 6%;
+    color: #f2f6ff;
+    font: bold clamp(13px, 3.4cqw, 22px) var(--cos-font-machine);
+    letter-spacing: 0.08em;
+    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.7), 1px 0 rgba(255, 40, 80, 0.55), -1px 0 rgba(40, 190, 255, 0.55);
+}
+
+.mp-counter {
+    top: 6%;
+    right: 6%;
+    color: #f2f6ff;
+    font: bold clamp(11px, 2.6cqw, 16px) var(--cos-font-machine);
+    letter-spacing: 0.06em;
+    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.7);
+}
+
+.mp.is-vhs .mp-fx,
+.mp.is-vhs .mp-track,
+.mp.is-vhs .mp-osd,
+.mp.is-vhs .mp-counter {
+    display: block;
+}
+
+.mp.is-vhs .mp-picture {
+    animation: mp-wobble 6.5s steps(1, end) infinite;
+}
+
+.mp.is-vhs .mp-art-bg,
+.mp.is-vhs .mp-video {
+    filter: saturate(1.18) contrast(1.06) blur(0.35px);
+}
+
+/* Subject only: the vfx plates are opaque RGB, and a drop-shadow on an
+   opaque square draws its edges as two coloured lines. */
+.mp.is-vhs .mp-art-subject {
+    filter: drop-shadow(2px 0 0 rgba(255, 40, 80, 0.5)) drop-shadow(-2px 0 0 rgba(40, 190, 255, 0.45));
+}
+
+.mp.is-vhs .mp-card-title,
+.mp.is-vhs .mp-label {
+    text-shadow: 1.5px 0 rgba(255, 40, 80, 0.6), -1.5px 0 rgba(40, 190, 255, 0.6), 0 2px 0 #000;
+}
+
+@keyframes mp-track {
+    from { transform: translateY(0); }
+    to { transform: translateY(1350%); }
+}
+
+@keyframes mp-wobble {
+    0% { transform: none; }
+    90% { transform: translateX(1.5px) skewX(-0.5deg); }
+    91% { transform: translateX(-1px); }
+    92% { transform: translateX(2px) skewX(0.4deg); }
+    93% { transform: none; }
+}
+
+/* T6. NULL.OPERATOR is not on the VHS switch: the tape itself is damaged. */
+.mp-screen.is-glitch .mp-picture {
+    animation: mp-glitch 0.9s steps(2, end) infinite;
+}
+
+.mp-screen.is-glitch .mp-art-bg {
+    filter: hue-rotate(35deg) saturate(1.6) contrast(1.2);
+}
+
+.mp-screen.is-glitch .mp-art-subject {
+    filter: drop-shadow(5px 0 0 rgba(144, 99, 219, 0.85)) drop-shadow(-4px 0 0 rgba(212, 85, 58, 0.6));
+}
+
+.mp-screen.is-glitch .mp-track {
+    display: block;
+    height: 24%;
+    animation-duration: 0.8s;
+}
+
+@keyframes mp-glitch {
+    0% { transform: translateX(0); clip-path: inset(0 0 0 0); }
+    25% { transform: translateX(-4px); clip-path: inset(8% 0 62% 0); }
+    50% { transform: translateX(3px) skewX(-2deg); clip-path: inset(0 0 0 0); }
+    75% { transform: translateX(-2px); clip-path: inset(41% 0 22% 0); }
+}
+
+/* ── Caption well and transport ── */
+.mp-caption {
+    min-height: 4.1em;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 7px 10px;
+    color: var(--cos-ink);
+    background: var(--cos-vellum-100);
+    border: 2px solid;
+    border-color: var(--cos-vellum-500) var(--cos-vellum-100) var(--cos-vellum-100) var(--cos-vellum-500);
+    font: 13px/1.45 var(--cos-font-display);
+}
+
+.mp-speaker {
+    flex: 0 0 auto;
+    color: var(--cos-brass-700);
+    font: bold 10px var(--cos-font-machine);
+    letter-spacing: 0.12em;
+}
+
+.mp-speaker:empty {
+    display: none;
+}
+
+.mp-caption.is-null .mp-speaker,
+.mp-caption.is-null .mp-line {
+    color: var(--cos-ichor-700);
+}
+
+.mp-caption.is-null .mp-line {
+    font-family: var(--cos-font-machine);
+}
+
+.mp-transport {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mp .win-btn.mp-btn {
+    flex: 0 0 36px;
+    width: 36px;
+    margin: 0;
+    padding: 4px 0;
+    font-size: 13px;
+    line-height: 1.1;
+}
+
+.mp .win-btn.mp-play {
+    flex-basis: 44px;
+    width: 44px;
+}
+
+.mp-scrub-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 80px;
+    display: flex;
+    align-items: center;
+}
+
+.mp-scrub {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 22px;
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
+.mp-scrub::-webkit-slider-runnable-track {
+    height: 6px;
+    background: var(--cos-vellum-300);
+    border: 1px solid;
+    border-color: var(--win-border-dark) var(--win-border-light) var(--win-border-light) var(--win-border-dark);
+}
+
+.mp-scrub::-moz-range-track {
+    height: 6px;
+    background: var(--cos-vellum-300);
+    border: 1px solid;
+    border-color: var(--win-border-dark) var(--win-border-light) var(--win-border-light) var(--win-border-dark);
+}
+
+.mp-scrub::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 11px;
+    height: 19px;
+    margin-top: -8px;
+    background: linear-gradient(180deg, var(--cos-brass-100), var(--cos-brass-300));
+    border: 1px solid;
+    border-color: var(--cos-halo) var(--cos-brass-700) var(--cos-brass-700) var(--cos-halo);
+    box-shadow: 1px 1px 0 var(--cos-brass-900);
+}
+
+.mp-scrub::-moz-range-thumb {
+    width: 9px;
+    height: 17px;
+    border-radius: 0;
+    background: linear-gradient(180deg, var(--cos-brass-100), var(--cos-brass-300));
+    border: 1px solid;
+    border-color: var(--cos-halo) var(--cos-brass-700) var(--cos-brass-700) var(--cos-halo);
+}
+
+.mp-scrub:focus-visible {
+    outline: 1px dotted var(--cos-ink);
+    outline-offset: 2px;
+}
+
+/* One notch per cut, so a scrub can land on a shot. */
+.mp-marks {
+    position: absolute;
+    inset: 0 5px;
+    pointer-events: none;
+}
+
+.mp-marks i {
+    position: absolute;
+    top: 50%;
+    width: 1px;
+    height: 12px;
+    margin-top: -6px;
+    background: var(--cos-vellum-500);
+}
+
+.mp-time {
+    min-width: 84px;
+    color: var(--cos-ink-dim);
+    font: 11px var(--cos-font-machine);
+    text-align: right;
+}
+
+.mp-status {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 10px;
+    color: var(--cos-ink-dim);
+    border-top: 1px solid var(--cos-vellum-500);
+    box-shadow: inset 0 1px 0 var(--cos-vellum-100);
+    font: 10px var(--cos-font-machine);
+    letter-spacing: 0.06em;
+}
+
+/* Narrow windows and phones: the shelf lies down along the top. */
+@container mplayer (max-width: 620px) {
+    .mp-body {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr);
+        gap: 8px;
+        padding: 8px;
+    }
+
+    .mp-shelf {
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    .mp-shelf li {
+        flex: 0 0 196px;
+    }
+
+    /* The screen takes the full width and the deck stacks under it, rather
+       than centring a width-bound screen in a tall empty well. */
+    .mp-screen-wrap {
+        flex: 0 0 auto;
+        min-height: 0;
+        display: block;
+        container-type: normal;
+    }
+
+    .mp-screen {
+        width: 100%;
+    }
+
+    .mp-brand {
+        display: none;
+    }
+
+    .mp-time {
+        min-width: 0;
+    }
+
+    .mp-status-src {
+        text-align: right;
+    }
+}
+
+/* Phones in portrait: the window is maximised and far taller than the deck
+   needs, which left a hand's breadth of empty vellum under the transport.
+   The deck goes first and the shelf fills that space as a list of spines,
+   instead of a cramped strip scrolled sideways above the screen. Short or
+   desktop windows keep the strip. Placed after the container rules so it
+   wins on order at equal specificity. */
+@media (max-width: 900px) and (orientation: portrait) and (min-height: 640px) {
+    .mp-deck { order: 1; }
+
+    .mp-shelf {
+        order: 2;
+        flex-direction: column;
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    .mp-shelf li { flex: 0 0 auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cine-caption,
+    .mp.is-vhs .mp-picture,
+    .mp-screen.is-glitch .mp-picture {
+        animation: none;
+    }
+
+    .mp.is-vhs .mp-track,
+    .mp-screen.is-glitch .mp-track {
+        display: none;
+    }
+}
+
+/* ── Dialog loops (js/media.js attachLoop) ──────────────────────────────
+   A dark monitor strip at the head of a system dialog, mounted only when
+   the loop's file is installed. The dialog is a LIGHT vellum surface, so
+   the strip is its own iron-framed screen rather than a blend over vellum. */
+.dialog-loop {
+    height: 112px;
+    margin: -2px 0 10px;
+    overflow: hidden;
+    background: var(--cos-void);
+    border: 1px solid var(--cos-iron-600);
+    box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.8);
+}
+
+.dialog-loop video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }

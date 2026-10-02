@@ -3,6 +3,23 @@ const game = {
         return Math.floor(Math.random() * (max - min + 1)) + min;
     },
 
+    /* Every sound cue goes through here. js/audio.js is presentation, and
+       the simulator and every vm test load this file without it, so this is
+       inert wherever `audio` is undefined. A cue must never decide anything. */
+    sfx(name, opts) {
+        if (typeof audio !== 'undefined' && audio && typeof audio.play === 'function') audio.play(name, opts);
+    },
+
+    /* Cinematics (js/media.js), on the same terms as sfx: inert wherever
+       `media` is undefined, which is the simulator and every vm test. A
+       reel decorates a moment and never decides one, so nothing here waits
+       on it — media.play() resolves on its own, and a missing reel is
+       skipped without a frame of player. */
+    cinematic(id, opts) {
+        if (typeof media === 'undefined' || !media || typeof media.play !== 'function') return null;
+        try { return media.play(id, opts); } catch (err) { return null; }
+    },
+
     ensureLoopState() {
         if (!State.loopSystems) {
             State.loopSystems = {};
@@ -94,9 +111,11 @@ const game = {
         const cost = this.getNullDoctrineCost();
         if ((vd.resources.echoes || 0) < cost) {
             ui.log(`Insufficient Echoes. Need ${this.formatCost(cost)}.`, 'void');
+            this.sfx('error');
             return;
         }
         vd.resources.echoes -= cost;
+        this.sfx('purchase');
         State.nullDoctrine = (State.nullDoctrine || 0) + 1;
         ui.log(`Null Doctrine inscribed to rank ${State.nullDoctrine}.`, 'void');
         ui.screenPulse('rgba(150, 88, 224, 0.3)');
@@ -152,6 +171,7 @@ const game = {
         loops.overclock.endsAt = now + loops.overclock.duration + (State.overclockDurationBonus || 0);
 
         ui.log('Celestial Overclock engaged! +50% production, stronger miracles for 30s.');
+        this.sfx('overclock');
         ui.screenPulse('rgba(255, 153, 0, 0.35)');
     },
 
@@ -399,6 +419,7 @@ const game = {
         }
 
         ui.log(`[Directive Claimed] ${directive.title}`);
+        this.sfx('directive');
         loops.directives.active = null;
         this.generateDirective(true);
         this.checkAchievements();
@@ -460,8 +481,52 @@ const game = {
         }
     },
 
+    /* A production line's output scale. See the note in getProductionRates. */
+    lineScale(value) {
+        return Number.isFinite(value) ? value : 1;
+    },
+
     getProductionRates(now = Date.now(), includeTransient = true) {
+        return this.computeProduction(now, includeTransient, null);
+    },
+
+    /* ── Production, as named folds ───────────────────────────────────────
+       Every rate is a left fold over named factors, and the production
+       breakdown panel is a recording of that same fold — not a second copy of
+       the formula. There used to be three hand-written copies of this
+       arithmetic on screen and all three had drifted (see syncResources), so
+       the panel is not allowed to be a fourth.
+
+       `[key, value]` folds as `acc * value`; `[key, value, 'sub']` as
+       `acc - value`. JS evaluates `a * b * c` as `(a * b) * c`, so a fold
+       seeded with the first factor produces the same double as the chained
+       expression it replaced, operand for operand. That is what lets
+       `npm run test:golden` stay byte-identical: the ORDER below is the order
+       the old expressions had, and it is load-bearing for the same reason it
+       is in Modifiers.fold — IEEE-754 multiplication is not associative.
+
+       Sub-products (`@line`) are folded first and enter their parent as one
+       operand, exactly as `hierarchyBonus` did as a const. Flattening them
+       into the parent would re-associate the product.
+
+       With no ledger this allocates a few small arrays and records nothing.
+       With one, every step's running total is the value the game itself
+       computed — there is nothing to drift. */
+    foldProduction(ledger, line, factors) {
+        let acc = factors[0][1];
+        const steps = ledger ? [{ key: factors[0][0], op: 'base', value: acc, running: acc }] : null;
+        for (let i = 1; i < factors.length; i++) {
+            const factor = factors[i];
+            acc = factor[2] === 'sub' ? acc - factor[1] : acc * factor[1];
+            if (steps) steps.push({ key: factor[0], op: factor[2] || 'mul', value: factor[1], running: acc });
+        }
+        if (ledger) ledger.lines[line] = { steps, value: acc };
+        return acc;
+    },
+
+    computeProduction(now, includeTransient, ledger) {
         this.ensureLoopState();
+        const fold = (line, factors) => this.foldProduction(ledger, line, factors);
         const achievementBonuses = State.achievementBonuses || {};
         const globalGainBonus = achievementBonuses.globalGain || 1;
         const automationSpeedBonus = achievementBonuses.automationSpeed || 1;
@@ -470,13 +535,13 @@ const game = {
             now < State.skills.divineIntervention.endsAt ? 2 : 1;
         const streakProductionBonus = includeTransient ? this.getStreakProductionMultiplier() : 1;
         const overclockProductionBonus = includeTransient ? this.getOverclockProductionMultiplier(now) : 1;
-        const totalProductionBonus = divineInterventionBonus * automationSpeedBonus *
-            streakProductionBonus * overclockProductionBonus;
+        const totalProductionBonus = fold('transient', [
+            ['skill.divineIntervention', divineInterventionBonus],
+            ['achievement.automationSpeed', automationSpeedBonus],
+            ['transient.streak', streakProductionBonus],
+            ['transient.overclock', overclockProductionBonus],
+        ]);
 
-        const seraphBaseProduction = State.automatons.seraphProduction || 1;
-        const cherubBaseProduction = State.automatons.cherubProduction || 1;
-        const drillBonus = this.getDrillBonus();
-        const dominionBonus = this.getDominionBonus();
         /* Two tiers of bonus, deliberately.
 
            `baseHierarchyBonus` is everything the primordial economy earns for
@@ -487,39 +552,77 @@ const game = {
            the Void's rewards fed the Void, Nemesis would raise Echo income,
            which buys more Null Doctrine, which raises Echo income again: a
            closed loop that ran production to 1e18/s in an 8h simulation. */
-        const baseHierarchyBonus = totalProductionBonus * drillBonus * dominionBonus *
-            this.getDoctrineBonus();
-        const hierarchyBonus = baseHierarchyBonus *
-            this.getNemesisBonus() * this.getNullDoctrineBonus();
+        const baseHierarchyBonus = fold('baseHierarchy', [
+            ['@transient', totalProductionBonus],
+            ['repeatable.automaton_drill', this.getDrillBonus()],
+            ['bonus.dominion', this.getDominionBonus()],
+            ['bonus.doctrine', this.getDoctrineBonus()],
+        ]);
+        const hierarchyBonus = fold('hierarchy', [
+            ['@baseHierarchy', baseHierarchyBonus],
+            ['bonus.nemesis', this.getNemesisBonus()],
+            ['bonus.nullDoctrine', this.getNullDoctrineBonus()],
+        ]);
 
-        const praiseGross = State.pps * seraphBaseProduction * State.praiseMultiplier *
-            this.getRefinementBonus() * hierarchyBonus *
-            (achievementBonuses.praiseGain || 1) * globalGainBonus;
+        const praiseGross = fold('praiseGross', [
+            ['base.pps', State.pps],
+            ['target:automaton.seraph.output', this.lineScale(State.automatons.seraphProduction)],
+            ['target:praise.multiplier', State.praiseMultiplier],
+            ['repeatable.praise_refinement', this.getRefinementBonus()],
+            ['@hierarchy', hierarchyBonus],
+            ['achievement.praiseGain', achievementBonuses.praiseGain || 1],
+            ['achievement.globalGain', globalGainBonus],
+        ]);
 
         /* Thrones are a conversion, not a tap: they draw Praise and return
            Offerings. While Praise is banked they run flat out and the stock
            drains; once it is empty they can only run on incoming Praise, which
            is what stops a Throne overbuild from deadlocking the economy. */
         const throneCount = State.automatons.throneCount || 0;
-        const throneDraw = throneCount * Economy.thronePraiseDraw * (State.throneDrawMultiplier ?? 1);
+        const throneDraw = fold('throneDraw', [
+            ['base.throneCount', throneCount],
+            ['const.thronePraiseDraw', Economy.thronePraiseDraw],
+            ['target:throne.draw', State.throneDrawMultiplier ?? 1],
+        ]);
         const hasBankedPraise = (State.resources.praise || 0) > 1;
         const throneActivity = throneDraw <= 0
             ? 0
             : (hasBankedPraise ? 1 : Math.min(1, praiseGross / throneDraw));
+        if (ledger) ledger.scalars.throneActivity = { value: throneActivity, banked: hasBankedPraise, idle: throneDraw <= 0 };
+        const throneDrawn = fold('throneDrawn', [
+            ['@throneDraw', throneDraw],
+            ['scalar.throneActivity', throneActivity],
+        ]);
 
-        const offeringsGross = throneCount * Economy.throneOfferingYield * throneActivity *
-            (State.automatons.throneProduction || 1) * State.offeringMultiplier * hierarchyBonus *
-            (achievementBonuses.offeringValue || 1) * globalGainBonus;
+        const offeringsGross = fold('offerings', [
+            ['base.throneCount', throneCount],
+            ['const.throneOfferingYield', Economy.throneOfferingYield],
+            ['scalar.throneActivity', throneActivity],
+            ['target:automaton.throne.output', this.lineScale(State.automatons.throneProduction)],
+            ['target:offerings.multiplier', State.offeringMultiplier],
+            ['@hierarchy', hierarchyBonus],
+            ['achievement.offeringValue', achievementBonuses.offeringValue || 1],
+            ['achievement.globalGain', globalGainBonus],
+        ]);
 
         const rates = {
             // Net of the Throne draw, so the readout shows what actually banks.
-            praise: praiseGross - (throneDraw * throneActivity),
+            praise: fold('praise', [
+                ['@praiseGross', praiseGross],
+                ['@throneDrawn', throneDrawn, 'sub'],
+            ]),
             praiseGross,
-            throneDraw: throneDraw * throneActivity,
+            throneDraw: throneDrawn,
             throneActivity,
             offerings: offeringsGross,
-            souls: State.sps * cherubBaseProduction * State.soulMultiplier * hierarchyBonus *
-                (achievementBonuses.soulGain || 1) * globalGainBonus,
+            souls: fold('souls', [
+                ['base.sps', State.sps],
+                ['target:automaton.cherub.output', this.lineScale(State.automatons.cherubProduction)],
+                ['target:souls.multiplier', State.soulMultiplier],
+                ['@hierarchy', hierarchyBonus],
+                ['achievement.soulGain', achievementBonuses.soulGain || 1],
+                ['achievement.globalGain', globalGainBonus],
+            ]),
             darkness: 0,
             shadows: 0,
             echoes: 0,
@@ -529,32 +632,62 @@ const game = {
 
         if (State.dimensions.void.unlocked) {
             const vd = State.dimensions.void;
-            const voidBonus = baseHierarchyBonus * this.getVoidDrillBonus() *
-                (achievementBonuses.voidGain || 1) *
-                (achievementBonuses.voidStability || 1) * globalGainBonus;
+            const voidBonus = fold('voidBonus', [
+                ['@baseHierarchy', baseHierarchyBonus],
+                ['repeatable.entropy_drill', this.getVoidDrillBonus()],
+                ['achievement.voidGain', achievementBonuses.voidGain || 1],
+                ['achievement.voidStability', achievementBonuses.voidStability || 1],
+                ['achievement.globalGain', globalGainBonus],
+            ]);
 
-            const darknessGross = vd.dps * (vd.automatons.wraithProduction || 1) *
-                vd.darknessMultiplier * this.getVoidRefinementBonus() * voidBonus;
+            const darknessGross = fold('darknessGross', [
+                ['base.dps', vd.dps],
+                ['target:void.automaton.wraith.output', this.lineScale(vd.automatons.wraithProduction)],
+                ['target:void.darkness.multiplier', vd.darknessMultiplier],
+                ['repeatable.void_refinement', this.getVoidRefinementBonus()],
+                ['@voidBonus', voidBonus],
+            ]);
 
             /* Revenants are the Void's Throne: they burn Darkness to condense
                Shadows. Same throttle as the primordial side — flat out while
                Darkness is banked, on income alone once the bank is dry, so an
                overbuild stalls the conversion instead of deadlocking it. */
             const revenantCount = vd.automatons.revenantCount || 0;
-            const revenantDraw = revenantCount * Economy.revenantDarknessDraw *
-                (vd.revenantDrawMultiplier ?? 1);
+            const revenantDraw = fold('revenantDraw', [
+                ['base.revenantCount', revenantCount],
+                ['const.revenantDarknessDraw', Economy.revenantDarknessDraw],
+                ['target:void.revenant.draw', vd.revenantDrawMultiplier ?? 1],
+            ]);
             const hasBankedDarkness = (vd.resources.darkness || 0) > 1;
             const revenantActivity = revenantDraw <= 0
                 ? 0
                 : (hasBankedDarkness ? 1 : Math.min(1, darknessGross / revenantDraw));
+            if (ledger) ledger.scalars.revenantActivity = { value: revenantActivity, banked: hasBankedDarkness, idle: revenantDraw <= 0 };
+            const revenantDrawn = fold('revenantDrawn', [
+                ['@revenantDraw', revenantDraw],
+                ['scalar.revenantActivity', revenantActivity],
+            ]);
 
             rates.darknessGross = darknessGross;
-            rates.revenantDraw = revenantDraw * revenantActivity;
-            rates.darkness = darknessGross - (revenantDraw * revenantActivity);
-            rates.shadows = revenantCount * Economy.revenantShadowYield * revenantActivity *
-                (vd.automatons.revenantProduction || 1) * vd.shadowMultiplier * voidBonus;
-            rates.echoes = vd.eps * (vd.automatons.phantomProduction || 1) *
-                vd.echoMultiplier * voidBonus;
+            rates.revenantDraw = revenantDrawn;
+            rates.darkness = fold('darkness', [
+                ['@darknessGross', darknessGross],
+                ['@revenantDrawn', revenantDrawn, 'sub'],
+            ]);
+            rates.shadows = fold('shadows', [
+                ['base.revenantCount', revenantCount],
+                ['const.revenantShadowYield', Economy.revenantShadowYield],
+                ['scalar.revenantActivity', revenantActivity],
+                ['target:void.automaton.revenant.output', this.lineScale(vd.automatons.revenantProduction)],
+                ['target:void.shadow.multiplier', vd.shadowMultiplier],
+                ['@voidBonus', voidBonus],
+            ]);
+            rates.echoes = fold('echoes', [
+                ['base.eps', vd.eps],
+                ['target:void.automaton.phantom.output', this.lineScale(vd.automatons.phantomProduction)],
+                ['target:void.echo.multiplier', vd.echoMultiplier],
+                ['@voidBonus', voidBonus],
+            ]);
         }
 
         const timeline = State.timelines.effects[State.timelines.current] || {};
@@ -568,6 +701,218 @@ const game = {
         rates.adoration *= (timeline.adorationBonus || 1) * globalGainBonus;
 
         return rates;
+    },
+
+    /* ── The production breakdown ─────────────────────────────────────────
+       "Where does this number come from?" — answered by replaying
+       computeProduction with a ledger and dressing each recorded step. DOM
+       free: ui renders it, tests/breakdown.mjs holds it to the real value. */
+    RATE_LINES: {
+        praise: 'praise', offerings: 'offerings', souls: 'souls',
+        darkness: 'darkness', shadows: 'shadows', echoes: 'echoes',
+    },
+
+    CAP_TARGETS: {
+        praise: 'caps.praise', offerings: 'caps.offerings', souls: 'caps.souls',
+        darkness: 'void.caps.darkness', shadows: 'void.caps.shadows', echoes: 'void.caps.echoes',
+    },
+
+    explainProductionRate(resource, now = Date.now(), includeTransient = true) {
+        const line = this.RATE_LINES[resource];
+        if (!line) return null;
+        const ledger = { lines: {}, scalars: {} };
+        this.computeProduction(now, includeTransient, ledger);
+        const recorded = ledger.lines[line];
+        if (!recorded) {
+            // The Void is sealed: getProductionRates reports a flat zero and
+            // there is no fold to show.
+            return { resource, kind: 'rate', value: 0, steps: [], sealed: true };
+        }
+        return {
+            resource,
+            kind: 'rate',
+            // The fold's own result — not a re-read of getProductionRates —
+            // so the equality test compares two independent evaluations.
+            value: recorded.value,
+            steps: this.dressProductionSteps(ledger, line, now),
+            cascade: this.cascadeState(),
+        };
+    },
+
+    dressProductionSteps(ledger, line, now) {
+        const recorded = ledger.lines[line];
+        if (!recorded) return [];
+        return recorded.steps.map((step) => {
+            const dressed = { ...step, ...this.describeProductionFactor(step.key, ledger) };
+            if (step.key.startsWith('@')) {
+                dressed.children = this.dressProductionSteps(ledger, step.key.slice(1), now);
+            } else if (step.key.startsWith('target:')) {
+                const target = step.key.slice('target:'.length);
+                const explained = this.explainTarget(target, now);
+                dressed.children = explained.steps;
+                dressed.fold = explained.value;
+            }
+            return dressed;
+        });
+    },
+
+    /* What a recorded factor IS, in the player's terms. `group` is the
+       section the panel files it under; `detail` is the arithmetic behind a
+       factor that is not itself a fold. */
+    describeProductionFactor(key, ledger) {
+        const vd = State.dimensions.void;
+        const rank = (id, pool) => (pool === 'void' ? vd?.repeatables?.[id] : State.repeatables?.[id]) || 0;
+        const repeatableName = (id) => RepeatableList.find((r) => r.id === id)?.name || id;
+        const unitsOf = (rateKey, count, host) => ({
+            count, perUnit: count > 0 ? (host[rateKey] || 0) / count : 0,
+        });
+        switch (key) {
+            case 'base.pps': return { group: 'base', label: 'Seraphs', ...unitsOf('pps', State.automatons.seraphCount || 0, State), unit: 'Seraph' };
+            case 'base.sps': return { group: 'base', label: 'Cherubs', ...unitsOf('sps', State.automatons.cherubCount || 0, State), unit: 'Cherub' };
+            case 'base.dps': return { group: 'base', label: 'Wraiths', ...unitsOf('dps', vd.automatons.wraithCount || 0, vd), unit: 'Wraith' };
+            case 'base.eps': return { group: 'base', label: 'Phantoms', ...unitsOf('eps', vd.automatons.phantomCount || 0, vd), unit: 'Phantom' };
+            case 'base.throneCount': return { group: 'base', label: 'Thrones', count: State.automatons.throneCount || 0, unit: 'Throne' };
+            case 'base.revenantCount': return { group: 'base', label: 'Revenants', count: vd.automatons.revenantCount || 0, unit: 'Revenant' };
+            case 'const.thronePraiseDraw': return { group: 'base', label: 'Praise drawn per Throne' };
+            case 'const.throneOfferingYield': return { group: 'base', label: 'Offerings per Throne' };
+            case 'const.revenantDarknessDraw': return { group: 'base', label: 'Darkness drawn per Revenant' };
+            case 'const.revenantShadowYield': return { group: 'base', label: 'Shadows per Revenant' };
+            case 'scalar.throneActivity':
+            case 'scalar.revenantActivity': {
+                const scalar = ledger.scalars[key.slice('scalar.'.length)] || {};
+                const what = key === 'scalar.throneActivity' ? 'Praise' : 'Darkness';
+                return {
+                    group: 'base',
+                    label: 'Conversion running',
+                    note: scalar.idle ? 'nothing to convert'
+                        : scalar.banked ? `${what} banked — flat out`
+                            : `bank dry — running on incoming ${what}`,
+                };
+            }
+            case 'repeatable.praise_refinement':
+            case 'repeatable.automaton_drill':
+            case 'repeatable.entropy_drill':
+            case 'repeatable.void_refinement': {
+                const id = key.slice('repeatable.'.length);
+                const pool = id === 'entropy_drill' || id === 'void_refinement' ? 'void' : 'primordial';
+                return { group: 'multiplier', source: 'repeatable', label: repeatableName(id), rank: rank(id, pool) };
+            }
+            case 'bonus.dominion':
+                return { group: 'additive', source: 'automaton', label: 'Dominions', count: State.automatons.dominionCount || 0,
+                    each: Economy.dominionBonusEach * (State.automatons.dominionProduction || 1) };
+            case 'bonus.doctrine':
+                return { group: 'additive', source: 'doctrine', label: 'Standing Doctrine', rank: State.standingDoctrine || 0,
+                    each: Economy.doctrineBonusEach };
+            case 'bonus.nemesis':
+                return { group: 'additive', source: 'automaton', label: 'Nemesis', count: vd?.automatons?.nemesisCount || 0,
+                    each: Economy.nemesisBonusEach * (vd?.automatons?.nemesisProduction || 1) };
+            case 'bonus.nullDoctrine':
+                return { group: 'additive', source: 'doctrine', label: 'Null Doctrine', rank: State.nullDoctrine || 0,
+                    each: Economy.nullDoctrineBonusEach };
+            case 'skill.divineIntervention': return { group: 'transient', label: 'Divine Intervention' };
+            case 'transient.streak': return { group: 'transient', label: 'Miracle Streak', count: State.loopSystems?.miracleStreak || 0 };
+            case 'transient.overclock': return { group: 'transient', label: 'Celestial Overclock' };
+            case 'achievement.automationSpeed': return { group: 'achievement', label: 'Achievements — automation speed' };
+            case 'achievement.praiseGain': return { group: 'achievement', label: 'Achievements — Praise' };
+            case 'achievement.offeringValue': return { group: 'achievement', label: 'Achievements — Offerings' };
+            case 'achievement.soulGain': return { group: 'achievement', label: 'Achievements — Souls' };
+            case 'achievement.voidGain': return { group: 'achievement', label: 'Achievements — Void' };
+            case 'achievement.voidStability': return { group: 'achievement', label: 'Achievements — Void stability' };
+            case 'achievement.globalGain': return { group: 'achievement', label: 'Achievements — all gain' };
+            case '@throneDrawn': return { group: 'draw', label: 'Throne draw' };
+            case '@revenantDrawn': return { group: 'draw', label: 'Revenant draw' };
+            default:
+                break;
+        }
+        if (key.startsWith('target:')) {
+            return { group: 'multiplier', label: this.TARGET_LABELS[key.slice('target:'.length)] || key.slice(7) };
+        }
+        if (key.startsWith('@')) {
+            return { group: 'composite', label: this.LINE_LABELS[key.slice(1)] || key.slice(1) };
+        }
+        return { group: 'other', label: key };
+    },
+
+    TARGET_LABELS: {
+        'praise.multiplier': 'Praise multiplier',
+        'offerings.multiplier': 'Offering multiplier',
+        'souls.multiplier': 'Soul multiplier',
+        'automaton.seraph.output': 'Seraph output',
+        'automaton.cherub.output': 'Cherub output',
+        'automaton.throne.output': 'Throne output',
+        'throne.draw': 'Throne appetite',
+        'void.darkness.multiplier': 'Darkness multiplier',
+        'void.shadow.multiplier': 'Shadow multiplier',
+        'void.echo.multiplier': 'Echo multiplier',
+        'void.automaton.wraith.output': 'Wraith output',
+        'void.automaton.revenant.output': 'Revenant output',
+        'void.automaton.phantom.output': 'Phantom output',
+        'void.revenant.draw': 'Revenant appetite',
+        'caps.praise': 'Praise storage',
+        'caps.offerings': 'Offering storage',
+        'caps.souls': 'Soul storage',
+        'void.caps.darkness': 'Darkness storage',
+        'void.caps.shadows': 'Shadow storage',
+        'void.caps.echoes': 'Echo storage',
+    },
+
+    LINE_LABELS: {
+        transient: 'Transient effects',
+        baseHierarchy: 'Hierarchy bonus',
+        hierarchy: 'Hierarchy bonus (with Void payouts)',
+        praiseGross: 'Praise produced',
+        darknessGross: 'Darkness produced',
+        throneDraw: 'Throne draw at full rate',
+        revenantDraw: 'Revenant draw at full rate',
+        voidBonus: 'Void hierarchy bonus',
+    },
+
+    /* One registry fold, step by step, with each record's source made
+       legible: which kind of thing put it there, and for a mandate whether
+       the path is certified (full) or lapsed (residue). The status is read
+       from the certification itself, never inferred from the label. */
+    explainTarget(target, now = Date.now()) {
+        const explained = Modifiers.explain(target, now);
+        const spec = ModifierTargets[target];
+        const cert = this.certification();
+        const steps = explained.steps.map((step) => {
+            if (step.op === 'base') {
+                const divinityBase = typeof spec?.base === 'function';
+                return { ...step, kind: divinityBase ? 'divinity' : 'base',
+                    label: divinityBase ? 'Divinity carried forward' : 'Base' };
+            }
+            const source = step.source;
+            const kind = typeof source === 'string' ? source : (source?.kind || 'anon');
+            const dressed = { ...step, kind, sourceId: typeof source === 'object' ? source?.id : undefined };
+            if (kind === 'mandate') {
+                const mandate = MandateList.find((m) => m.id === source.id);
+                dressed.branch = mandate?.branch;
+                dressed.status = mandate && mandate.branch === cert.path ? 'full' : 'residue';
+                dressed.label = mandate?.name || step.label;
+            } else if (kind === 'repeatable') {
+                dressed.rank = source.rank;
+            } else if (kind === 'build') {
+                const entry = Reality.entry(State.reality?.build, source.id);
+                dressed.entryKind = entry?.kind;
+                dressed.severity = entry?.severity;
+            }
+            return dressed;
+        });
+        let value = explained.value;
+        // Modifiers.commit applies a declared floor after the fold.
+        if (spec?.floor !== undefined && spec.floor > value) {
+            value = spec.floor;
+            steps.push({ op: 'max', kind: 'floor', label: 'Playability floor', value: spec.floor, running: value });
+        }
+        return { target, value, steps };
+    },
+
+    /* A storage cap is a single registry fold, committed with its floor. */
+    explainCap(resource, now = Date.now()) {
+        const target = this.CAP_TARGETS[resource];
+        if (!target) return null;
+        const explained = this.explainTarget(target, now);
+        return { resource, kind: 'cap', target, value: explained.value, steps: explained.steps };
     },
 
     addCappedResource(container, key, cap, amount) {
@@ -670,7 +1015,10 @@ const game = {
         };
     },
 
-    tick(deltaSeconds, now = Date.now()) {
+    /* `attended` is false when the delta is a wall-clock catch-up rather than
+       play — see loop(). It gates instability only; production is linear and
+       accrues either way, which is the whole point of the catch-up. */
+    tick(deltaSeconds, now = Date.now(), { attended = true } = {}) {
         try {
             this.ensureLoopState();
 
@@ -681,6 +1029,20 @@ const game = {
 
             this.processLoopDecay(now);
             this.ensureDirective();
+
+            /* Before production is read, so a tier change throttles the tick
+               that crossed into it rather than the one after. */
+            if (attended) this.accrueInstability(deltaSeconds, now);
+            /* Same gate, same reason, same position: incidents spawn and
+               escalate on attended time only, and before the rates are read
+               so an outage halts the tick that caused it. See js/incidents.js. */
+            if (this.incidentsLive()) {
+                /* Present, not merely attended: a visible tab with nobody at
+                   the keyboard is idle play, and idle play holds the queue. */
+                const present = attended && this.isPresent(now);
+                Incidents.setPresence(present, now);
+                if (present) Incidents.tick(deltaSeconds, now);
+            }
 
             const rates = this.getProductionRates(now, true);
             const praiseGain = rates.praise * deltaSeconds;
@@ -748,6 +1110,7 @@ const game = {
                 this.checkAchievements();
                 this.checkDocuments();
                 this.checkAdversaryTrigger();
+                this.checkFinaleTrigger();
 
                 /* "Count them if you must." Fires once per power of ten of
                    lifetime Souls, so it marks scale rather than nagging. */
@@ -773,6 +1136,44 @@ const game = {
         }
     },
 
+    /* The longest gap between animation frames that still counts as someone
+       watching. Generous — a busy main thread or a background tab throttled
+       to 1Hz stays "attended" — because the cost of guessing wrong is only
+       that a few seconds of degradation are forgiven. */
+    ATTENDED_GAP_SECONDS: 5,
+
+    /* Incidents (js/incidents.js) are on in the game and OFF in
+       tools/balance_sim.mjs, which has no incident policy yet: a simulated
+       player who never triages would measure an economy nobody plays, and
+       one who always pays would measure a different one. The flag keeps the
+       golden master byte-identical until a policy is chosen. Harnesses that
+       do not load incidents.js see `Incidents` undefined and are unaffected
+       either way. */
+    incidentsEnabled: true,
+
+    /* Presence: has the player touched anything recently?
+
+       system.js switches tracking on and reports input; headless (the
+       simulator and every vm suite) there is no tracking and every tick is a
+       player, which keeps those harnesses' behaviour exactly as it was.
+       Transient by design — never saved — so a reload always starts away. */
+    presenceTracking: false,
+    lastInputAt: 0,
+
+    notePresence(now = Date.now()) {
+        this.lastInputAt = now;
+    },
+
+    isPresent(now = Date.now()) {
+        if (!this.presenceTracking) return true;
+        const seconds = (typeof Incidents !== 'undefined' && Incidents.PRESENCE_SECONDS) || 120;
+        return now - this.lastInputAt <= seconds * 1000;
+    },
+
+    incidentsLive() {
+        return this.incidentsEnabled === true && typeof Incidents !== 'undefined';
+    },
+
     loop() {
         const now = Date.now();
         const previousTime = Number.isFinite(this.lastWallClockTime) ? this.lastWallClockTime : now - (1000 / 60);
@@ -780,7 +1181,16 @@ const game = {
         // both safe and necessary when a tab or desktop window is suspended.
         const deltaSeconds = Math.max(0, Math.min(8 * 60 * 60, (now - previousTime) / 1000));
         this.lastWallClockTime = now;
-        this.tick(deltaSeconds, now);
+        /* A gap this size is a suspended tab or a slept machine, not play.
+           Production replays across it — that is what the clamp above is for
+           — but instability must not, or leaving the game OPEN would be
+           strictly worse than closing it: initializeSession's offline path is
+           exempt, so the same eight hours would cost nothing if the player
+           quit and up to a full cascade if they did not. A sleeping laptop is
+           an absence, and the rule is that a player cannot triage a cascade
+           they were not present for. */
+        const attended = deltaSeconds <= this.ATTENDED_GAP_SECONDS;
+        this.tick(deltaSeconds, now, { attended });
         requestAnimationFrame(() => this.loop());
     },
 
@@ -852,6 +1262,7 @@ const game = {
             ui.spawnParticles(x, y, isFull ? 10 : 7, displayColor);
         }
 
+        this.sfx('miracle', { streak: loops.miracleStreak, overclock: overclockActive });
         ui.triggerCoreReaction(clickPower);
     },
 
@@ -878,6 +1289,386 @@ const game = {
         Modifiers.commit(now);
     },
 
+    /* ── Certification ────────────────────────────────────────────────────
+       A mandate's bonuses belong to the certified path, not to the purchase.
+       Buying a node unlocks it forever; certification decides which unlocked
+       nodes are switched on this run.
+
+       Everything mandate-derived lives under `scope: 'cert'`, which exists so
+       this whole set can be dropped and rebuilt in one call — on purchase, on
+       load, and on the reboot that changes the path. Rebuilding rather than
+       patching keeps the residue arithmetic in exactly one place. */
+    CERT_BRANCHES: ['creation', 'maintenance', 'entropy'],
+
+    /* What a modifier is worth at a fraction of its strength.
+
+       Multiplicative records scale their DISTANCE FROM 1, not their value: a
+       tenth of `mul 1.4` is `mul 1.04`, and a tenth of a cost cut of `mul 0.8`
+       is `mul 0.98`. Scaling the value itself would turn every bonus into a
+       catastrophic penalty (0.14x praise) and every cost cut into a discount
+       of 92%, which is the same bug in both directions.
+
+       `set`, `max` and `min` have no partial form — half of "offline
+       efficiency is 1" is not a smaller guarantee, it is a different one — so
+       they return null and are dropped rather than guessed at. */
+    residueValue(mod, fraction) {
+        if (mod.op === 'mul' || mod.op === 'mulfloor') return 1 + (mod.value - 1) * fraction;
+        if (mod.op === 'add') return mod.value * fraction;
+        return null;
+    },
+
+    certification() {
+        if (!State.certification || typeof State.certification !== 'object') {
+            State.certification = { path: null, everCertified: [], history: [] };
+        }
+        const cert = State.certification;
+        if (!Array.isArray(cert.everCertified)) cert.everCertified = [];
+        if (!Array.isArray(cert.history)) cert.history = [];
+        /* An unrecognised path becomes null, not itself.
+
+           This read `cert.path = cert.path || null`, which is a no-op for
+           every truthy value — so a save carrying a bogus path kept it, no
+           branch ever matched, and the player's entire Mandate tree went
+           dormant with no explanation and no way to fix it before the next
+           ship. State.mergeInto does no type validation and importSave feeds
+           it arbitrary decoded text, so this is reachable.
+
+           Null is the honest value: it is what a player who has never
+           certified has, and the ship dialog already handles it by refusing
+           to arm until a path is chosen. */
+        if (!this.CERT_BRANCHES.includes(cert.path)) cert.path = null;
+        // Same reasoning for the branch list: only real branch names.
+        cert.everCertified = cert.everCertified.filter((b) => this.CERT_BRANCHES.includes(b));
+        return cert;
+    },
+
+    /* How a branch stands right now: owned nodes, and whether it is live, in
+       residue, or dormant. The picker renders this, and it is also the honest
+       answer to "what am I giving up" — which is the entire decision. */
+    branchStanding(branch) {
+        const cert = this.certification();
+        const owned = MandateList.filter((m) => m.branch === branch && State.purchasedMandates[m.id]);
+        const spent = owned.reduce((sum, m) => sum + m.cost, 0);
+        const status = cert.path === branch ? 'certified'
+            : cert.everCertified.includes(branch) ? 'residue'
+            : 'dormant';
+        return { branch, owned: owned.length, total: MandateList.filter((m) => m.branch === branch).length, spent, status };
+    },
+
+    /* Rebuilds every mandate-derived modifier from the certification and the
+       purchase ledger. Idempotent, and safe to call at any time.
+
+       Deliberately does NOT run grant closures. Grants (entropy_ultimate's
+       manualClickScaling, maintenance_apex's capacitor ranks) write into
+       ownership state that is already in the save, so re-running them on load
+       would compound the grant on every reload — the exact double-apply
+       applyContentItem's routing rule exists to prevent. Grants are re-issued
+       once, by performPrestige, after the reset that clears them. */
+    /* The mandate records the current certification implies. Pure — it reads
+       state and returns records, so the reconcile below is the only thing
+       that touches the log. */
+    certificationMods() {
+        const cert = this.certification();
+        const mods = [];
+        for (const mandate of MandateList) {
+            if (!State.purchasedMandates[mandate.id] || !mandate.mods) continue;
+            const live = mandate.branch === cert.path;
+            const residual = !live && cert.everCertified.includes(mandate.branch);
+            if (!live && !residual) continue;
+
+            for (const mod of mandate.mods) {
+                const value = live ? mod.value : this.residueValue(mod, Economy.certificationResidue);
+                if (value === null || value === undefined) continue;
+                mods.push({
+                    ...mod,
+                    value,
+                    source: { kind: 'mandate', id: mandate.id },
+                    label: live ? mandate.name : `${mandate.name} (lapsed)`,
+                });
+            }
+        }
+        return mods;
+    },
+
+    applyCertification(now = Date.now()) {
+        /* Reconciled in place rather than dropped and re-added. These records
+           are derived and are rebuilt on every boot, so re-adding them moved
+           them behind everything bought since the last boot — which on
+           `caps.*` reordered a `mulfloor` past an `add` and inflated storage
+           by pressing reload. See Modifiers.reconcileScope. */
+        const count = Modifiers.reconcileScope('cert', this.certificationMods());
+        Modifiers.commit(now);
+        return count;
+    },
+
+    /* Certifies on a path. Called by the ship dialog, and by
+       bootstrapCertification for a save that predates the mechanic. */
+    certifyOn(branch, { silent = false } = {}) {
+        if (!this.CERT_BRANCHES.includes(branch)) return false;
+        const cert = this.certification();
+        cert.path = branch;
+        if (!cert.everCertified.includes(branch)) cert.everCertified.push(branch);
+        cert.history.push(branch);
+        if (!silent) ui.log(`Certified on the path of ${branch.charAt(0).toUpperCase()}${branch.slice(1)}.`);
+        return true;
+    },
+
+    /* A save written before certification existed has bought into the tree
+       under the old rules, where every node was unconditionally live. Loading
+       it with `path: null` would switch the whole tree off until the player
+       next rebooted — which, for someone deep enough to own the 40-DP apex
+       nodes, is an unannounced amputation.
+
+       So the returning player is certified on whatever branch they have put
+       the most Divinity into, and every branch they have bought into counts
+       as previously certified so the residue is available at once. Ties go to
+       CERT_BRANCHES order, which is stable rather than meaningful. */
+    bootstrapCertification() {
+        const cert = this.certification();
+
+        /* Only for a save that has NEVER certified. `history` is appended by
+           certifyOn and by nothing else, so an empty history with no path is
+           the exact signature of a save written before the mechanic existed.
+
+           This guard is the whole correctness of the function. Without it the
+           re-derivation runs on every boot and marks any branch the player
+           owns a node on as previously certified — which means buying a
+           single node on a dormant path silently upgrades it to the residue
+           on the next reload. That is free value the player never certified
+           for, and it erases the difference between dormant and lapsed, which
+           is the difference the mechanic is made of. Caught by reloading the
+           game and watching Entropy change from DORMANT to LAPSED on its own. */
+        if (cert.path || cert.history.length) return cert.path;
+
+        // Re-derive from the real table; migration 6 could only read id prefixes.
+        for (const mandate of MandateList) {
+            if (!State.purchasedMandates[mandate.id]) continue;
+            if (!cert.everCertified.includes(mandate.branch)) cert.everCertified.push(mandate.branch);
+        }
+        if (!cert.everCertified.length) return null;
+
+        let best = null;
+        for (const branch of this.CERT_BRANCHES) {
+            const standing = this.branchStanding(branch);
+            if (!standing.owned) continue;
+            if (!best || standing.spent > best.spent) best = standing;
+        }
+        if (!best) return null;
+        cert.path = best.branch;
+        cert.history.push(best.branch);
+        return cert.path;
+    },
+
+    /* ── Scars ────────────────────────────────────────────────────────────
+       A known issue shipped unpatched is filed permanently and keeps a
+       fraction of its bite. Rebuilt from the ledger under `scope: 'scar'`
+       for the same reason certification is: one arithmetic site, idempotent
+       on every load. */
+    scarMods() {
+        const scars = Array.isArray(State.reality?.scars) ? State.reality.scars : [];
+        const mods = [];
+        const filed = new Set();
+        for (const id of scars) {
+            // A duplicated id in the ledger must not fold twice.
+            if (filed.has(id)) continue;
+            filed.add(id);
+            const entry = this.scarSource(id);
+            if (!entry) continue;
+            for (const mod of entry.mods || []) {
+                const value = this.residueValue(mod, Economy.scarResidue);
+                if (value === null || value === undefined) continue;
+                mods.push({
+                    ...mod,
+                    value,
+                    source: { kind: 'scar', id },
+                    label: `Known issue on file — ${entry.note.split('.')[0]}`,
+                });
+            }
+        }
+        return mods;
+    },
+
+    applyScars(now = Date.now()) {
+        // Reconciled in place, for the same reason as applyCertification.
+        const count = Modifiers.reconcileScope('scar', this.scarMods());
+        Modifiers.commit(now);
+        return count;
+    },
+
+    /* Scars are stored as bare ids, so the pool is the source of truth for
+       what one costs. The opening build's issue is not in the pool — it is
+       the premise — so it is looked up separately. */
+    scarSource(id) {
+        const fromPool = RealityPool.issues.find((e) => e.id === id);
+        if (fromPool) return fromPool;
+        return (Reality.OPENING_BUILD.entries || []).find((e) => e.id === id) || null;
+    },
+
+    /* ── Instability ──────────────────────────────────────────────────────
+       Severity 1 is the worst, so weight is (4 - severity): a SEV-1 accrues
+       three times as fast as a SEV-3. */
+    issueWeight(entry) {
+        const severity = Math.min(3, Math.max(1, Number(entry?.severity) || 3));
+        return 4 - severity;
+    },
+
+    instabilityRatePerHour() {
+        const build = State.reality?.build;
+        if (!build) return 0;
+        /* The opening build does not degrade.
+
+           Sector 7G's failed integrity check is the premise and the tutorial:
+           it teaches what a known issue is and what patching one buys you. A
+           new player who leaves the tab open for two hours before their first
+           reboot would otherwise return to a collapsed universe having never
+           been told the mechanic existed. The cascade is introduced by the
+           first release, alongside everything else shipping is. */
+        if (!(State.prestigeLevel > 0)) return 0;
+        const weight = Reality.unpatchedIssues(build).reduce((sum, e) => sum + this.issueWeight(e), 0);
+        return weight * Economy.instabilityPerWeightHour;
+    },
+
+    /* The tier the current instability sits in, as an index into
+       Economy.cascadeTiers plus 1. Zero is nominal. */
+    cascadeTierFor(instability) {
+        let tier = 0;
+        Economy.cascadeTiers.forEach((step, index) => {
+            if (instability >= step.at) tier = index + 1;
+        });
+        return tier;
+    },
+
+    /* Instability, sanitised. `Number(x) || 0` already turns a string or an
+       object into 0, but it lets a NEGATIVE through — and a save carrying
+       -99 (importSave decodes arbitrary pasted text straight into State)
+       would need a hundred hours of decay before a cascade could touch that
+       player again. Clamped to the tier range at every read, so the stored
+       value can never mean something the tiers do not. */
+    instabilityOf(reality) {
+        const ceiling = Economy.cascadeTiers[Economy.cascadeTiers.length - 1].at;
+        return Math.max(0, Math.min(ceiling, Number(reality?.instability) || 0));
+    },
+
+    cascadeState() {
+        const reality = State.reality || {};
+        const instability = this.instabilityOf(reality);
+        const tier = this.cascadeTierFor(instability);
+        const step = tier > 0 ? Economy.cascadeTiers[tier - 1] : null;
+        const ceiling = Economy.cascadeTiers[Economy.cascadeTiers.length - 1].at;
+        const ratePerHour = this.instabilityRatePerHour();
+        return {
+            instability,
+            tier,
+            label: step ? step.label : 'NOMINAL',
+            output: step ? step.output : 1,
+            award: step ? step.award : 1,
+            ratePerHour,
+            // Nothing unpatched and something still on the clock: the build is
+            // settling rather than degrading, and the panel should say so.
+            recovering: ratePerHour === 0 && instability > 0,
+            recoveryPerHour: Economy.instabilityRecoveryPerHour,
+            ceiling,
+        };
+    },
+
+    /* Accrues instability and keeps the throttle in step with it.
+
+       The throttle is a modifier rather than a multiplier applied at the
+       point of production, so it shows up in Modifiers.explain() alongside
+       everything else — a player looking at why their output collapsed sees
+       the outage in the stack rather than an unexplained gap. Records are
+       rewritten only when the TIER changes, so this costs nothing per tick.
+
+       `scope: 'build'` is correct and not laziness: a cascade belongs to the
+       build that caused it, and performPrestige already drops that scope. */
+    CASCADE_TARGETS: ['praise.multiplier', 'offerings.multiplier', 'souls.multiplier',
+        'void.darkness.multiplier', 'void.shadow.multiplier', 'void.echo.multiplier'],
+
+    accrueInstability(deltaSeconds, now = Date.now()) {
+        const reality = State.reality;
+        if (!reality || !reality.build) return;
+        // Normalise before accruing: see instabilityOf.
+        reality.instability = this.instabilityOf(reality);
+
+        const rate = this.instabilityRatePerHour();
+        if (deltaSeconds > 0) {
+            if (rate > 0) {
+                reality.instability = Math.min(
+                    Economy.cascadeTiers[Economy.cascadeTiers.length - 1].at,
+                    reality.instability + (rate * deltaSeconds) / 3600,
+                );
+            } else if (reality.instability > 0) {
+                // Nothing left unpatched: the build settles. See
+                // Economy.instabilityRecoveryPerHour for why this is not
+                // optional.
+                reality.instability = Math.max(
+                    0,
+                    reality.instability - (Economy.instabilityRecoveryPerHour * deltaSeconds) / 3600,
+                );
+            }
+        }
+        this.syncCascade(now);
+        // Retry an announcement a modal collision suppressed. Cheap: it
+        // returns immediately unless a tier is genuinely unannounced.
+        this.announceCascade();
+    },
+
+    syncCascade(now = Date.now()) {
+        const reality = State.reality;
+        if (!reality) return 0;
+        const tier = this.cascadeTierFor(this.instabilityOf(reality));
+        if (tier === reality.cascadeTier) return tier;
+
+        reality.cascadeTier = tier;
+        for (const target of this.CASCADE_TARGETS) Modifiers.dropSource('cascade', target);
+        if (tier > 0) {
+            const step = Economy.cascadeTiers[tier - 1];
+            for (const target of this.CASCADE_TARGETS) {
+                Modifiers.add({
+                    target,
+                    op: 'mul',
+                    value: step.output,
+                    scope: 'build',
+                    source: { kind: 'cascade', id: target },
+                    label: `${step.label} — output throttled`,
+                });
+            }
+        }
+        Modifiers.commit(now);
+
+        this.announceCascade();
+        ui.renderRealityPanel?.();
+        return tier;
+    },
+
+    /* The OS interrupts you. A cursed operating system that notices a cascade
+       and says nothing is just a number going down.
+
+       Announced once per tier per run — `alertedTier` never falls, so
+       patching back down and drifting up again does not re-open the same
+       dialog. But it only advances when the dialog ACTUALLY RENDERED.
+
+       showCascadeAlert refuses to paint over an open modal, and modals are
+       common exactly when a tier is likely to turn over: the release notes on
+       every reboot, the offline report on every load, the Adversary scene at
+       its thresholds. Marking the tier as announced before the render meant a
+       collision dropped the warning permanently — the player's output was
+       throttled and their award cut with nothing ever saying so. And
+       syncCascade early-returns when the tier is unchanged, so there was no
+       second chance.
+
+       Called from the tick as well as from syncCascade, so a suppressed
+       announcement is retried until it lands. */
+    announceCascade() {
+        const reality = State.reality;
+        if (!reality) return false;
+        const tier = this.cascadeTierFor(this.instabilityOf(reality));
+        if (tier <= (reality.alertedTier || 0)) return false;
+        if (ui.showCascadeAlert?.(this.cascadeState()) !== true) return false;
+        reality.alertedTier = tier;
+        return true;
+    },
+
     /* Rebuilds the log from the ownership ledgers, in content-table order.
 
        Needed for any save written before the log existed. The original
@@ -895,10 +1686,11 @@ const game = {
             if (!State.upgrades[upgrade.id] || !upgrade.mods) continue;
             Modifiers.addAll(upgrade.mods, { kind: 'upgrade', id: upgrade.id }, upgrade.name);
         }
-        for (const mandate of MandateList) {
-            if (!State.purchasedMandates[mandate.id] || !mandate.mods) continue;
-            Modifiers.addAll(mandate.mods, { kind: 'mandate', id: mandate.id }, mandate.name);
-        }
+        /* Mandates are deliberately absent. Their records are owned by
+           applyCertification(), which decides between full value, residue and
+           nothing — a rebuild here would restore all 21 at full strength and
+           silently undo the certification the run was banked under. The
+           caller runs applyCertification() straight after this. */
         for (const spec of RepeatableList) {
             const ranks = this.getRepeatableLevel(spec.id);
             for (let rank = 1; rank <= ranks; rank++) {
@@ -919,7 +1711,7 @@ const game = {
         return {
             target,
             op: 'add',
-            value: Math.floor(spec.capacityStep * Math.pow(spec.capacityGrowth, rank - 1)),
+            value: this.storageGrant(spec, rank),
         };
     },
 
@@ -939,6 +1731,7 @@ const game = {
             rolled = true;
         }
         if (!reality.channel || !RealityChannels[reality.channel]) reality.channel = 'stable';
+        this.normaliseArchive();
         /* Always re-derive from the seed. Deriving rather than trusting the
            stored entries is what lets a content fix reach a save that is
            already mid-run — and it is free, because a build is a pure
@@ -964,6 +1757,10 @@ const game = {
             ui.log('That release channel is not available yet.');
             return false;
         }
+        if (channel === 'archived' && !this.archivedBuilds().length) {
+            ui.log('The archive is empty. Ship a build first; it will be on file from then on.');
+            return false;
+        }
         State.reality.channel = channel;
         ui.log(`Next reality will be pulled from the ${RealityChannels[channel].label} channel.`);
         ui.renderRealityPanel?.();
@@ -971,12 +1768,153 @@ const game = {
     },
 
     /* Rolls the next build. Called by prestige, after prestigeLevel has been
-       incremented, so the version number and seed follow the reboot count. */
+       incremented, so the version number and seed follow the reboot count.
+
+       Archived is the one channel that is not rolled: it REPLAYS the build
+       picked from the history, generated from that build's recorded inputs.
+       The pick is consumed here — the next ship has to pick again — so a
+       player who forgets the selector is on Archived is stopped by the ship
+       dialog rather than silently replaying the same universe for nothing.
+       With no valid pick (a bare performPrestige from the simulator or a
+       test, or a pick that no longer validates) it falls back to Stable and
+       says so, rather than rolling generate(..., 'archived'), which is a
+       Stable-shaped build that pays nothing. */
     rollNextBuild(now = Date.now()) {
         const reality = State.reality;
-        reality.build = Reality.generate(reality.runSeed, State.prestigeLevel, reality.channel);
+        let build = null;
+        if (reality.channel === 'archived') {
+            const record = this.archivedPick();
+            reality.replay = null;
+            if (record) {
+                build = Reality.replayBuild({ level: record.level, source: record.source, runSeed: record.runSeed });
+            } else {
+                reality.channel = 'stable';
+                ui.log('No archived build was picked. Pulling the next reality from Stable.');
+            }
+        }
+        reality.build = build || Reality.generate(reality.runSeed, State.prestigeLevel, reality.channel);
         Reality.apply(reality.build, now);
         return reality.build;
+    },
+
+    /* ── The Archived channel ─────────────────────────────────────────────
+       DESIGN_DIRECTION §2: "a specific past build, replayed: no Divinity,
+       unlocks lore". The reason to play a twentieth run. */
+
+    /* Every archive field validated on load. mergeInto does no type
+       checking, so each of these can arrive as anything at all. */
+    normaliseArchive() {
+        const reality = State.reality;
+        if (!reality || typeof reality !== 'object') return;
+        reality.history = Reality.normaliseHistory(reality.history);
+        reality.annotations = Reality.normaliseAnnotations(reality.annotations);
+        if (!Number.isInteger(reality.replay) ||
+            !Reality.replayable(reality.history).some((r) => r.reboot === reality.replay)) {
+            reality.replay = null;
+        }
+        // A selector naming a channel this save has not unlocked is not a
+        // choice the player made.
+        if (reality.channel === 'archived' &&
+            !Reality.channelsFor(State.prestigeLevel || 0).includes('archived')) {
+            reality.channel = 'stable';
+        }
+        const progress = State.achievementProgress;
+        if (progress) {
+            const n = progress.view_archived_branch;
+            progress.view_archived_branch = Number.isInteger(n) && n >= 0 ? n : 0;
+        }
+    },
+
+    archiveUnlocked() {
+        return Reality.channelsFor(State.prestigeLevel || 0).includes('archived');
+    },
+
+    archivedBuilds() {
+        return Reality.replayable(State.reality?.history);
+    },
+
+    archivedPick() {
+        const pick = State.reality?.replay;
+        if (!Number.isInteger(pick)) return null;
+        return this.archivedBuilds().find((r) => r.reboot === pick) || null;
+    },
+
+    isAnnotated(level) {
+        return (State.reality?.annotations || []).some((a) => a.level === level);
+    },
+
+    selectArchivedBuild(reboot) {
+        if (!this.archiveUnlocked()) return false;
+        const record = this.archivedBuilds().find((r) => r.reboot === Number(reboot));
+        if (!record) return false;
+        State.reality.replay = record.reboot;
+        if (State.reality.channel !== 'archived') State.reality.channel = 'archived';
+        ui.renderRealityPanel?.();
+        return true;
+    },
+
+    /* Appends the outgoing build to the history. Called by performPrestige
+       BEFORE the build is replaced, with the award it is actually paying. */
+    recordShip(build, award, now = Date.now()) {
+        const reality = State.reality;
+        if (!Array.isArray(reality.history)) reality.history = [];
+        const record = Reality.historyRecord(build, {
+            reboot: State.prestigeLevel || 0,
+            runSeed: reality.runSeed,
+            certified: this.certification().path,
+            award,
+            shippedAt: now,
+        });
+        if (!record) return null;
+        reality.history = Reality.normaliseHistory([...reality.history, record]);
+        return record;
+    },
+
+    /* The replay has started: file what NULL.OPERATOR did to the original.
+
+       Filed at the START of the replay, not at its ship. The player reads
+       his note on a known issue while that issue is on screen in front of
+       them, which is the point of replaying a cursed build; and the price is
+       already committed — choosing Archived commits the whole next run to
+       zero Divinity, and the only way out of it is to play it to the bar.
+
+       Filed ONCE per original build. Replaying the same build again still
+       counts as a visit, but adds no second document. */
+    beginArchivedReplay(build, now = Date.now()) {
+        const source = Reality.sanitiseReplayOf(build?.replayOf);
+        if (!source) return null;
+        const progress = State.achievementProgress;
+        progress.view_archived_branch = (Number(progress.view_archived_branch) || 0) + 1;
+
+        /* The adversary's ledger, on the semantics nudgeAdversaryStanding
+           already has: reading the paperwork is +1, a reboot is -1. A reboot
+           INTO an archived branch is the one reset that does not forget
+           anything ("an archived branch feels like being forgotten
+           mid-sentence", ADV-016), so performPrestige swaps its -1 for this. */
+        this.nudgeAdversaryStanding(1, 'reopened an archived branch', { exempt: true }); // once per run
+
+        if (this.isAnnotated(source.level)) {
+            ui.log(`[ARCHIVE] v${build.version}: NULL.OPERATOR's annotations on this build are already on file.`);
+            return null;
+        }
+        const record = this.archivedBuilds().find((r) => r.level === source.level) || null;
+        const annotation = Reality.normaliseAnnotation({
+            ...source,
+            ids: Reality.annotatableIds(record || { unpatched: [], entries: (build.entries || []).map((e) => e.id) }),
+            filedOn: State.prestigeLevel || 0,
+            certified: record?.certified ?? null,
+            filedAt: now,
+        });
+        if (!annotation) return null;
+        State.reality.annotations = Reality.normaliseAnnotations([...(State.reality.annotations || []), annotation]);
+        const doc = Reality.annotationDocument(annotation);
+        ui.showDocumentNotification?.(doc);
+        ui.log(`[DOCUMENT UNLOCKED] ${doc.title}`);
+        return annotation;
+    },
+
+    archiveDocuments() {
+        return (State.reality?.annotations || []).map((a) => Reality.annotationDocument(a));
     },
 
     /* Pay to remove a known issue. Priced off capacity rather than holdings —
@@ -993,6 +1931,7 @@ const game = {
         }
         if ((cost.bag[cost.resource] || 0) < cost.amount) {
             ui.log(`Insufficient ${cost.resource} to patch. Need ${ui.formatNumber(cost.amount)}.`);
+            this.sfx('error');
             return false;
         }
 
@@ -1003,7 +1942,31 @@ const game = {
         Modifiers.dropSource('build', entryId);
         Modifiers.commit(now);
 
+        /* Patching REPAIRS, it does not merely stop the bleeding.
+
+           Removing the entry already halts its accrual, but a run that has
+           spent an hour degrading would still be stuck in the tier it had
+           reached, which makes patching worthless exactly when it matters
+           most. The relief is proportional to what the issue was contributing,
+           and deliberately smaller than what it accrued: you can climb out of
+           a cascade, but not in one click. */
+        const relief = this.issueWeight(entry) * Economy.instabilityReliefPerWeight;
+        State.reality.instability = Math.max(0, this.instabilityOf(State.reality) - relief);
+        this.syncCascade(now);
+
         ui.log(`Patched: ${entry.note.split('.')[0]}.`);
+        this.sfx('purchase');
+        /* The superseded module goes to the Recycle Bin, where it can be fed
+           to an open incident. Gated: the simulator patches constantly and
+           must not grow a Bin. */
+        if (this.incidentsLive()) {
+            Incidents.fileArtifact({
+                key: `patch_${entryId}_${State.prestigeLevel || 0}`,
+                name: `${entryId.replace(/^iss_/, '').toUpperCase()}.bak`,
+                type: 'backup',
+                description: `Superseded module, replaced by your patch. "${entry.note.split('.')[0]}." Retained per policy.`,
+            });
+        }
         ui.screenPulse('rgba(66, 144, 125, 0.3)');
         ui.renderRealityPanel?.();
         return true;
@@ -1032,9 +1995,32 @@ const game = {
 
         if (persisted && Array.isArray(persisted.records) && persisted.records.length) {
             Modifiers.hydrate(persisted);
+            this.reconcileRepeatableRanks();
         } else {
             this.rebuildModifierLog();
         }
+
+        /* Certification and scars are rebuilt from their ledgers on every
+           boot, hydrated log or not.
+
+           This is not belt-and-braces. Both sets are DERIVED — the certified
+           path and the scar list are the state; the records are a projection
+           of them at the current residue constants. Rebuilding means a
+           balance change to certificationResidue or scarResidue reaches a
+           save already mid-run, for the same reason Reality re-derives its
+           build instead of trusting the stored entries. Both drop their own
+           scope first, so this is idempotent. */
+        this.bootstrapCertification();
+        this.applyCertification(now);
+        this.applyScars(now);
+        /* The endings are a third derived set: `State.endings.history` is the
+           ledger, the `scope: 'ending'` records its projection. Validated
+           first, because the ledger arrives from a save. */
+        this.normaliseEndings(now);
+        this.applyEndings(now);
+        /* Open incidents and deferrals are derived the same way: normalised
+           from the save, then reconciled in place under scope 'incident'. */
+        if (this.incidentsLive()) Incidents.bootstrap(now);
 
         /* Reconcile the build against the log rather than inferring from which
            branch ran.
@@ -1064,6 +2050,19 @@ const game = {
         }
 
         Modifiers.commit(now);
+
+        /* Re-derive the cascade throttle from the persisted instability.
+
+           syncCascade is a no-op when the tier it computes already matches
+           `cascadeTier`, which is exactly the case on load — so the throttle
+           records would be whatever the log happened to carry. On the rebuild
+           path it carries none, and a save mid-outage would come back at full
+           output. Forcing a mismatch makes the throttle a projection of
+           instability rather than of the log, which is what it is. */
+        if (State.reality) {
+            State.reality.cascadeTier = -1;
+            this.syncCascade(now);
+        }
     },
 
     resourceBag(resource) {
@@ -1161,6 +2160,7 @@ const game = {
 
         if ((pool[spec.currency] || 0) < cost) {
             ui.log(`Insufficient ${spec.currency} for ${spec.label}. Need ${Math.ceil(cost)}.`);
+            this.sfx('error');
             return;
         }
 
@@ -1168,6 +2168,8 @@ const game = {
         this.applyAutomatonPurchase(type, 1);
         const total = this.getAutomatonCount(type);
         ui.log(`${spec.label} commissioned. (${total} total)`);
+        this.sfx('purchase');
+        if (type === 'seraph' && total === 1) this.cinematic('first-seraph'); // V6
 
         ui.updateUpgrades();
         this.checkAchievements();
@@ -1188,6 +2190,7 @@ const game = {
         const amount = quantity === 'max' ? this.getAutomatonMaxAffordable(type) : Number(quantity) || 0;
         if (amount <= 0) {
             ui.log(`Cannot afford any ${spec.label}.`);
+            this.sfx('error');
             return;
         }
 
@@ -1195,12 +2198,15 @@ const game = {
         const pool = this.resourcePool(spec);
         if ((pool[spec.currency] || 0) < cost) {
             ui.log(`Insufficient ${spec.currency}. Need ${Math.ceil(cost)}.`);
+            this.sfx('error');
             return;
         }
 
         pool[spec.currency] -= cost;
         this.applyAutomatonPurchase(type, amount);
         ui.log(`${amount}× ${spec.label} commissioned. (${this.getAutomatonCount(type)} total)`);
+        this.sfx('purchase');
+        if (type === 'seraph' && this.getAutomatonCount(type) === amount) this.cinematic('first-seraph'); // V6
 
         ui.updateUpgrades();
         this.checkAchievements();
@@ -1244,20 +2250,80 @@ const game = {
         return this.repeatablesPool(spec)[id] || 0;
     },
 
+    /* A vault is priced against the vault.
+
+       Geometric cost against a geometric grant left storage either free (cost
+       growth below grant growth: each rank paid for itself forever, and caps
+       ran to 7.6e20 within two days) or walled (cost growth above it: a rank
+       eventually costs more than the cap can hold, and the ceiling is back).
+       Neither is a decision. Pricing a rank as a fraction of the capacity it
+       extends scales from the first hour to the thousandth: buying storage
+       always means emptying most of a full vault for a fraction of it back,
+       so it competes with automatons for the same Praise instead of being
+       the thing you buy because nothing else is affordable.
+
+       There is deliberately no geometric term underneath it. A first draft
+       kept one as a price floor and it walled the vault anyway: 1.32 per rank
+       outgrew the 1.25 grant, the floor crossed the cap at rank 57, and every
+       simulated run stalled at the identical 3.3e9 ceiling. baseCost is only
+       a fixed minimum for the first rank or two. */
     getRepeatableCost(id) {
         const spec = RepeatableList.find((r) => r.id === id);
         if (!spec) return Infinity;
+        if (spec.costFraction) {
+            const cap = Number(this.capsPool(spec)[spec.resource]) || 0;
+            return Math.max(spec.baseCost, Math.floor(cap * spec.costFraction));
+        }
         return Math.floor(spec.baseCost * Math.pow(spec.growth, this.getRepeatableLevel(id)));
     },
 
-    /* Capacity granted per rank grows faster than the rank's cost, so storage
-       always stays ahead of the price of more storage. */
-    applyRepeatableEffect(id, rank) {
-        const spec = RepeatableList.find((r) => r.id === id);
-        if (!spec?.capacityStep) return;
-        const grant = Math.floor(spec.capacityStep * Math.pow(spec.capacityGrowth, rank - 1));
-        const caps = this.capsPool(spec);
-        if (caps[spec.resource] !== undefined) caps[spec.resource] += grant;
+    /* Capacity a storage rank grants. One function, so the modifier, the
+       button text and the tests cannot disagree about it. */
+    storageGrant(spec, rank) {
+        return Math.floor(spec.capacityStep * Math.pow(spec.capacityGrowth, rank - 1));
+    },
+
+    /* Restores storage ranks a save paid for and never received.
+
+       Before the rank went into the modifier id, rank 2+ of every vault was
+       refused as a duplicate, so a hydrated log holds at most one record per
+       vault while the ledger holds the true rank. The player paid for every
+       one of those ranks; they are owed.
+
+       Each restored record is filed directly behind the vault's existing
+       records rather than appended. Fold order is load-bearing on caps.*:
+       mandates fold `mulfloor` and vaults fold `add`, and an add that jumps
+       behind a mulfloor stops being multiplied by it (14ae3d8 measured that
+       mistake at 4,750 -> 13,500 on a reload). Behind its own rank 1 is where
+       the rank would have been all along had the id carried it. Fractional
+       seq keeps hydrate()'s sort stable on the next load. */
+    reconcileRepeatableRanks() {
+        let restored = 0;
+        for (const spec of RepeatableList) {
+            if (!spec.capacityStep) continue;
+            const ranks = this.getRepeatableLevel(spec.id);
+            for (let rank = 1; rank <= ranks; rank++) {
+                const mod = this.repeatableMod(spec, rank);
+                if (!mod) continue;
+                const source = { kind: 'repeatable', id: spec.id, rank };
+                const id = Modifiers.autoId(source, mod.target, 0);
+                if (Modifiers.records.some((r) => r.id === id)) continue;
+
+                const siblings = Modifiers.records.filter((r) =>
+                    r.source?.kind === 'repeatable' && r.source?.id === spec.id && r.target === mod.target);
+                const anchor = siblings.length
+                    ? Math.max(...siblings.map((r) => Number(r.seq) || 0))
+                    : null;
+                const record = Modifiers.add({ ...mod, id, source, label: spec.name });
+                if (!record) continue;
+                if (anchor !== null) {
+                    record.seq = anchor + rank / 1024;
+                    Modifiers.records.sort((a, b) => a.seq - b.seq);
+                }
+                restored++;
+            }
+        }
+        return restored;
     },
 
     purchaseRepeatable(id) {
@@ -1268,6 +2334,7 @@ const game = {
         const pool = this.resourcePool(spec);
         if ((pool[spec.resource] || 0) < cost) {
             ui.log(`Insufficient ${spec.resource}. Need ${Math.ceil(cost)}.`);
+            this.sfx('error');
             return;
         }
 
@@ -1282,6 +2349,7 @@ const game = {
         }
 
         ui.log(`${spec.name} rank ${ranks[id]} installed.`);
+        this.sfx('purchase');
         ui.screenPulse('rgba(66, 144, 125, 0.28)');
         ui.updateUpgrades();
         this.checkAchievements();
@@ -1306,6 +2374,7 @@ const game = {
 
         if (!canAfford) {
             ui.log("Insufficient resources for this upgrade.");
+            this.sfx('error');
             return;
         }
 
@@ -1319,6 +2388,8 @@ const game = {
         this.applyContentItem(upgrade, 'upgrade');
 
         ui.log(`Upgrade acquired: ${upgrade.name}`);
+        this.sfx('purchase');
+        if (upgradeId === 'void_unlock') this.cinematic('void-breach'); // V5
         ui.updateUpgrades(); // Refresh upgrades display
         this.checkAchievements(); // Check for achievements
 
@@ -1455,6 +2526,17 @@ const game = {
            weaker in relative terms with every multiplier the player bought.
            Worse, its Offerings term multiplied State.mps, which nothing has
            ever produced: Temporal Rift granted exactly zero Offerings. */
+        /* Degrade BEFORE reading the rates, exactly as tick() does — see the
+           note at the accrueInstability call there. In a tick that ordering
+           is worth 16ms; here it is worth a full hour, and getting it
+           backwards let the hour that CAUSES a tier crossing be paid in full
+           at the old tier. Measured on an identical build one tick below
+           SEV-1: rifting banked 8,640 Souls against 4,507 for living the same
+           hour, a 1.92x discount on the degradation the Rift itself created.
+           That is the dominance 0a7040f was written to remove, still standing
+           because the accrual was in the wrong place. */
+        this.accrueInstability(3600, now);
+
         const rates = this.getProductionRates(now, true);
         const praiseGain = rates.praise * 3600;
         const offeringGain = rates.offerings * 3600;
@@ -1468,6 +2550,15 @@ const game = {
         State.totalStats.praiseGained = (State.totalStats.praiseGained || 0) + praiseGain;
         State.totalStats.offeringsGained = (State.totalStats.offeringsGained || 0) + offeringGain;
         State.totalStats.soulsGained = (State.totalStats.soulsGained || 0) + soulGain;
+
+        /* The hour degrades too, and it is accrued above, before the rates
+           are read. The Rift bypasses tick(), so without it an hour of Souls
+           came free — and rifted Souls raise the prestige award like any
+           others, so that was strictly dominant: rift, bank a bigger award,
+           never see a cascade.
+
+           It is also the more honest fiction. The hour happened. Sector 7G
+           does not get to skip it because you were the one who asked for it. */
 
         // Track for achievements
         State.achievementProgress.use_temporal_rift = (State.achievementProgress.use_temporal_rift || 0) + 1;
@@ -1550,6 +2641,7 @@ const game = {
         this.updateDirectiveProgress();
 
         ui.log(`Divine Event claimed! +${event.value} Praise. Chain x${loops.divineEventChain}.`);
+        this.sfx('eventClaim', { chain: loops.divineEventChain });
         ui.showFloatingNumber(`+${event.value} • x${loops.divineEventChain}`, event.x, event.y, '#ffd700');
         ui.spawnParticles(event.x, event.y, 12, '#ffd700');
 
@@ -1602,20 +2694,35 @@ const game = {
            quietly set back the prestige it was supposed to build toward. */
         if (this.getAvailableDivinityPoints() < effectiveCost) {
             ui.log(`Insufficient Divinity. Need ${effectiveCost} DP.`);
+            this.sfx('error');
             return;
         }
 
         State.divinityPointsSpent = (State.divinityPointsSpent || 0) + effectiveCost;
 
-        // Mark as purchased and apply effect
+        // Mark as purchased. The bonus itself belongs to certification, not to
+        // the purchase — buying a node on a path you are not certified on
+        // unlocks it, it does not switch it on.
         State.purchasedMandates[mandateId] = true;
-        this.applyContentItem(mandate, 'mandate');
+        const live = mandate.branch === this.certification().path;
+        /* The grant half, once, and only while certified. applyCertification
+           cannot do this — it runs on every load, and a grant re-run on load
+           compounds. This is the one moment a newly bought grant exists and
+           has not been applied. */
+        if (live && typeof mandate.effect === 'function' && (mandate.modsSplit || !mandate.mods)) {
+            mandate.effect();
+        }
+        this.applyCertification();
 
         // Track for achievements
         State.achievementProgress.buy_mandate_count = (State.achievementProgress.buy_mandate_count || 0) + 1;
 
-        ui.log(`Divine Mandate enacted: ${mandate.name}${effectiveCost < mandate.cost ? ` (Efficiency: ${mandate.cost}→${effectiveCost})` : ''}`);
+        const dormant = live ? '' : (this.certification().everCertified.includes(mandate.branch)
+            ? ' — lapsed path, paying residue until you certify on it again'
+            : ' — dormant until you certify on this path');
+        ui.log(`Divine Mandate enacted: ${mandate.name}${effectiveCost < mandate.cost ? ` (Efficiency: ${mandate.cost}→${effectiveCost})` : ''}${dormant}`);
         ui.screenPulse('rgba(138, 43, 226, 0.3)');
+        this.sfx('purchase');
         ui.updateMandates();
     },
 
@@ -1657,6 +2764,7 @@ const game = {
             ui.spawnParticles(x, y, isFull ? 5 : 3, displayColor);
         }
 
+        this.sfx('miracle', { void: true });
         ui.triggerVoidCoreReaction(clickPower);
     },
 
@@ -1758,8 +2866,20 @@ const game = {
         return RealityChannels[channel]?.divinity ?? 1;
     },
 
+    /* What a cascade costs at ship time. A degraded build ships for less; a
+       collapsed one ships for nothing, which is the whole risk in "push the
+       run deeper". Separate from the output throttle on purpose — the
+       throttle is what you feel, this is what you lose. */
+    getCascadePenalty() {
+        return this.cascadeState().award;
+    },
+
     getPrestigeAward() {
-        return Math.floor(this.calculateDivinityPoints() * this.getPrestigeChannelPayout());
+        return Math.floor(
+            this.calculateDivinityPoints() *
+            this.getPrestigeChannelPayout() *
+            this.getCascadePenalty(),
+        );
     },
 
     /* Souls still needed for the next point, for the UI to show progress.
@@ -1784,11 +2904,13 @@ const game = {
         const cost = this.getDoctrineCost();
         if (this.getAvailableDivinityPoints() < cost) {
             ui.log(`Insufficient Divinity. Need ${cost} DP.`);
+            this.sfx('error');
             return;
         }
         State.divinityPointsSpent = (State.divinityPointsSpent || 0) + cost;
         State.standingDoctrine = (State.standingDoctrine || 0) + 1;
         ui.log(`Standing Doctrine ratified to rank ${State.standingDoctrine}.`);
+        this.sfx('purchase');
         ui.screenPulse('rgba(180, 145, 74, 0.3)');
         ui.updateMandates();
     },
@@ -1801,7 +2923,14 @@ const game = {
         return this.calculateDivinityPoints() > 0;
     },
 
-    performPrestige() {
+    /* Shipping the build IS the reboot.
+
+       `options.certifyOn` is the path the next run runs on, and `options`
+       arriving at all means the caller was the ship dialog, which has already
+       confirmed. A bare call still works — the simulator and the tests use it
+       — and falls back to the existing confirm(), so nothing that predates
+       the dialog has to know about it. */
+    performPrestige(options = {}) {
         /* The channel's payout is what a riskier build is actually buying.
            Beta and Nightly ship more known issues and regressions; this is
            the compensation, and it is why the choice is a trade rather than
@@ -1811,38 +2940,94 @@ const game = {
            Stable run and cash it out at the Nightly rate. */
         const playedChannel = State.reality?.build?.channel || State.reality?.channel;
         const channelPayout = RealityChannels[playedChannel]?.divinity ?? 1;
-        if (channelPayout <= 0) {
+        /* Archived pays nothing BY DESIGN — its payout is lore, filed when the
+           replay began — so its zero is not a reason to refuse. Without this
+           exemption an archived run could never be shipped at all: the
+           player would be locked inside a replay with no exit. Every other
+           channel keeps the refusal; a zero payout anywhere else is a bug. */
+        const archivedReplay = playedChannel === 'archived';
+        if (channelPayout <= 0 && !archivedReplay) {
             ui.log(`The ${RealityChannels[playedChannel]?.label || playedChannel} channel pays no Divinity. Switch channels before rebooting.`);
+            return;
+        }
+
+        /* Gated on the run's SCORE, not on the award.
+
+           A collapsed build pays nothing, and gating on the award would trap
+           the player inside it: the only other way out is patching, and
+           patching costs resources a collapsed run may not be able to earn.
+           Shipping a dead build for zero is a bad outcome the player chose;
+           being unable to ship at all is a soft-lock. */
+        const runScore = this.calculateDivinityPoints();
+        if (runScore === 0) {
+            ui.log("Cannot prestige yet. Need more Souls.");
             return;
         }
         const divinityGain = this.getPrestigeAward();
 
-        if (divinityGain === 0) {
-            ui.log("Cannot prestige yet. Need more Souls.");
-            return;
+        if (!options.confirmed) {
+            const cascade = this.cascadeState();
+            const confirmed = confirm(
+                `Divine Reboot\n\n` +
+                `You will gain ${divinityGain} Divinity Points.\n` +
+                (cascade.tier > 0 ? `${cascade.label} — award reduced to ${Math.round(cascade.award * 100)}%.\n` : '') +
+                `+${(divinityGain * 10)}% to all production.\n\n` +
+                `This will reset:\n` +
+                `- All resources\n` +
+                `- All automatons\n` +
+                `- All upgrades\n` +
+                `- Dimensions progress\n\n` +
+                `This will KEEP:\n` +
+                `- Divine Mandates\n` +
+                `- Achievements\n` +
+                `- Documents\n` +
+                `- Divinity Points\n\n` +
+                `Proceed with Divine Reboot?`
+            );
+
+            if (!confirmed) return;
         }
 
-        // Confirm prestige
-        const confirmed = confirm(
-            `Divine Reboot\n\n` +
-            `You will gain ${divinityGain} Divinity Points.\n` +
-            `+${(divinityGain * 10)}% to all production.\n\n` +
-            `This will reset:\n` +
-            `- All resources\n` +
-            `- All automatons\n` +
-            `- All upgrades\n` +
-            `- Dimensions progress\n\n` +
-            `This will KEEP:\n` +
-            `- Divine Mandates\n` +
-            `- Achievements\n` +
-            `- Documents\n` +
-            `- Divinity Points\n\n` +
-            `Proceed with Divine Reboot?`
-        );
+        /* File the known issues this build is shipping with, BEFORE the build
+           is replaced. One entry per id ever: a known issue is filed once, so
+           the ledger is bounded by the pool and the penalty cannot compound
+           into an unplayable game across a hundred runs.
 
-        if (!confirmed) return;
+           An archived replay files scars too. It is a real ship, and the
+           decision inside it has to cost something: exempting it would make
+           every known issue in a replay free to ignore, leaving the run
+           with no decision in it at all. In practice it rarely bites —
+           scars are once per id ever, so a build you shipped dirty the first
+           time is already on file. What it does catch is the issue you
+           PATCHED originally and skip now, which is the same choice priced
+           the same way as on any other channel. */
+        const shippedDirty = [];
+        if (!Array.isArray(State.reality.scars)) State.reality.scars = [];
+        for (const entry of Reality.unpatchedIssues(State.reality.build)) {
+            if (State.reality.scars.includes(entry.id)) continue;
+            State.reality.scars.push(entry.id);
+            shippedDirty.push(entry);
+        }
 
-        // Award divinity points
+        // Into the release history, before the build is replaced.
+        this.recordShip(State.reality.build, divinityGain);
+        // The finale's measure of depth: a replay played all the way to its ship.
+        if (archivedReplay) this.noteArchivedShip();
+
+        /* Award divinity points.
+
+           An archived ship advances prestigeLevel like any other ship. The
+           level is the ship counter and the SEED of the next build: holding
+           it still would make the run after a replay a byte-identical repeat
+           of the run before it (seedFor(runSeed, level) reused). And there is
+           nothing on the ladder for it to farm — every reboot-count gate in
+           the game (channels at 3/8/12, the prestige_count achievements and
+           documents, the reboot-6/8 barks) is behind it by reboot 12.
+
+           What Archived must NOT move is the bar. divinityGain is 0, so
+           totalDivinityPoints — which the bar and the production bonus are
+           both functions of — is untouched, and the next run is exactly as
+           hard as this one was. */
         State.prestigeLevel++;
         State.totalDivinityPoints += divinityGain;
         /* Close the run. The single write site for the run-souls baseline —
@@ -2020,23 +3205,41 @@ const game = {
         // Keep mandates, achievements, documents, unlocked apps
 
         /* THE prestige step. Everything the registry owns is rebuilt by
-           dropping run-scoped records and re-folding; mandate modifiers are
-           scope 'permanent' and survive untouched, which is what the reapply
-           loop below used to do by re-running their closures.
+           dropping run-scoped records and re-folding.
 
-           The loop is still here for one reason: mandates whose effect() is a
-           GRANT rather than a modifier (entropy_ultimate's manualClickScaling,
-           maintenance_apex's capacitor ranks) are cleared above and have to be
-           re-granted. A review caught that deleting the loop outright would
-           silently destroy a 40-DP apex mandate on the first reboot. */
+           Mandate modifiers used to be scope 'permanent' and survive
+           untouched. They are scope 'cert' now and are rebuilt below against
+           the path being certified on, which is the one line that turns the
+           Mandate tree from a checklist into a decision. */
         Modifiers.dropScope('run');
-        // The outgoing build goes with the outgoing run.
+        // The outgoing build goes with the outgoing run — cascade throttle
+        // included, since that is a record of the build that caused it.
         Modifiers.dropScope('build');
         Modifiers.commit(Date.now());
+        // Tickets and deferrals belong to the outgoing build too.
+        if (this.incidentsLive()) Incidents.clearForReboot(Date.now());
+
+        /* Certify for the run about to start. Ordered after the drops and
+           before the re-grant loop, because the grants below are only issued
+           for the branch being certified on. */
+        if (options.certifyOn) this.certifyOn(options.certifyOn, { silent: true });
 
         State.reality.shipped = (State.reality.shipped || 0) + 1;
         State.reality.build = null;
+
+        /* The new build starts clean. instability belongs to the build that
+           accrued it, and alertedTier resets so the next cascade announces
+           itself rather than being swallowed by the last run's high-water
+           mark. cascadeTier is set to -1 rather than 0 so syncCascade sees a
+           change and clears the throttle even if the tier is unchanged. */
+        State.reality.instability = 0;
+        State.reality.cascadeTier = -1;
+        State.reality.alertedTier = 0;
+
         const nextBuild = this.rollNextBuild(Date.now());
+        this.syncCascade(Date.now());
+        // Before the release notes, which say what the replay filed.
+        if (nextBuild.channel === 'archived') this.beginArchivedReplay(nextBuild);
         ui.showReleaseNotes(nextBuild);
 
         /* He turns up when you reboot — ADV-BARK-02, "Reset again. I dare you.
@@ -2044,27 +3247,52 @@ const game = {
            they accrue. Fired before the count-specific lines so the generic
            dare does not eat their cooldown slot. */
         this.appendAdversaryAuditEntry();
-        this.nudgeAdversaryStanding(-1, 'rebooted', { exempt: true }); // already once per run
+        // An archived replay nudged +1 instead, in beginArchivedReplay.
+        if (nextBuild.channel !== 'archived') this.nudgeAdversaryStanding(-1, 'rebooted', { exempt: true }); // already once per run
         const reboots = State.achievementProgress.prestige_count || 0;
         if (reboots === 6) this.triggerAdversaryBark('prestige_count_6');
         else if (reboots === 8) this.triggerAdversaryBark('prestige_count_8');
         else this.triggerAdversaryBark('prestige_prompt');
 
+        const certPath = this.certification().path;
         for (const mandateId in State.purchasedMandates) {
             const mandate = MandateList.find((m) => m.id === mandateId);
             if (!mandate) continue;
-            // Grants only. Re-running a closure whose scalar half is already a
-            // permanent modifier would apply the same bonus a second time on
-            // every reboot — the exact same routing rule as applyContentItem.
+            /* Grants only. Re-running a closure whose scalar half is already
+               a modifier would apply the same bonus a second time on every
+               reboot — the same routing rule as applyContentItem.
+
+               And only for the certified branch. entropy_ultimate's
+               manualClickScaling and maintenance_apex's capacitor ranks are
+               the FULL value of those two nodes; issuing them regardless of
+               path would leave two mandates immune to certification, and
+               they are the 8-DP and 40-DP ones. A grant has no residue form
+               — you cannot be 10% self-service — so an uncertified branch
+               simply does not get it. */
+            if (mandate.branch !== certPath) continue;
             if (typeof mandate.effect === 'function' && (mandate.modsSplit || !mandate.mods)) {
                 mandate.effect();
             }
         }
 
+        /* Rebuild the mandate modifiers against the new path, and the scars
+           filed above. Both AFTER the grant loop, because maintenance_apex's
+           grant writes capacitor ranks that no modifier reads — the ordering
+           only matters for the commit, and both of these commit. */
+        this.applyCertification(Date.now());
+        this.applyScars(Date.now());
+
         // Save and refresh
         State.save();
-        ui.log(`Divine Reboot complete! Gained ${divinityGain} Divinity Points.`);
-        ui.log(`All production increased by ${(divinityGain * 10)}%!`);
+        if (archivedReplay) {
+            ui.log('Archived replay shipped. No Divinity — this one was for the record.');
+        } else {
+            ui.log(`Divine Reboot complete! Gained ${divinityGain} Divinity Points.`);
+            ui.log(`All production increased by ${(divinityGain * 10)}%!`);
+        }
+        if (shippedDirty.length) {
+            ui.log(`${shippedDirty.length} known issue${shippedDirty.length === 1 ? '' : 's'} shipped unpatched. Filed permanently.`);
+        }
         ui.screenPulse('rgba(255, 215, 0, 0.6)');
 
         // Refresh UI
@@ -2074,6 +3302,11 @@ const game = {
             ui.updateSeraphButton();
             ui.updateCherubButton();
             ui.renderDimensionContent();
+            /* The Mandate tree is certification's whole display surface and
+               performPrestige has never refreshed it. Without this the tree
+               shows the previous run's path until something else happens to
+               re-render it. */
+            ui.updateMandates();
         }, 500);
     },
 
@@ -2132,98 +3365,151 @@ const game = {
     },
 
     // === CASINO HOST BARK SYSTEM ===
-    selectHostBark(trigger, context = null) {
-        // Filter barks by trigger and context
-        let eligibleBarks = CasinoHostBarks.filter(bark => {
-            if (bark.trigger !== trigger) return false;
-            if (context && bark.context !== context) return false;
-            return this.canBarkPlay(bark);
-        });
+    /* Fate — "the house" — deals Patience.exe. There is no casino venue
+       (DESIGN_DIRECTION.md §7 cut it); the CasinoHostBarks are spoken from
+       inside the Patience window, and PatienceDealer in js/solitaire.js maps
+       each one to a real moment at that table. This section is only the
+       router: eligibility, cooldowns, weighting and the record of what was
+       said. It never grants anything — CAS-HOST-042 declares an `effect`
+       (five Fate Tokens) and it is deliberately never executed here. */
+    HOST_GLOBAL_COOLDOWN_MS: 2000,
 
-        if (eligibleBarks.length === 0) {
-            return null; // No barks available
-        }
-
-        // Weighted random selection
-        const totalWeight = eligibleBarks.reduce((sum, bark) => sum + (bark.weight || 1), 0);
-        let random = Math.random() * totalWeight;
-
-        for (const bark of eligibleBarks) {
-            random -= (bark.weight || 1);
-            if (random <= 0) {
-                return bark;
-            }
-        }
-
-        return eligibleBarks[0]; // Fallback
+    /* State.settings.dealerChatter. A save is pasted text decoded straight
+       into State, so anything that is not a real boolean — "false", 0, null —
+       is put back to the schema default rather than read for truthiness. */
+    dealerChatterOn() {
+        const s = State.settings;
+        if (!s || typeof s !== 'object' || Array.isArray(s)) return true;
+        if (typeof s.dealerChatter !== 'boolean') s.dealerChatter = true;
+        return s.dealerChatter;
     },
 
-    canBarkPlay(bark) {
-        const now = Date.now();
+    /* State.casino.hostDialogue, normalised by type and range. A cooldown
+       stamped in the future would mute a line forever (or the whole dealer,
+       for lastBarkTime), so timestamps are clamped to now; ids the table
+       does not know are dropped; `x || default` would keep every truthy
+       wrong value, so nothing here is read that way. */
+    normaliseHostDialogue(raw, now = Date.now()) {
+        const plain = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+        const src = plain(raw) ? raw : {};
+        const stamp = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0) ? Math.min(v, now) : 0;
+        const count = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0) ? Math.floor(v) : 0;
+        const known = new Set(CasinoHostBarks.map((b) => b.id));
+        const whispers = new Set(CasinoHostBarks.filter((b) => b.context === 'LoreWhisper').map((b) => b.id));
 
-        // Check global cooldown (minimum 2 seconds between ANY barks)
-        const lastBarkTime = State.casino.hostDialogue.lastBarkTime || 0;
-        if (now - lastBarkTime < 2000) {
-            return false;
+        const barkCooldowns = {};
+        if (plain(src.barkCooldowns)) {
+            for (const [id, at] of Object.entries(src.barkCooldowns)) {
+                const t = stamp(at);
+                if (known.has(id) && t) barkCooldowns[id] = t;
+            }
         }
+        const loreWhispersHeard = [];
+        for (const id of Array.isArray(src.loreWhispersHeard) ? src.loreWhispersHeard : []) {
+            if (whispers.has(id) && !loreWhispersHeard.includes(id)) loreWhispersHeard.push(id);
+        }
+        return {
+            lastBarkId: known.has(src.lastBarkId) ? src.lastBarkId : null,
+            lastBarkTime: stamp(src.lastBarkTime),
+            barkCooldowns,
+            loreWhispersHeard,
+            // Added for Patience.exe: when the table was last in view, how
+            // many times it has been opened, and the run of rounds under par.
+            lastSeenAt: stamp(src.lastSeenAt),
+            visits: count(src.visits),
+            loseStreak: count(src.loseStreak),
+        };
+    },
 
-        // Check individual bark cooldown
-        const barkCooldowns = State.casino.hostDialogue.barkCooldowns || {};
-        const lastPlayed = barkCooldowns[bark.id] || 0;
-        const cooldownMs = (bark.cooldown || 10) * 1000;
+    /* Normalises once per object identity, like PatienceApp.ledger(): a save
+       load or import replaces the object, which is when it needs checking. */
+    _hostClean: null,
+    hostDialogue() {
+        if (!State.casino || typeof State.casino !== 'object' || Array.isArray(State.casino)) State.casino = {};
+        if (State.casino.hostDialogue !== this._hostClean || !this._hostClean) {
+            State.casino.hostDialogue = this.normaliseHostDialogue(State.casino.hostDialogue);
+            this._hostClean = State.casino.hostDialogue;
+        }
+        return State.casino.hostDialogue;
+    },
 
-        return (now - lastPlayed) >= cooldownMs;
+    selectHostBark(trigger, context = null, accept = null) {
+        return this.pickHostBark(CasinoHostBarks.filter((bark) => {
+            if (bark.trigger !== trigger) return false;
+            if (context && bark.context !== context) return false;
+            return !accept || accept(bark);
+        }));
+    },
+
+    /* Weighted pick among the lines that may play right now. */
+    pickHostBark(lines, now = Date.now()) {
+        const eligible = (lines || []).filter((bark) => this.canBarkPlay(bark, now));
+        if (!eligible.length) return null;
+        const totalWeight = eligible.reduce((sum, bark) => sum + (bark.weight || 1), 0);
+        let random = Math.random() * totalWeight;
+        for (const bark of eligible) {
+            random -= (bark.weight || 1);
+            if (random <= 0) return bark;
+        }
+        return eligible[0];
+    },
+
+    canBarkPlay(bark, now = Date.now()) {
+        // Dealer chatter off: the one gate every line, whispers included, passes.
+        if (!bark || !this.dealerChatterOn()) return false;
+        const memo = this.hostDialogue();
+
+        // Global: at least two seconds between ANY two of her lines.
+        if (now - memo.lastBarkTime < this.HOST_GLOBAL_COOLDOWN_MS) return false;
+
+        /* Per line, in seconds, as authored. This read `(bark.cooldown || 10)`,
+           which turned every authored cooldown of 0 into ten seconds. */
+        const seconds = (typeof bark.cooldown === 'number' && Number.isFinite(bark.cooldown) && bark.cooldown >= 0)
+            ? bark.cooldown : 10;
+        return (now - (memo.barkCooldowns[bark.id] || 0)) >= seconds * 1000;
     },
 
     triggerHostBark(trigger, context = null, forceDisplay = false) {
         const bark = this.selectHostBark(trigger, context);
+        return bark ? this.playHostBark(bark, forceDisplay) : null;
+    },
 
-        if (!bark) {
-            return null; // No bark available
-        }
-
-        // Update bark state
-        const now = Date.now();
-        State.casino.hostDialogue.lastBarkId = bark.id;
-        State.casino.hostDialogue.lastBarkTime = now;
-        State.casino.hostDialogue.barkCooldowns = State.casino.hostDialogue.barkCooldowns || {};
-        State.casino.hostDialogue.barkCooldowns[bark.id] = now;
+    /* Records and shows a line the caller has already chosen. */
+    playHostBark(bark, forceDisplay = false, now = Date.now()) {
+        if (!bark) return null;
+        const memo = this.hostDialogue();
+        memo.lastBarkId = bark.id;
+        memo.lastBarkTime = now;
+        memo.barkCooldowns[bark.id] = now;
 
         // Track lore whispers (rare lines). The data says 'LoreWhisper'; this
-        // compared against 'Lore Whisper' and so never recorded one, leaving
-        // DOC-NEW-12's `loreWhispersHeard.length >= 1` unlock permanently shut.
-        if (bark.context === 'LoreWhisper') {
-            State.casino.hostDialogue.loreWhispersHeard = State.casino.hostDialogue.loreWhispersHeard || [];
-            if (!State.casino.hostDialogue.loreWhispersHeard.includes(bark.id)) {
-                State.casino.hostDialogue.loreWhispersHeard.push(bark.id);
-            }
+        // once compared against 'Lore Whisper' and so never recorded one,
+        // leaving DOC-NEW-09's `loreWhispersHeard.length >= 1` unlock shut.
+        if (bark.context === 'LoreWhisper' && !memo.loreWhispersHeard.includes(bark.id)) {
+            memo.loreWhispersHeard.push(bark.id);
         }
 
-        // Display bark (will be handled by UI when casino is open)
-        if (forceDisplay || State.casino.visited) {
-            ui.displayHostBark(bark);
-        }
-
+        // She speaks at her table; State.casino.visited is set the first time
+        // it opens (PatienceDealer.onOpen).
+        if (forceDisplay || State.casino.visited === true) ui.displayHostBark(bark);
         return bark;
     },
 
-    /* Attempt to trigger a lore whisper (1% chance).
+    /* A lore whisper, at `chance` (1% unless the caller says otherwise).
 
-       This asked for trigger 'casino_idle_30s' and context 'Lore Whisper'; the
-       twelve whisper lines declare trigger 'casino_rare_whisper' and context
-       'LoreWhisper'. Both strings were wrong, so the filter in selectHostBark
-       matched zero lines every time.
-
-       The strings are fixed, but this function is STILL UNCALLED: there is no
-       Casino app, so all 80 CasinoHostBarks and all 12 lore whispers remain
-       unreachable, and State.casino.visited is never written (which also
-       leaves DOC-NEW-12 permanently locked). Hook this to a Casino idle tick
-       when that app exists. See the note beside AdversaryHookedTriggers in
-       js/state.js and the openApp trigger table in js/system.js. */
-    attemptLoreWhisper() {
-        if (Math.random() < 0.01) {
-            this.triggerHostBark('casino_rare_whisper', 'LoreWhisper');
-        }
+       This once asked for trigger 'casino_idle_30s' and context 'Lore
+       Whisper'; both strings were wrong, so it matched nothing — and it was
+       never called. PatienceDealer.onSettle now calls it as a round ends,
+       the only place it is called. Unheard whispers are preferred, so twelve
+       rare lines are a set that can be completed rather than a lottery that
+       repeats itself. Returns the line, or null. */
+    attemptLoreWhisper(chance = 0.01, now = Date.now()) {
+        if (!(Math.random() < chance)) return null;
+        const memo = this.hostDialogue();
+        const whispers = CasinoHostBarks.filter((b) => b.trigger === 'casino_rare_whisper');
+        const unheard = whispers.filter((b) => !memo.loreWhispersHeard.includes(b.id));
+        const bark = this.pickHostBark(unheard.length ? unheard : whispers, now);
+        return bark ? this.playHostBark(bark, false, now) : null;
     },
 
     /* ════════════════════════════════════════════════════════════════════
@@ -2398,6 +3684,8 @@ const game = {
        popping every sixty seconds. */
     appendAdversaryAuditEntry() {
         if (State.adversary?.playerChoice !== 'OP-A') return;
+        // "Nobody keeps the receipts now" — the hostile ending's own notes.
+        if (this.endingWorn() === 'hostile') return;
         const item = State.recycleBin.items.find((i) => i.id === 'adversary_audit');
         if (!item) return;
         State.adversary.auditLogEntries = (State.adversary.auditLogEntries || 0) + 1;
@@ -2411,6 +3699,8 @@ const game = {
     selectAdversaryBark(trigger) {
         const adv = State.adversary;
         if (!adv?.sceneCompleted) return null;
+        // Patched out. The quiet is the cost the hostile ending names.
+        if (this.endingWorn() === 'hostile') return null;
 
         const band = this.adversaryRelationship();
         const allowed = AdversaryBarkPolicy.triggers[band] || [];
@@ -2450,6 +3740,303 @@ const game = {
 
         ui.displayAdversaryBark(bark);
         return bark;
+    },
+
+    /* ════════════════════════════════════════════════════════════════════
+       SCN-ADV-002 — "End of Shift". Content, the gate and its measurement
+       live with AdversaryFinale in js/state.js; this is the mechanism.
+
+       The idle game does not end. An ending files a document, wears a title
+       and a desktop mark, and adds a small permanent modifier — and then the
+       player goes back to work. The relationship keeps moving, so the other
+       two endings stay reachable: see finaleBlocker for the replay route.
+       ════════════════════════════════════════════════════════════════════ */
+
+    /* Every field validated, because mergeInto does no type checking and
+       importSave decodes pasted text straight into State. Validation, not
+       defaulting (335f41f): an entry that does not validate is dropped. */
+    normaliseEndings(now = Date.now()) {
+        const bands = AdversaryFinale.BANDS;
+        const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+        const MAX = 1000000;
+        let e = State.endings;
+        if (!e || typeof e !== 'object' || Array.isArray(e)) {
+            e = { history: [], pending: null, attempts: 0, archivedShips: 0 };
+            State.endings = e;
+        }
+
+        /* Archived ships are counted from the moment this shipped; a save
+           that replayed before then still has the replay in its release
+           history, so the larger of the two counts is the honest one. */
+        const recorded = typeof Reality !== 'undefined'
+            ? Reality.normaliseHistory(State.reality?.history).filter((r) => r.channel === 'archived').length
+            : 0;
+        e.archivedShips = Math.max(int(e.archivedShips, 0, MAX) ? e.archivedShips : 0, recorded);
+
+        const seen = new Set();
+        const history = [];
+        for (const raw of Array.isArray(e.history) ? e.history : []) {
+            if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+            // One entry per ending, ever: the first one filed is the one seen.
+            if (!bands.includes(raw.ending) || seen.has(raw.ending)) continue;
+            if (!int(raw.reboot, 0, MAX) || !int(raw.ships, 0, MAX)) continue;
+            seen.add(raw.ending);
+            history.push({
+                ending: raw.ending,
+                reboot: raw.reboot,
+                // Cannot have been resolved after more replays than exist.
+                ships: Math.min(raw.ships, e.archivedShips),
+                at: Number.isFinite(raw.at) && raw.at >= 0 ? raw.at : null,
+            });
+        }
+        e.history = history;
+        e.attempts = int(e.attempts, 0, MAX) ? e.attempts : 0;
+
+        /* The calendar half of the gate. runtime.startTime is written once,
+           by the first session, and nothing else reads or writes it — so it
+           is the save's birth date. A missing, nonsense or future value
+           starts the clock now rather than opening the gate. */
+        const runtime = State.runtime;
+        if (runtime && typeof runtime === 'object') {
+            const start = runtime.startTime;
+            if (!Number.isFinite(start) || start <= 0 || start > now) runtime.startTime = now;
+        }
+
+        /* A pending ending must name an unseen ending AND sit behind a gate
+           that is still open — every clause but the band, which is exactly
+           what pending exists to freeze. Otherwise a pasted save could carry
+           `pending` past the whole gate, since the resume path does not
+           re-check it. Nothing in the gate can close by playing, so a
+           legitimately interrupted scene always survives this. */
+        const pending = bands.includes(e.pending) && !seen.has(e.pending) ? e.pending : null;
+        e.pending = pending && !this.finaleBlocker(now, { ignoreBand: true }) ? pending : null;
+        return e;
+    },
+
+    endingsSeen() {
+        const history = State.endings?.history;
+        if (!Array.isArray(history)) return [];
+        const out = [];
+        for (const entry of history) {
+            const band = entry && entry.ending;
+            if (AdversaryFinale.BANDS.includes(band) && !out.includes(band)) out.push(band);
+        }
+        return out;
+    },
+
+    /* The mark the player wears: the most recent ending. Titles and the
+       desktop follow it; the modifiers follow every ending seen. */
+    endingWorn() {
+        const seen = this.endingsSeen();
+        return seen.length ? seen[seen.length - 1] : null;
+    },
+
+    noteArchivedShip() {
+        const e = State.endings;
+        if (!e || typeof e !== 'object' || Array.isArray(e)) return;
+        const n = Number.isInteger(e.archivedShips) && e.archivedShips >= 0 ? e.archivedShips : 0;
+        e.archivedShips = n + 1;
+    },
+
+    /* Why the final scene cannot fire yet, or null when it can. A reason
+       rather than a boolean so the tests can say WHICH clause holds a save.
+
+       The replay route. After an ending, the scene re-arms only when BOTH
+         - an archived replay has been shipped since the last ending, and
+         - the relationship's current band names an ending not yet seen.
+       Archived is where he lives — every annotation was filed there — so
+       returning to it is the diegetic way back to him, and it costs a whole
+       zero-Divinity run, so a re-entry is earned and cannot be farmed. The
+       band moves on the levers that already exist (reading the paperwork,
+       feeding the reflection, rebooting, reopening the archive, trying to
+       end the mirror), so steering toward an ending you have not seen is a
+       goal you pursue across runs rather than a menu you pick from. A band
+       already seen never re-plays its ending: that would be a rerun. */
+    finaleBlocker(now = Date.now(), { ignoreBand = false } = {}) {
+        if (!State.adversary?.sceneCompleted) return 'no-relationship';
+        const gate = AdversaryFinale.gate;
+        if ((State.achievementProgress?.prestige_count || 0) < gate.minReboots) return 'reboots';
+        const e = State.endings;
+        if (!e || typeof e !== 'object') return 'no-ledger';
+        const ships = Number.isInteger(e.archivedShips) ? e.archivedShips : 0;
+        if (ships < gate.minArchivedShips) return 'archive';
+        const start = Number(State.runtime?.startTime);
+        if (!Number.isFinite(start) || now - start < gate.minSaveAgeMs) return 'save-age';
+        const seen = this.endingsSeen();
+        if (seen.length >= AdversaryFinale.BANDS.length) return 'complete';
+        const history = Array.isArray(e.history) ? e.history : [];
+        const last = history[history.length - 1];
+        if (last && ships <= (Number(last.ships) || 0)) return 'replay-needed';
+        if (!ignoreBand && seen.includes(this.adversaryRelationship())) return 'band-seen';
+        return null;
+    },
+
+    finaleExhausted() {
+        return (State.endings?.attempts || 0) >= 3;
+    },
+
+    /* Polled from the 1 Hz block, right after the Mirror Login's trigger.
+       The first test is the one the simulator fails on every tick, forever:
+       the Mirror Login cannot complete headlessly, so nothing below it runs
+       there and nothing in here may reach Math.random(). */
+    checkFinaleTrigger(now = Date.now()) {
+        if (!State.adversary?.sceneCompleted) return;
+        const e = State.endings;
+        if (!e || typeof e !== 'object') return;
+        // Never behind the boot overlay — see checkAdversaryTrigger.
+        if (typeof document !== 'undefined' && document.getElementById('boot-overlay')) return;
+
+        /* An interrupted scene resumes as the SAME ending. The band was
+           locked when it was first presented; the relationship may have
+           moved since, and a reload must not be a way to re-roll it. */
+        if (e.pending) {
+            if (this.finaleExhausted()) {
+                this.resolveEnding(e.pending, now);
+                ui.log('[void_mirror] Handover closed without operator input.');
+                return;
+            }
+            if (ui.isSystemModalOpen && ui.isSystemModalOpen()) return;
+            if (ui.isAdversarySceneOpen && ui.isAdversarySceneOpen()) return;
+            ui.playFinale();
+            return;
+        }
+
+        if (this.finaleBlocker(now)) return;
+        // Defer, never clobber: the modal layer is a single slot.
+        if (ui.isSystemModalOpen && ui.isSystemModalOpen()) return;
+        if (ui.isAdversarySceneOpen && ui.isAdversarySceneOpen()) return;
+
+        // Written BEFORE presenting, as the Mirror Login writes `contacted`.
+        e.pending = this.adversaryRelationship();
+        e.attempts = 0;
+        State.save();
+        ui.playFinale();
+    },
+
+    /* The beat list for one ending. Pure, so the vm suites can read it. */
+    finaleBeats(band) {
+        const ending = AdversaryFinale.endings[band];
+        if (!ending) return [];
+        const worn = this.endingWorn();
+        const out = [];
+        for (const line of AdversaryFinale.opening) {
+            out.push(line);
+            if (line.id === 'FIN-011' && worn && AdversaryFinale.reentry[worn]) {
+                out.push(AdversaryFinale.reentry[worn]);
+            }
+        }
+        return out.concat(ending.beats);
+    },
+
+    /* Idempotent: a second call for a seen ending changes nothing but the
+       pending flag. Called when the scene reaches its release notes, on
+       Escape past the transcript, or headlessly after three presentations
+       that never drew. */
+    resolveEnding(band, now = Date.now()) {
+        if (!AdversaryFinale.BANDS.includes(band)) return null;
+        const e = State.endings;
+        if (!e || typeof e !== 'object') return null;
+        e.pending = null;
+        e.attempts = 0;
+        if (!Array.isArray(e.history)) e.history = [];
+        if (this.endingsSeen().includes(band)) { State.save(); return null; }
+
+        const entry = {
+            ending: band,
+            reboot: State.prestigeLevel || 0,
+            ships: Number.isInteger(e.archivedShips) ? e.archivedShips : 0,
+            at: now,
+        };
+        e.history.push(entry);
+        this.applyEndings(now);
+
+        const ending = AdversaryFinale.endings[band];
+        const doc = this.endingDocument(entry);
+        ui.showDocumentNotification?.(doc);
+        ui.log(`[DOCUMENT FILED] ${doc.title}`);
+        ui.log(`[HANDOVER] ${ending.label}. Title on file: ${ending.title}.`);
+        this.checkAchievements();
+        State.save();
+        return entry;
+    },
+
+    endingMods() {
+        const mods = [];
+        for (const band of this.endingsSeen()) {
+            const ending = AdversaryFinale.endings[band];
+            for (const mod of ending.mods || []) {
+                mods.push({
+                    ...mod,
+                    source: { kind: 'ending', id: band },
+                    label: `Handover — ${ending.label}`,
+                });
+            }
+        }
+        return mods;
+    },
+
+    /* Its own scope rather than 'permanent', for one reason: reconcileScope
+       brings a WHOLE scope in line with a desired set, and 'permanent' also
+       holds the adversary patch's two records — which are in no ledger and
+       can never be regenerated. Reconciling 'permanent' against the endings
+       would delete them. 'ending' is permanent in lifetime (performPrestige
+       drops only 'run' and 'build'), derived like 'cert' and 'scar', and
+       reconciled IN PLACE so a reload never moves it in the fold. */
+    applyEndings(now = Date.now()) {
+        const count = Modifiers.reconcileScope('ending', this.endingMods());
+        Modifiers.commit(now);
+        return count;
+    },
+
+    /* The document, as data; the UI typesets it. The text is looked up from
+       the content table at read time — never stored — so a rewritten line
+       reaches every save that already filed it, as the annotations do. */
+    endingDocument(entry) {
+        const ending = AdversaryFinale.endings[entry?.ending];
+        if (!ending) return null;
+        const reboot = Number.isInteger(entry.reboot) && entry.reboot >= 0 ? entry.reboot : 0;
+        const version = typeof Reality !== 'undefined' ? Reality.versionOfLevel(reboot) : String(reboot);
+        return {
+            id: ending.document.id,
+            category: ending.document.category,
+            filename: ending.document.filename,
+            title: ending.document.title,
+            generated: true,
+            kind: 'ending',
+            ending: entry.ending,
+            label: ending.label,
+            endTitle: ending.title,
+            version,
+            reboot,
+            letter: ending.letter.slice(),
+            signoff: ending.signoff,
+            release: ending.release.map((r) => ({ ...r })),
+            credits: ending.credits.map((c) => c.slice()),
+        };
+    },
+
+    endingDocuments() {
+        return (Array.isArray(State.endings?.history) ? State.endings.history : [])
+            .filter((h) => h && AdversaryFinale.BANDS.includes(h.ending))
+            .map((h) => this.endingDocument(h))
+            .filter(Boolean);
+    },
+
+    /* Every document generated from the save rather than shipped as a
+       file: his archive annotations, and the handover records. */
+    generatedDocuments() {
+        return this.archiveDocuments().concat(this.endingDocuments());
+    },
+
+    /* "NULL.OPERATOR as the source of regressions" (DESIGN_DIRECTION §6
+       #10), at the cost of one stamp in the release notes. Only when the
+       relationship is hostile — that is when the player believes it — and
+       after the hostile ending, as a record of what he left behind. */
+    regressionAttribution() {
+        if (!State.adversary?.sceneCompleted) return null;
+        if (this.endingWorn() === 'hostile') return 'Committed by void_mirror.service#2 before termination';
+        if (this.adversaryRelationship() === 'hostile') return 'Committed by void_mirror.service#2';
+        return null;
     },
 
     // === PROPHET SYSTEM ===
@@ -2543,6 +4130,7 @@ const game = {
 
         if (State.adoration < item.cost) {
             ui.log('Insufficient Adoration.');
+            this.sfx('error');
             return;
         }
 
@@ -2556,6 +4144,7 @@ const game = {
 
         item.effect();
         ui.log(`Purchased: ${item.name}`);
+        this.sfx('purchase');
         ui.renderShopContent(category);
     },
 
@@ -2751,7 +4340,14 @@ window.render_game_to_text = () => {
             target: progress.target,
             complete: progress.completed
         } : null,
-        openApps: Object.keys(system.windows)
+        openApps: Object.keys(system.windows),
+        // The false-alarm flag is deliberately absent, as it is from the UI.
+        incidents: game.incidentsLive()
+            ? Incidents.state().open.map((inc) => ({
+                id: inc.id, severity: inc.severity, template: inc.template,
+                remaining: Math.ceil(inc.remaining), labour: inc.labour ? inc.labour.hits : null,
+            }))
+            : []
     });
 };
 

@@ -322,6 +322,22 @@ const Modifiers = {
         return typeof spec.base === 'function' ? spec.base() : pristineValue(spec.base);
     },
 
+    /* The deterministic id for a record that did not name its own.
+
+       Rank is part of the identity. It used not to be: the id interpolated
+       only kind and id, so every rank of a storage repeatable minted the same
+       id and rank 2 onwards was refused as a double-apply — silently, while
+       the escalating cost was still charged. For two sessions the whole
+       economy sat under a 7,000 Praise ceiling nobody chose.
+
+       Rank 1 keeps the historical id with no suffix, so every record already
+       sitting in a save still matches itself and game.reconcileRepeatableRanks
+       only has to restore the ranks that were discarded. */
+    autoId(source, target, seq) {
+        const rank = Number(source?.rank) > 1 ? `#r${Number(source.rank)}` : '';
+        return `${source?.kind || 'anon'}:${source?.id || seq}${rank}:${target}`;
+    },
+
     /* Appends a record. Returns it, or null if the target is unknown — an
        unknown target is a programming error, not a runtime condition, so it
        is loud rather than silent. */
@@ -337,7 +353,7 @@ const Modifiers = {
         }
 
         const record = {
-            id: id || `${source?.kind || 'anon'}:${source?.id || this._seq}:${target}`,
+            id: id || Modifiers.autoId(source, target, this._seq),
             target,
             op,
             value,
@@ -349,9 +365,9 @@ const Modifiers = {
             seq: this._seq++,
         };
         if (this.records.some((existing) => existing.id === record.id)) {
-            // Ids are deterministic, so a repeat is a double-apply rather than
-            // a legitimate second stack. Purchases that DO stack (repeatable
-            // ranks, shop tiers) carry their rank in the id.
+            /* Ids are deterministic, so a repeat is a double-apply rather than
+               a legitimate second stack. Purchases that DO stack carry their
+               rank in the id — see autoId. */
             return null;
         }
 
@@ -438,6 +454,58 @@ const Modifiers = {
         const dropped = this.records.filter((r) => r.scope === scope);
         this.records = this.records.filter((r) => r.scope !== scope);
         return dropped;
+    },
+
+    /* Brings a whole scope in line with a desired set, IN PLACE.
+
+       For scopes whose records are DERIVED rather than purchased — 'cert' is
+       a projection of the certified path over the mandate ledger, 'scar' of
+       the filed-issue list — the natural implementation is dropScope() then
+       re-add. That is what this replaced, and it was wrong, because
+       `add` appends and the fold is a left fold in insertion order.
+
+       Every boot re-derived those records, so they jumped behind everything
+       the player had bought since the last boot. On `caps.*` that is not
+       float noise: mandates fold with `mulfloor` and storage repeatables with
+       `add`, so re-ordering turns floor(base * 1.5 * 3) + 2500 into
+       floor((base + 2500) * 1.5 * 3). Measured on a real save — certify on
+       maintenance, buy one Divine Vault rank, press reload: caps.praise went
+       from 4,750 to 13,500 with no player action at all, and again on the
+       next purchase-and-reload.
+
+       So: update matching records where they already sit, append only what is
+       genuinely new, and drop what is no longer desired. Order is preserved
+       for anything that persists, which means a reload changes nothing. */
+    reconcileScope(scope, desired) {
+        const wanted = new Map();
+        for (const mod of desired) {
+            const spec = ModifierTargets[mod.target];
+            if (!spec) { console.error(`Modifiers.reconcileScope: unknown target "${mod.target}"`); continue; }
+            const id = mod.id || `${mod.source?.kind || 'anon'}:${mod.source?.id ?? ''}:${mod.target}`;
+            wanted.set(id, { ...mod, id });
+        }
+
+        // Drop what is no longer wanted.
+        this.records = this.records.filter((r) => r.scope !== scope || wanted.has(r.id));
+
+        // Update what survives, in place, keeping its seq and therefore its
+        // position in the fold.
+        for (const record of this.records) {
+            if (record.scope !== scope) continue;
+            const mod = wanted.get(record.id);
+            if (!mod) continue;
+            record.op = mod.op || record.op;
+            record.value = mod.value;
+            record.label = mod.label || record.label;
+            record.enabled = true;
+            wanted.delete(record.id);
+        }
+
+        // Whatever is left is new, and belongs at the end — it was not there
+        // before, so appending is the honest position for it.
+        for (const mod of wanted.values()) this.add({ ...mod, scope });
+
+        return this.records.filter((r) => r.scope === scope).length;
     },
 
     dropSource(kind, id) {

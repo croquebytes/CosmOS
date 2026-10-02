@@ -1,0 +1,351 @@
+#!/usr/bin/env node
+/**
+ * Patience.exe in a real browser.
+ *
+ *   COSMOS_TEST_URL=http://127.0.0.1:5194 node tests/solitaire-e2e.mjs
+ *
+ * The unit suite (tests/solitaire.mjs) proves the rules and the ledger. What
+ * it cannot see is the part that was actually broken: the shop item was
+ * unbuyable because its tab threw, and the app it unlocked did not exist.
+ * So this buys it through the shop UI, opens it from the desktop, plays by
+ * mouse and by keyboard, and reloads to check it is still there.
+ *
+ * It also checks Fate, the house, who deals here (tests/fate.mjs proves her
+ * moments): she speaks from a strip inside the window on opening, a line
+ * arriving never moves the cards or takes focus, and keyboard play carries on
+ * underneath her.
+ *
+ * Screenshots land in output/solitaire/ and output/fate/ (gitignored).
+ */
+import assert from 'node:assert/strict';
+import { mkdirSync } from 'node:fs';
+import { chromium } from 'playwright';
+
+const baseUrl = process.env.COSMOS_TEST_URL || 'http://localhost:5173';
+const OUT = 'output/solitaire';
+const FATE = 'output/fate';
+mkdirSync(OUT, { recursive: true });
+mkdirSync(FATE, { recursive: true });
+
+const browser = await chromium.launch({ headless: true, args: ['--use-gl=angle', '--use-angle=swiftshader'] });
+const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+const page = await context.newPage();
+const errors = [];
+page.on('pageerror', (e) => errors.push(String(e)));
+page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+
+const moves = () => page.evaluate(() => PatienceApp.current()?.moves.length ?? -1);
+let passed = 0;
+const step = (name) => { passed++; console.log(`  ok    ${name}`); };
+
+try {
+    console.log('\nPatience.exe (browser)\n');
+    await page.goto(`${baseUrl}/?testMode=1`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: 'Perform Miracle' }).waitFor();
+    await page.evaluate(() => {
+        ui.dismissSystemModal?.();
+        system.closeApp('console');
+        State.adoration = 650;
+        if (!State.unlockedApps.includes('adorationshop')) State.unlockedApps.push('adorationshop');
+        ui.updateDesktopIcons();
+    });
+
+    /* ── Buy it through the shop ── */
+    assert.equal(await page.locator('#icon-solitaire').isVisible(), false, 'icon hidden before purchase');
+    await page.locator('#icon-adorationshop').click();
+    await page.getByRole('button', { name: 'Mini-Games' }).click();
+    const item = page.locator('.shop-item', { hasText: 'Patience.exe' });
+    await item.waitFor();
+    assert.match(await item.innerText(), /Golf solitaire/, 'shop item describes what it now does');
+    await item.click();
+    const bought = await page.evaluate(() => ({
+        adoration: State.adoration, apps: State.unlockedApps.slice(),
+        ledger: State.adorationShop.minigames.minigame_solitaire,
+    }));
+    assert.equal(bought.adoration, 150, 'purchase cost 500 Adoration');
+    assert.ok(bought.apps.includes('solitaire'), 'purchase unlocks the app');
+    assert.equal(bought.ledger, true, 'purchase recorded under the category the shop reads');
+    assert.match(await item.innerText(), /PURCHASED/);
+    await page.locator('#icon-solitaire').waitFor({ state: 'visible', timeout: 2500 });
+    step('bought through the Mini-Games tab; desktop icon appears');
+
+    await page.evaluate(() => system.closeApp('adorationshop'));
+    await page.locator('#start-button').click();
+    await page.locator('#start-menu-apps', { hasText: 'Patience.exe' }).waitFor();
+    await page.locator('#start-menu-apps button', { hasText: 'Patience.exe' }).click();
+    await page.locator('#win-solitaire').waitFor();
+    step('opens from the Genesis menu');
+
+    /* ── Fate speaks on opening, from inside the window ── */
+    const opening = await page.evaluate(() => {
+        const strip = document.querySelector('#win-solitaire #pt-dealer');
+        const line = document.getElementById('pt-dealer-line');
+        const spoken = CasinoHostBarks.find((b) => b.id === strip?.dataset.bark);
+        return {
+            inWindow: !!strip && !strip.hidden,
+            text: line?.textContent || '',
+            moment: spoken ? PatienceDealer.route(spoken) : null,
+            expected: spoken?.text,
+            focusables: strip ? strip.querySelectorAll('button, a, input, select, textarea, [tabindex]').length : -1,
+            toasts: document.querySelectorAll('.host-bark-notification').length,
+        };
+    });
+    assert.equal(opening.inWindow, true, 'the dealer strip is inside Patience.exe');
+    assert.equal(opening.moment, 'casino_first_visit', 'the first opening is a house rule');
+    assert.equal(opening.text, opening.expected, 'the line shown is the line chosen');
+    assert.equal(opening.focusables, 0, 'nothing in the strip can take focus');
+    assert.equal(opening.toasts, 0, 'no toast');
+    step(`Fate speaks on opening: "${opening.text}"`);
+
+    /* ── Pin a deal so the run is reproducible ── */
+    await page.evaluate(() => { PatienceApp.deal(20260930); PatienceView.banner = null; PatienceView.render(); });
+    assert.equal(await page.locator('#win-solitaire .pt-column').count(), 7);
+    assert.equal(await page.locator('#win-solitaire button.pt-card').count(), 7, 'seven exposed cards');
+
+    /* ── Mouse ── */
+    let before = await moves();
+    for (let i = 0; i < 6; i++) {
+        const playable = page.locator('#win-solitaire button.pt-card.is-playable');
+        if (await playable.count()) await playable.first().click();
+        else await page.locator('#win-solitaire .pt-stock').click();
+    }
+    assert.equal(await moves(), before + 6, 'six mouse actions, six moves');
+    step('plays and draws by mouse');
+
+    /* ── Keyboard: Space draws and must NOT fire a Miracle behind the table ── */
+    const clicks = await page.evaluate(() => State.totalClicks);
+    before = await moves();
+    const stockBefore = await page.evaluate(() => PatienceApp.current().stock.length);
+    await page.keyboard.press('Space');
+    assert.equal(await moves(), before + 1, 'Space draws');
+    assert.equal(await page.evaluate(() => PatienceApp.current().stock.length), stockBefore - 1);
+    assert.equal(await page.evaluate(() => State.totalClicks), clicks, 'Space did not perform a Miracle');
+
+    // Arrow to a legal column, then Enter.
+    const target = await page.evaluate(() => PatienceRules.legalPlays(PatienceApp.current())[0] ?? null);
+    if (target === null) {
+        await page.keyboard.press('Space');
+    } else {
+        for (let guard = 0; guard < 8; guard++) {
+            if (await page.evaluate(() => PatienceView.selected) === target) break;
+            await page.keyboard.press('ArrowRight');
+        }
+        assert.equal(await page.evaluate(() => PatienceView.selected), target, 'arrows reach the column');
+        assert.equal(await page.locator(`#win-solitaire .pt-column[data-col="${target}"] .pt-card.is-selected`).count(), 1,
+            'selection is drawn');
+        before = await moves();
+        await page.keyboard.press('Enter');
+        assert.equal(await moves(), before + 1, 'Enter plays the selected card');
+        assert.equal(await page.evaluate(() => PatienceApp.current().moves.at(-1)), `p${target}`);
+    }
+    step('arrows select, Enter plays, Space draws');
+
+    /* ── A line arriving never moves the cards or takes focus ── */
+    await page.waitForTimeout(2100); // her two-second floor
+    const feltTop = () => page.evaluate(() => document.getElementById('pt-felt').getBoundingClientRect().top);
+    const topBefore = await feltTop();
+    await page.locator('#pt-dealer').click();
+    await page.locator('#pt-dealer').click();
+    assert.equal(await page.evaluate(() => document.getElementById('pt-dealer').dataset.bark), 'CAS-HOST-065',
+        'tapping the dealer twice is "Tap the dealer again"');
+    assert.equal(await feltTop(), topBefore, 'the table did not move when she spoke');
+    assert.equal(await page.evaluate(() => !!document.activeElement?.closest?.('#pt-dealer')), false,
+        'focus is not in the strip');
+    before = await moves();
+    await page.keyboard.press('Space');
+    assert.equal(await moves(), before + 1, 'Space still draws after she speaks');
+    // And with a card focused by the keyboard path, a line leaves it alone.
+    const focusBefore = await page.evaluate(() => {
+        const card = document.querySelector('#win-solitaire button.pt-card');
+        card.focus();
+        return card.getAttribute('aria-label');
+    });
+    await page.evaluate(() => {
+        game.hostDialogue().lastBarkTime = 0;
+        game.playHostBark(CasinoHostBarks.find((b) => b.id === 'CAS-HOST-003')); // two lines where the last was one
+    });
+    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), focusBefore,
+        'a line arriving did not move focus');
+    assert.equal(await feltTop(), topBefore, 'a longer line did not move the table either');
+    // Narrow the window (not the viewport) until that line wraps, and check again.
+    const wrapped = await page.evaluate(() => {
+        const win = document.getElementById('win-solitaire');
+        const width = win.style.width;
+        win.style.width = '500px';
+        const say = (id) => {
+            game.hostDialogue().lastBarkTime = 0;
+            game.playHostBark(CasinoHostBarks.find((b) => b.id === id));
+            const line = document.getElementById('pt-dealer-line');
+            return { top: document.getElementById('pt-felt').getBoundingClientRect().top,
+                lines: Math.round(line.scrollHeight / parseFloat(getComputedStyle(line).lineHeight)) };
+        };
+        const short = say('CAS-HOST-071');
+        const long = say('CAS-HOST-003');
+        win.style.width = width;
+        return { short, long };
+    });
+    assert.ok(wrapped.long.lines > wrapped.short.lines, `fixture: the long line wraps (${wrapped.short.lines} vs ${wrapped.long.lines})`);
+    assert.equal(wrapped.long.top, wrapped.short.top, 'a wrapped line did not push the table down');
+    before = await moves();
+    await page.keyboard.press('Space');
+    assert.equal(await moves(), before + 1, 'and the keyboard still plays');
+    await page.waitForTimeout(600); // let her line finish arriving
+    await page.screenshot({ path: `${FATE}/fate-1440.png` });
+    step('a line never moves the table or takes focus; keyboard play continues');
+
+    /* ── Divine Mulligan: undo, paid in Praise ── */
+    await page.evaluate(() => { State.resources.praise = State.resourceCaps.praise; PatienceView.renderControls(); });
+    const cap = await page.evaluate(() => State.resourceCaps.praise);
+    before = await moves();
+    await page.locator('#win-solitaire [data-pt="undo"]').click();
+    assert.equal(await moves(), before - 1, 'undo withdrew one move');
+    assert.equal(await page.evaluate(() => State.resources.praise), cap - Math.ceil(cap * 0.05), 'cost 5% of the cap');
+    assert.equal(await page.locator('#win-solitaire [data-pt="undo"]').isDisabled(), true, 'once per round');
+    step('Mulligan undo charges 5% of the Praise cap, once');
+
+    await page.screenshot({ path: `${OUT}/patience-1440.png` });
+
+    /* ── A winning finish, for the flourish ── */
+    const win = await page.evaluate(() => {
+        // Find a deal a lookahead player clears, and play it to one move short.
+        const best = (s, d = 0) => {
+            let bl = 0, bc = -1;
+            for (const c of PatienceRules.legalPlays(s)) {
+                const l = 1 + (d < 10 ? best(PatienceRules.play(s, c), d + 1).len : 0);
+                if (l > bl) { bl = l; bc = c; }
+            }
+            return { len: bl, col: bc };
+        };
+        for (let seed = 1; seed < 4000; seed++) {
+            let s = PatienceRules.deal(seed);
+            while (!PatienceRules.isOver(s)) {
+                s = PatienceRules.legalPlays(s).length ? PatienceRules.play(s, best(s).col) : PatienceRules.draw(s);
+            }
+            if (!PatienceRules.isWon(s)) continue;
+            PatienceApp.deal(seed);
+            for (const m of s.moves.slice(0, -1)) PatienceApp.act(m);
+            PatienceView.banner = null;
+            PatienceView.render();
+            return { seed, last: Number(s.moves.at(-1).slice(1)) };
+        }
+        return null;
+    });
+    assert.ok(win, 'found a winnable deal');
+    const roundsBefore = await page.evaluate(() => State.casino.solitaire.rounds);
+    await page.locator(`#win-solitaire .pt-column[data-col="${win.last}"] button.pt-card`).click();
+    await page.locator('#win-solitaire .pt-banner.is-won').waitFor();
+    assert.match(await page.locator('#win-solitaire .pt-banner').innerText(), /cleared/i);
+    assert.equal(await page.evaluate(() => State.casino.solitaire.rounds), roundsBefore + 1);
+    assert.ok(await page.evaluate(() => State.casino.solitaire.wins) >= 1);
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: `${OUT}/patience-win-1440.png` });
+    step(`clearing the spread (seed ${win.seed}) settles and shows the flourish`);
+
+    /* ── Phone width ── */
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.evaluate(() => { PatienceApp.deal(20260930); PatienceView.banner = null; PatienceView.render(); });
+    await page.waitForTimeout(150);
+    const fit = await page.evaluate(() => {
+        const t = document.querySelector('#win-solitaire .pt-tableau').getBoundingClientRect();
+        const w = document.querySelector('#win-solitaire').getBoundingClientRect();
+        const felt = document.querySelector('#win-solitaire .pt-felt');
+        return {
+            pageOverflow: document.documentElement.scrollWidth > window.innerWidth,
+            tableauInside: t.left >= w.left && t.right <= w.right,
+            feltScrollsSideways: felt.scrollWidth > felt.clientWidth + 1,
+            cardWidth: document.querySelector('#win-solitaire button.pt-card').getBoundingClientRect().width,
+        };
+    });
+    assert.equal(fit.pageOverflow, false, 'no horizontal page scroll at 390');
+    assert.equal(fit.tableauInside, true, 'tableau fits the window at 390');
+    assert.equal(fit.feltScrollsSideways, false, 'the table does not scroll sideways at 390');
+    assert.ok(fit.cardWidth >= 36, `cards stay legible at 390 (${fit.cardWidth.toFixed(1)}px)`);
+    before = await moves();
+    await page.locator('#win-solitaire .pt-stock').click();
+    assert.equal(await moves(), before + 1, 'stock is tappable at 390');
+    await page.screenshot({ path: `${OUT}/patience-390.png` });
+    // Fate at phone width: the strip keeps its height and clamps the line.
+    // A one-line line, then the longest greeting (two lines here): the table
+    // must not move between them.
+    const say = (id) => page.evaluate((lineId) => {
+        game.hostDialogue().lastBarkTime = 0;
+        game.playHostBark(CasinoHostBarks.find((b) => b.id === lineId));
+        return document.getElementById('pt-felt').getBoundingClientRect().top;
+    }, id);
+    const shortTop = await say('CAS-HOST-071');
+    const longTop = await say('CAS-HOST-003');
+    assert.equal(longTop, shortTop, 'a longer line did not push the table down at 390');
+    // Every line in the table, at phone width, is shown whole: not clamped,
+    // not cut off by the strip's fixed height.
+    const cut = await page.evaluate(() => {
+        const strip = document.getElementById('pt-dealer');
+        const line = document.getElementById('pt-dealer-line');
+        const out = [];
+        for (const bark of CasinoHostBarks) {
+            game.hostDialogue().lastBarkTime = 0;
+            game.playHostBark(bark);
+            const clamped = line.scrollHeight > line.clientHeight + 1;
+            const clipped = line.getBoundingClientRect().bottom > strip.getBoundingClientRect().bottom + 0.5;
+            if (clamped || clipped) out.push(bark.id);
+        }
+        return out;
+    });
+    assert.deepEqual(cut, [], `lines cut off at 390: ${cut.join(', ')}`);
+    const strip390 = await page.evaluate(() => {
+        const s = document.getElementById('pt-dealer').getBoundingClientRect();
+        const w = document.getElementById('win-solitaire').getBoundingClientRect();
+        return { inside: s.left >= w.left && s.right <= w.right,
+            overflow: document.documentElement.scrollWidth > window.innerWidth };
+    });
+    assert.equal(strip390.inside, true, 'the strip fits the window at 390');
+    assert.equal(strip390.overflow, false, 'no horizontal page scroll with her speaking');
+    await page.waitForTimeout(600); // let her line finish arriving
+    await page.screenshot({ path: `${FATE}/fate-390.png` });
+    step(`fits at 390px (cards ${fit.cardWidth.toFixed(1)}px wide)`);
+
+    /* ── Reload: the app and its record persist ── */
+    const kept = await page.evaluate(() => ({ rounds: State.casino.solitaire.rounds, moves: PatienceApp.current().moves.slice() }));
+    await page.evaluate(() => State.save());
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: 'Perform Miracle' }).waitFor();
+    await page.locator('#icon-solitaire').waitFor({ state: 'visible', timeout: 2500 });
+    const after = await page.evaluate(() => ({
+        apps: State.unlockedApps.slice(), rounds: State.casino.solitaire.rounds,
+        moves: PatienceApp.current()?.moves.slice(),
+    }));
+    assert.ok(after.apps.includes('solitaire'));
+    assert.equal(after.rounds, kept.rounds, 'stats survive reload');
+    assert.deepEqual(after.moves, kept.moves, 'the round in progress survives reload');
+    await page.evaluate(() => ui.dismissSystemModal?.());
+    await page.locator('#icon-solitaire').click();
+    await page.locator('#win-solitaire .pt-tableau').waitFor();
+    step('reload keeps the app, the stats and the round in progress');
+
+    /* ── Dealer chatter off, from Divine Settings ── */
+    await page.evaluate(() => system.openApp('settings'));
+    await page.locator('#dealer-chatter').waitFor();
+    assert.equal(await page.locator('#dealer-chatter').isChecked(), true, 'on by default');
+    await page.locator('#dealer-chatter').click();
+    assert.equal(await page.evaluate(() => State.settings.dealerChatter), false, 'the checkbox turned her off');
+    assert.equal(await page.locator('#pt-dealer').isHidden(), true, 'the strip goes with her');
+    const silent = await page.evaluate(() => {
+        game.hostDialogue().lastBarkTime = 0;
+        return PatienceDealer.say(['casino_enter']) === null && game.attemptLoreWhisper(1) === null;
+    });
+    assert.equal(silent, true, 'no line plays with chatter off');
+    await page.locator('#dealer-chatter').click();
+    assert.equal(await page.locator('#pt-dealer').isVisible(), true);
+    step('Dealer Chatter in Divine Settings silences her and hides the strip');
+
+    assert.deepEqual(errors, [], `console errors: ${errors.join(' | ')}`);
+    step('no console errors');
+    console.log(`\n${passed} passed\n`);
+} catch (error) {
+    console.log(`  FAIL  ${error.message}`);
+    await page.screenshot({ path: `${OUT}/failure.png` }).catch(() => {});
+    if (errors.length) console.log('  console errors:', errors);
+    process.exitCode = 1;
+} finally {
+    await browser.close();
+}

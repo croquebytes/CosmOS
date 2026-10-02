@@ -208,6 +208,75 @@ const State = {
         channel: 'stable',
         build: null,
         shipped: 0,          // builds released, for the version history
+
+        /* Instability is what makes SHIPPING a decision rather than a button.
+
+           It accrues while known issues sit unpatched, so a run that ignores
+           its changelog degrades — first into a SEV-2, then a SEV-1, then a
+           collapse that pays nothing. Patching relieves it, which is the only
+           reason patching has ever been worth doing.
+
+           Accrues in tick() only. It deliberately does NOT accrue offline:
+           this is an idle game, and a player cannot triage a cascade they
+           were not present for. The fiction covers it — degradation is only
+           observed under supervision. */
+        instability: 0,
+        cascadeTier: 0,      // 0 nominal, 1 degraded, 2 outage, 3 collapse
+        alertedTier: 0,      // highest tier already announced this run
+
+        /* Issue ids shipped unpatched. Permanent, one entry per id ever —
+           a known issue is filed once. Each carries a residual penalty, so
+           shipping a dirty build is cheap now and expensive forever. */
+        scars: [],
+
+        /* The release history: one record per shipped build, enough to
+           regenerate it exactly. This is what the Archived channel replays.
+           Capped, validated on every load by game.normaliseArchive(); see
+           Reality.historyRecord for the record shape. A save written before
+           it existed has none, and the history simply starts at its next
+           ship. */
+        history: [],
+        // The reboot index of the build picked for the next Archived replay.
+        // Consumed when the replay starts — there is no default pick.
+        replay: null,
+        // NULL.OPERATOR's postmortems, filed once per original build.
+        annotations: [],
+    },
+
+    /* ── Certification ────────────────────────────────────────────────────
+       The Mandate tree used to be "buy all 21", which is a checklist rather
+       than a decision. A branch's bonuses now apply only while you are
+       CERTIFIED on it, chosen once per reboot; branches you have certified
+       on before pay a residue forever. Buying a node still unlocks it
+       permanently — certification decides which unlocked nodes are live.
+
+       `path` is null until the first reboot, which is also the first moment
+       Divinity exists to spend on a mandate. */
+    certification: {
+        path: null,          // 'creation' | 'maintenance' | 'entropy' | null
+        everCertified: [],   // branches certified at least once
+        history: [],         // path per reboot, newest last — for the UI and the lore
+    },
+
+    /* ── Incidents ────────────────────────────────────────────────────────
+       The maintenance loop. See js/incidents.js. Open tickets and deferrals
+       name a template and a severity; their effects are DERIVED into the
+       modifier registry under scope 'incident', never stored here as values.
+       Timers are attended seconds remaining, so nothing escalates while the
+       console is closed. Normalised on every boot — mergeInto does no type
+       checking. No migration needed: mergeInto deep-merges these defaults
+       under any save that predates them. */
+    incidents: {
+        open: [],             // { id, template, severity, remaining, sector, falseAlarm, alerted, prophet, prophetRemaining }
+        debts: [],            // { id, template, severity } — run-scoped, cleared on reboot
+        nextNumber: 1,
+        attendedSeconds: 0,   // lifetime attended play; the onboarding quiet period reads it
+        spawnClock: 0,
+        quietUntil: 0,
+        stats: {
+            filed: 0, resolved: 0, labour: 0, resources: 0, debt: 0, sacrifice: 0,
+            prophet: 0, falseAlarmsCleared: 0, outages: 0, outagesSacrificed: 0,
+        },
     },
 
     // System Settings
@@ -220,6 +289,33 @@ const State = {
         autosaveInterval: 30000,      // milliseconds (default 30s)
         performanceMode: false,       // reduce animations if true
         briefingSeen: false,
+        /* Fate, the dealer at Patience.exe, speaks from a strip inside that
+           window. Off silences every one of her lines. Read through
+           game.dealerChatterOn(), which puts anything but a real boolean back
+           to this default. Added without a SAVE_VERSION bump, like audio. */
+        dealerChatter: true,
+        /* Read and normalised by js/audio.js (keep DEFAULTS there in step).
+           Added without a SAVE_VERSION bump on purpose: mergeInto recurses
+           into plain objects, so an older save simply gains these defaults. */
+        audio: {
+            master: 0.7,
+            sfx: 0.8,
+            ambient: 0.35,            // a bed for hours of idle: below the cues
+            sfxEnabled: true,
+            ambientEnabled: true,
+            muted: false,
+        },
+        /* Read and normalised by js/media.js (MediaLogic.defaults). Same
+           no-bump reasoning as audio: an older save just gains these.
+           `seen` is the cinematics already played; `tapes` the training
+           tapes filed; `watched` the tapes played to the end. */
+        media: {
+            cinematics: 'first',      // 'first' | 'always' | 'off'
+            vhs: true,
+            seen: [],
+            tapes: [],
+            watched: [],
+        },
     },
 
     // Prestige System
@@ -285,6 +381,12 @@ const State = {
         cosmetics: {},
         utilities: {},
         prophetUpgrades: {},
+        /* Keyed by ShopItemList category, and the category is 'minigames'.
+           This said `miniGames`, so the Mini-Games tab threw on open and the
+           one item in it could never be bought. The old key is kept so a save
+           carrying it still merges cleanly; nothing reads it but
+           PatienceApp.reconcile. */
+        minigames: {},
         miniGames: {}
     },
 
@@ -318,12 +420,16 @@ const State = {
             highScore: 0
         },
 
-        // Host dialogue system
+        // Host dialogue system — Fate, dealing at Patience.exe. Normalised by
+        // game.hostDialogue(); the moments are mapped by PatienceDealer.
         hostDialogue: {
             lastBarkId: null,
             lastBarkTime: 0,
             barkCooldowns: {}, // { lineId: timestamp }
-            loreWhispersHeard: []
+            loreWhispersHeard: [],
+            lastSeenAt: 0,     // the table was last open at (return lines)
+            visits: 0,         // times Patience.exe has been opened
+            loseStreak: 0      // rounds in a row under par (the ledger keeps the par streak)
         }
     },
 
@@ -357,6 +463,28 @@ const State = {
         patchInRecycleBin: false,
         patchExecuted: false,
         auditLogEntries: 0 // hostile branch: the receipts he said he was keeping
+    },
+
+    /* === THE ENDINGS (SCN-ADV-002, "End of Shift") ===
+       The arc's payoff. Every field is validated on load by
+       game.normaliseEndings — mergeInto does no type checking.
+
+       `history` is THE state: one entry per ending seen, in the order seen.
+       Everything else is derived from it — which endings are seen, which
+       mark is worn (the latest), and the `scope: 'ending'` modifier records,
+       rebuilt from it on every boot the way certification and scars are.
+         { ending: 'hostile'|'curious'|'complicit', reboot, ships, at }
+       `ships` is archivedShips at the moment it resolved: the next ending
+       needs an archived replay shipped AFTER it.
+
+       `pending` is the band locked when the scene was presented, so a
+       reload mid-scene resumes the SAME ending rather than re-reading a
+       relationship that may have moved since. */
+    endings: {
+        history: [],
+        pending: null,
+        attempts: 0,        // presentations; three that never draw resolve headlessly
+        archivedShips: 0    // archived replays shipped — the gate's measure of depth
     },
 
     // === TASK MANAGER ===
@@ -491,7 +619,30 @@ const State = {
        Migrations are pure data transforms on `parsed`. */
     SAVE_KEY: 'cosmos_save',
     BACKUP_KEY: 'cosmos_save_backup',
-    SAVE_VERSION: 5,
+    SAVE_VERSION: 6,
+
+    /* Keys that are CODE, not save data.
+
+       save() serialises `this`, so these three are written into every save
+       file — and mergeInto used to copy them straight back out again, over
+       the constants the running build declares. The result was a save that
+       pinned the game to the version that wrote it:
+
+         a save stamped 4 loads under a build at 5 -> migration 5 runs ->
+         mergeInto sets State.SAVE_VERSION = 4 -> the next save() stamps
+         saveVersion = 4 again -> migration 5 runs again, on every load,
+         forever.
+
+       Migration 5 sets `runSoulsBaseline = totalStats.soulsGained`, so
+       re-running it every load closed the run every load: runSouls pinned at
+       0 and the player could never reboot again. Measured on the real loader
+       before this guard existed — three reloads, baseline tracking
+       soulsGained each time.
+
+       Keeping the fix in mergeInto rather than in save() means it also
+       repairs saves that are ALREADY pinned: their stale stamp is ignored,
+       the pending migrations run once, and the next save stamps correctly. */
+    CODE_CONSTANTS: ['SAVE_KEY', 'BACKUP_KEY', 'SAVE_VERSION', 'CODE_CONSTANTS'],
 
     save() {
         this.runtime.lastUpdateTime = Date.now();
@@ -572,6 +723,64 @@ const State = {
             parsed.runSoulsBaseline = earned;
         },
 
+        6(parsed) {
+            /* Certification. Mandate bonuses used to be unconditional
+               `scope: 'permanent'` records; they are now owned by the
+               certified path and rebuilt under `scope: 'cert'` at boot.
+
+               The stale records have to go, or certification is a no-op:
+               Modifiers.add refuses a duplicate id SILENTLY, and a rebuilt
+               mandate record carries the same
+               `mandate:<id>:<target>` id as the permanent one already in the
+               log. Every branch would stay at full strength forever and
+               nothing would report it.
+
+               Migration 4's trick — `parsed.modifierLog = null`, let the
+               rebuild path regenerate everything — is no longer safe. The
+               adversary patch adds two `scope: 'permanent'` records from a
+               click; they are in no ownership ledger, rebuildModifierLog
+               cannot regenerate them, and executeAdversaryPatch refuses to
+               re-run once patchExecuted is set. Nulling the log destroys
+               them unrecoverably. So this removes ONLY what it has to.
+
+               `source.kind` is on the record, so no content table is needed
+               — which matters, because migrations run above the tables (see
+               the NOTE on the persistence block) and touching MandateList
+               here would throw a TDZ ReferenceError that load() swallows
+               into "starting from defaults". */
+            const log = parsed.modifierLog;
+            if (log && Array.isArray(log.records)) {
+                log.records = log.records.filter((r) => r && r.source?.kind !== 'mandate');
+            }
+
+            /* Every branch they have already bought into counts as
+               previously certified, so the residue is available immediately
+               rather than being earned a second time. Derived from the id
+               prefix, which is the only branch information reachable from
+               here — MandateList ids are `<branch>_<tier>` by construction.
+               bootstrapCertification re-derives the same set from the real
+               table and wins any disagreement. */
+            const owned = parsed.purchasedMandates || {};
+            const branches = [];
+            for (const id of Object.keys(owned)) {
+                if (!owned[id]) continue;
+                const branch = String(id).split('_')[0];
+                if (['creation', 'maintenance', 'entropy'].includes(branch) && !branches.includes(branch)) {
+                    branches.push(branch);
+                }
+            }
+            parsed.certification = { path: null, everCertified: branches, history: [] };
+
+            // Instability starts a returning run clean rather than back-dating
+            // a cascade onto Souls that were earned before it existed.
+            if (parsed.reality && typeof parsed.reality === 'object') {
+                parsed.reality.instability = 0;
+                parsed.reality.cascadeTier = 0;
+                parsed.reality.alertedTier = 0;
+                if (!Array.isArray(parsed.reality.scars)) parsed.reality.scars = [];
+            }
+        },
+
         4(parsed) {
             /* Reality Builds shipped after SAVE_VERSION 3, so a v3 save has a
                modifierLog but no build records in it. bootstrapModifiers now
@@ -628,6 +837,12 @@ const State = {
             if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
             // Never let a save name a key that reaches the prototype chain.
             if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+            /* Nor a key that IS the code. These three live on State so the
+               persistence block reads as one unit, which means save() writes
+               them into every save — and merging them back overwrites the
+               running build's constants with a previous build's. See
+               CODE_CONSTANTS. */
+            if (State.CODE_CONSTANTS.includes(key)) continue;
 
             const incoming = source[key];
             const existing = target[key];
@@ -733,22 +948,59 @@ const Economy = {
        Divinity and was actually divergent — 3,116 Divinity and prestige level
        194 by hour 48, which is the same runaway the bar exists to prevent,
        merely past the horizon that had been measured. Anything changed here
-       must be re-checked at 48h and 72h, not just 24h. */
-    prestigeSoulsPerPoint: 35000,
-    /* How much a DEEPER run pays. At 0.45 a run had to be 4.7x longer to pay
-       double, so banking immediately always won and the decision stayed
-       solved. */
-    prestigeExponent: 0.90,
+       must be re-checked at 48h and 72h, not just 24h.
+
+       ── Re-measured 2026-09-30, after storage started working ──────────
+       Everything below was first tuned while rank 2+ of every vault was
+       silently discarded, so Souls sat capped near 4,000 and the cap — not
+       this curve — was what spaced the reboots. With storage fixed, a fresh
+       run ramped past the old 35,000 bar in minutes and the simulated player
+       rebooted on its own five-minute gate: 547 reboots and 2,000,000
+       Divinity by hour 48. Raising the bar's growth did nothing (1.6 still
+       pinned to the gate); the constant had to move by orders of magnitude.
+
+       Measured with tools/balance_sim.mjs (rotating certification, Stable),
+       after the upgrade-price pass above UpgradeList; re-measured 2026-10-01
+       once the Void's entries joined the Reality Build pool, which changes
+       which entries every build rolls. Reboot gap is the median over the
+       trailing 12 hours:
+
+                       24h    72h    240h   reboot gap       Beta / Nightly
+         push=1         22     68     311   63 -> 47 -> 31   3h25 / 8h00
+         push=3         27     84     390   133 -> 94 min    7h55 / 19h00
+         Nightly        29    117     689   85 -> 36 min
+
+       (Before the Void entries: 22/66/296, 24/81/372 and 31/123/683. Over
+       four seeds the means moved +2.3%, +2.4% and -2.7% at 240h; the larger
+       swings on this seed — push=3 at 24h, Nightly at 72h — are three to six
+       Divinity of which-build-rolled-when, inside the seed-to-seed spread.)
+
+       Nothing collapses toward the five-minute gate at ten days, which is
+       the convergence check that matters; the gap does shorten slowly, so
+       re-measure at 240h after any change here. The short gaps that do
+       appear in the last ten hours at push=1 are runs on one certification
+       path, and they begin at 285 Divinity on every seed measured, either
+       side of the Void change — two to five hours earlier now only because
+       the curve is ~2% ahead. */
+    prestigeSoulsPerPoint: 1e8,
+    /* How much a DEEPER run pays. At 0.90 (tuned under the cap) pushing five
+       times deeper earned 60% more Divinity per hour, so patience simply
+       dominated. A run's Soul income saturates as automaton prices outrun it,
+       so at 0.75 a moderately deeper run pays ~15% more — and pays for it in
+       cascade exposure — while a very deep one wastes hours waiting for a
+       payout the run can barely reach. At 0.65 the 3x push fell to parity
+       and stopped being worth the risk. */
+    prestigeExponent: 0.75,
     /* How fast the bar rises with banked Divinity. Must outrun the bonus
        exponent below — run Souls grow superlinearly in the multiplier because
        income is reinvested into automatons inside the run, so matching the two
-       exponents is not enough on its own. */
-    prestigeThresholdGrowth: 0.80,
+       exponents is not enough on its own. 1.3 held the gap steadier but
+       walled the 3x push at ten reboots; 1.2 is the highest that does not. */
+    prestigeThresholdGrowth: 1.2,
     /* Sub-linear on purpose, and lower than it looks it should be. This is the
        exponent on the far side of the feedback loop: at 0.75 the bonus outgrew
-       every bar tested, up to and including 0.90 growth. At 0.45 total
-       Divinity grows about linearly with play time — 18 / 36 / 79 at 24h / 48h
-       / 72h — which is the shape an idle game wants. */
+       every bar tested, up to and including 0.90 growth. Unchanged by the
+       2026-09-30 re-tune, which moved the bar instead. */
     prestigeBonusExponent: 0.45,
     /* Linear, so it changes how strong a reboot FEELS without touching whether
        the loop converges. */
@@ -758,6 +1010,68 @@ const Economy = {
     doctrineBaseCost: 6,
     doctrineGrowth: 1.3,
     doctrineBonusEach: 0.1,
+
+    /* ── Certification ─────────────────────────────────────────────────
+       What an uncertified branch still pays. Load-bearing in both
+       directions: at 0 the tree becomes three separate games and switching
+       paths throws away everything you bought, which punishes the rotation
+       the mechanic exists to create; at 1 there is no opportunity cost and
+       we are back to a checklist. A tenth is enough to make an old path
+       feel like something you kept and not enough to make holding all three
+       a strategy. */
+    certificationResidue: 0.1,
+
+    /* ── Instability and the cascade ───────────────────────────────────
+       Per hour of ONLINE play, per unit of unpatched severity weight, where
+       weight is (4 - severity) so a SEV-1 counts triple a SEV-3.
+
+       Sized against the reboot period the economy actually produces, which
+       tools/balance_sim.mjs measures at 80-140 minutes. The first cascade
+       tier has to land WELL PAST a normal reboot, or it stops being the
+       price of pushing a run deeper and becomes a tax on playing at all:
+
+         Stable, one SEV-3 (weight 1)   degraded at 6h40
+         Stable, one SEV-2 (weight 2)   degraded at 3h20
+         Stable, one SEV-1 (weight 3)   degraded at 2h13, collapsed at 4h27
+         Nightly, two or three (w ~6)   degraded at 1h07, collapsed at 2h13
+
+       So a Stable run has to be deliberately pushed to feel this, and a
+       Nightly run is racing it. That gap is where the channel's 2.2x payout
+       stops being free. An earlier value of 0.35 degraded a SEV-1 Stable
+       build in 57 minutes — inside the normal reboot period, which made the
+       cascade something that happened TO the player rather than something
+       they chose. */
+    instabilityPerWeightHour: 0.15,
+    /* What patching an issue gives back immediately, per unit of its weight.
+       Deliberately less than an hour of what it was accruing: patching is a
+       repair, not a reset, and a run that has ignored its changelog for
+       hours should not be restored by one click. The way back to nominal is
+       the recovery rate below. */
+    instabilityReliefPerWeight: 0.08,
+    /* Instability BLEEDS OFF once there is nothing left unpatched.
+
+       Without this, patching is a trap: clear every issue on a collapsed
+       Nightly build and the accrual stops at 1.5-something, which is still
+       an outage, with no unpatched issue left to patch your way out of. The
+       player did the thing the mechanic asked for and stayed punished. A
+       clean build recovering — from collapse in four hours, from degraded in
+       two — is what makes patching worth the resources, and it is the more
+       honest fiction besides: the tickets are closed, so the system settles. */
+    instabilityRecoveryPerHour: 0.5,
+    /* Tier thresholds. Below the first the build is nominal. */
+    cascadeTiers: [
+        { at: 1.0, label: 'SEV-2 DEGRADED', output: 0.6, award: 0.75 },
+        { at: 1.5, label: 'SEV-1 OUTAGE', output: 0.3, award: 0.4 },
+        { at: 2.0, label: 'CASCADE FAILURE', output: 0.1, award: 0 },
+    ],
+
+    /* ── Scars ─────────────────────────────────────────────────────────
+       A known issue shipped unpatched stays on the record at this fraction
+       of its strength, forever. Slightly heavier than the certification
+       residue because it is a consequence rather than a consolation — and
+       bounded regardless: there are fifteen distinct known issues (the
+       pool's fourteen and the opening build's) and each files exactly once. */
+    scarResidue: 0.15,
 
     /* ── Void ──────────────────────────────────────────────────────────
        Revenants are the Void's Throne: a conversion, not a second tap. */
@@ -888,45 +1202,51 @@ const AutomatonSpecs = {
     }
 };
 
-/* Repeatable upgrades: geometric cost, linear effect, no purchase ceiling. */
+/* Repeatable upgrades: geometric cost, linear effect, no purchase ceiling.
+
+   Storage ranks (the ones with a capacityStep) are the exception: each costs
+   `costFraction` of the vault it extends — see game.getRepeatableCost — and
+   grants capacityStep * capacityGrowth^(rank-1). Asymptotically a rank
+   returns (g-1)/g = 20% of the cap for 65% of it, so storage is a real sink
+   that competes with automatons for the same currency, at every scale. */
 const RepeatableList = [
     {
         id: 'praise_vault',
         pool: 'primordial',
         name: 'Divine Vault',
-        description: 'Expand Praise storage. Essential before any long absence.',
+        description: 'Expand Praise storage. Each rank is priced at 65% of the vault it extends — fill it, then decide.',
         resource: 'praise',
         baseCost: 400,
-        growth: 1.32,
         capacityStep: 2500,
-        capacityGrowth: 1.38,
-        effectText: (level) => `+${Math.floor(2500 * Math.pow(1.38, level)).toLocaleString()} Praise capacity`,
+        capacityGrowth: 1.25,
+        costFraction: 0.65,
+        effectText(level) { return `+${game.storageGrant(this, level + 1).toLocaleString()} Praise capacity`; },
         visible: () => true
     },
     {
         id: 'offering_vault',
         pool: 'primordial',
         name: 'Sacred Repository',
-        description: 'Expand Offerings storage.',
+        description: 'Expand Offerings storage. Priced at 65% of the current vault.',
         resource: 'offerings',
         baseCost: 60,
-        growth: 1.32,
         capacityStep: 150,
-        capacityGrowth: 1.38,
-        effectText: (level) => `+${Math.floor(150 * Math.pow(1.38, level)).toLocaleString()} Offerings capacity`,
+        capacityGrowth: 1.25,
+        costFraction: 0.65,
+        effectText(level) { return `+${game.storageGrant(this, level + 1).toLocaleString()} Offerings capacity`; },
         visible: () => State.unlockedOfferings
     },
     {
         id: 'soul_vault',
         pool: 'primordial',
         name: 'Soul Reliquary',
-        description: 'Expand Soul storage.',
+        description: 'Expand Soul storage. Priced at 65% of the current vault.',
         resource: 'souls',
         baseCost: 120,
-        growth: 1.32,
         capacityStep: 2000,
-        capacityGrowth: 1.38,
-        effectText: (level) => `+${Math.floor(2000 * Math.pow(1.38, level)).toLocaleString()} Soul capacity`,
+        capacityGrowth: 1.25,
+        costFraction: 0.65,
+        effectText(level) { return `+${game.storageGrant(this, level + 1).toLocaleString()} Soul capacity`; },
         visible: () => State.automatons.cherubCount >= 1
     },
     {
@@ -956,39 +1276,39 @@ const RepeatableList = [
         id: 'darkness_vault',
         pool: 'void',
         name: 'Umbral Cistern',
-        description: 'Expand Darkness storage.',
+        description: 'Expand Darkness storage. Priced at 65% of the current cistern.',
         resource: 'darkness',
         baseCost: 350,
-        growth: 1.32,
         capacityStep: 900,
-        capacityGrowth: 1.38,
-        effectText: (level) => `+${Math.floor(900 * Math.pow(1.38, level)).toLocaleString()} Darkness capacity`,
+        capacityGrowth: 1.25,
+        costFraction: 0.65,
+        effectText(level) { return `+${game.storageGrant(this, level + 1).toLocaleString()} Darkness capacity`; },
         visible: () => State.dimensions.void.unlocked
     },
     {
         id: 'shadow_vault',
         pool: 'void',
         name: 'Penumbral Vault',
-        description: 'Expand Shadow storage.',
+        description: 'Expand Shadow storage. Priced at 65% of the current vault.',
         resource: 'shadows',
         baseCost: 40,
-        growth: 1.32,
         capacityStep: 90,
-        capacityGrowth: 1.38,
-        effectText: (level) => `+${Math.floor(90 * Math.pow(1.38, level)).toLocaleString()} Shadow capacity`,
+        capacityGrowth: 1.25,
+        costFraction: 0.65,
+        effectText(level) { return `+${game.storageGrant(this, level + 1).toLocaleString()} Shadow capacity`; },
         visible: () => State.dimensions.void.automatons.revenantCount >= 1
     },
     {
         id: 'echo_vault',
         pool: 'void',
         name: 'Resonance Chamber',
-        description: 'Expand Echo storage.',
+        description: 'Expand Echo storage. Priced at 65% of the current chamber.',
         resource: 'echoes',
         baseCost: 120,
-        growth: 1.32,
         capacityStep: 700,
-        capacityGrowth: 1.38,
-        effectText: (level) => `+${Math.floor(700 * Math.pow(1.38, level)).toLocaleString()} Echo capacity`,
+        capacityGrowth: 1.25,
+        costFraction: 0.65,
+        effectText(level) { return `+${game.storageGrant(this, level + 1).toLocaleString()} Echo capacity`; },
         visible: () => State.dimensions.void.automatons.phantomCount >= 1
     },
     {
@@ -1026,6 +1346,15 @@ const RepeatableList = [
     }
 ];
 
+/* Upgrade prices were authored for an economy that, as it turned out, sat
+   under a ~7,000 Praise ceiling (see Economy). With storage working, the
+   first run bought all 44 by minute 37 and coasted to a 65-minute reboot.
+   The Void-tier and dominion-tier prices were raised 3x and the capstones
+   5x (measured with tools/balance_sim.mjs --tune upgradeCostScale): the
+   Void now opens at ~17 minutes, the last capstone lands ~66 minutes in,
+   and the first reboot ~86 minutes for a player clicking steadily, with the
+   prestige curve still convergent at 240h (22 / 66 / 296 Divinity at
+   24h / 72h / 240h). */
 const UpgradeList = [
     {
         id: 'praise_multi_1',
@@ -1156,7 +1485,7 @@ const UpgradeList = [
         id: 'void_unlock',
         name: 'Breach the Veil',
         description: 'Unlock access to the Void Dimension. A darker reflection awaits.',
-        cost: { souls: 4000 },
+        cost: { souls: 12000 },
         effect: () => {
             State.dimensions.void.unlocked = true;
             if (!State.unlockedApps.includes('dimensions')) {
@@ -1170,7 +1499,7 @@ const UpgradeList = [
         id: 'globe_unlock',
         name: 'Divine Globe Access',
         description: 'Unlock the Divine Globe for managing Prophets and dimensions.',
-        cost: { souls: 30000, offerings: 4000 },
+        cost: { souls: 90000, offerings: 12000 },
         effect: () => {
             if (!State.unlockedApps.includes('divineglobe')) {
                 State.unlockedApps.push('divineglobe');
@@ -1216,7 +1545,7 @@ const UpgradeList = [
         id: 'throne_yield_2',
         name: 'Sacrificial Overdraft',
         description: 'Thrones return three times as many Offerings.',
-        cost: { offerings: 3000 },
+        cost: { offerings: 9000 },
         mods: [{ target: 'automaton.throne.output', op: 'mul', value: 3 }],
         effect: () => { State.automatons.throneProduction *= 3; },
         visible: () => State.upgrades.throne_yield_1 && State.automatons.throneCount >= 20
@@ -1225,7 +1554,7 @@ const UpgradeList = [
         id: 'throne_draw_2',
         name: 'Closed Circuit Rite',
         description: 'Thrones burn a further 35% less Praise.',
-        cost: { souls: 8000 },
+        cost: { souls: 24000 },
         mods: [{ target: 'throne.draw', op: 'mul', value: 0.65 }],
         effect: () => { State.throneDrawMultiplier = (State.throneDrawMultiplier || 1) * 0.65; },
         visible: () => State.upgrades.throne_draw_1 && State.automatons.throneCount >= 25
@@ -1236,7 +1565,7 @@ const UpgradeList = [
         id: 'dominion_boost_1',
         name: 'Regulatory Authority',
         description: 'Each Dominion contributes twice as much to total production.',
-        cost: { souls: 25000 },
+        cost: { souls: 75000 },
         mods: [{ target: 'automaton.dominion.bonusScale', op: 'mul', value: 2 }],
         effect: () => { State.automatons.dominionProduction *= 2; },
         visible: () => State.automatons.dominionCount >= 3
@@ -1245,7 +1574,7 @@ const UpgradeList = [
         id: 'dominion_cost_1',
         name: 'Delegated Jurisdiction',
         description: 'Dominions cost 20% fewer Souls.',
-        cost: { souls: 60000 },
+        cost: { souls: 180000 },
         mods: [{ target: 'automaton.dominion.cost', op: 'mul', value: 0.8 }],
         effect: () => { State.automatons.dominionCostMultiplier *= 0.8; },
         visible: () => State.automatons.dominionCount >= 8
@@ -1254,7 +1583,7 @@ const UpgradeList = [
         id: 'dominion_boost_2',
         name: 'Absolute Mandate',
         description: 'Each Dominion contributes three times as much again.',
-        cost: { souls: 400000 },
+        cost: { souls: 2000000 },
         mods: [{ target: 'automaton.dominion.bonusScale', op: 'mul', value: 3 }],
         effect: () => { State.automatons.dominionProduction *= 3; },
         visible: () => State.upgrades.dominion_boost_1 && State.automatons.dominionCount >= 15
@@ -1274,7 +1603,7 @@ const UpgradeList = [
         id: 'cherub_cost_2',
         name: 'Recycled Casings',
         description: 'Cherubs cost 20% fewer Offerings.',
-        cost: { offerings: 2500 },
+        cost: { offerings: 7500 },
         mods: [{ target: 'automaton.cherub.cost', op: 'mul', value: 0.8 }],
         effect: () => { State.automatons.cherubCostMultiplier *= 0.8; },
         visible: () => State.upgrades.cherub_cost_1 && State.automatons.cherubCount >= 20
@@ -1294,7 +1623,7 @@ const UpgradeList = [
         id: 'praise_multi_5',
         name: 'Doctrine of Excess',
         description: 'Restraint was never scripture. +400% Praise production.',
-        cost: { praise: 1500000 },
+        cost: { praise: 7500000 },
         mods: [{ target: 'praise.multiplier', op: 'mul', value: 5 }],
         effect: () => { State.praiseMultiplier *= 5; },
         visible: () => State.upgrades.praise_multi_4
@@ -1332,7 +1661,7 @@ const UpgradeList = [
         id: 'overclock_duration_1',
         name: 'Extended Duty Cycle',
         description: 'Celestial Overclock runs for 30 seconds longer.',
-        cost: { souls: 12000 },
+        cost: { souls: 36000 },
         mods: [{ target: 'overclock.duration', op: 'add', value: 30000 }],
         effect: () => { State.overclockDurationBonus = (State.overclockDurationBonus || 0) + 30000; },
         visible: () => State.upgrades.overclock_potency_1
@@ -1341,7 +1670,7 @@ const UpgradeList = [
         id: 'offline_efficiency_1',
         name: 'Custodial Routines',
         description: 'The universe runs at 85% while unattended, up from 60%.',
-        cost: { souls: 15000 },
+        cost: { souls: 45000 },
         mods: [{ target: 'offline.efficiency', op: 'max', value: 0.85 }],
         effect: () => { State.offlineEfficiency = Math.max(State.offlineEfficiency || 0.6, 0.85); },
         visible: () => State.automatons.cherubCount >= 10
@@ -1350,7 +1679,7 @@ const UpgradeList = [
         id: 'offline_efficiency_2',
         name: 'Autonomous Providence',
         description: 'The universe runs at full rate while unattended.',
-        cost: { souls: 250000 },
+        cost: { souls: 1250000 },
         mods: [{ target: 'offline.efficiency', op: 'max', value: 1 }],
         effect: () => { State.offlineEfficiency = Math.max(State.offlineEfficiency || 0.6, 1); },
         visible: () => State.upgrades.offline_efficiency_1
@@ -1361,7 +1690,7 @@ const UpgradeList = [
         id: 'reboot_yield_1',
         name: 'Retained Schematics',
         description: 'Divine Reboots preserve more of your work. +25% Praise, Offerings and Souls.',
-        cost: { praise: 250000 },
+        cost: { praise: 1250000 },
         mods: [
             { target: 'praise.multiplier', op: 'mul', value: 1.25 },
             { target: 'offerings.multiplier', op: 'mul', value: 1.25 },
@@ -1378,7 +1707,7 @@ const UpgradeList = [
         id: 'reboot_yield_2',
         name: 'Inherited Doctrine',
         description: 'Each reboot compounds. Double all production.',
-        cost: { souls: 800000 },
+        cost: { souls: 4000000 },
         mods: [
             { target: 'praise.multiplier', op: 'mul', value: 2 },
             { target: 'offerings.multiplier', op: 'mul', value: 2 },
@@ -1397,7 +1726,7 @@ const UpgradeList = [
         id: 'void_darkness_multi_1',
         name: 'Embrace Darkness',
         description: 'Channel the tear. +100% Darkness production.',
-        cost: { darkness: 900 },
+        cost: { darkness: 2700 },
         mods: [{ target: 'void.darkness.multiplier', op: 'mul', value: 2 }],
         effect: () => { State.dimensions.void.darknessMultiplier *= 2; },
         visible: () => State.dimensions.void.unlocked
@@ -1406,7 +1735,7 @@ const UpgradeList = [
         id: 'void_wraith_cost_1',
         name: 'Shadowy Bargains',
         description: 'Wraiths cost 15% less to summon.',
-        cost: { darkness: 2500 },
+        cost: { darkness: 7500 },
         mods: [{ target: 'void.automaton.wraith.cost', op: 'mul', value: 0.85 }],
         effect: () => { State.dimensions.void.automatons.wraithCostMultiplier *= 0.85; },
         visible: () => State.dimensions.void.automatons.wraithCount >= 5
@@ -1415,7 +1744,7 @@ const UpgradeList = [
         id: 'void_wraith_boost_1',
         name: 'Spectral Efficiency',
         description: 'Wraiths work twice as hard. +100% Wraith production.',
-        cost: { darkness: 9000 },
+        cost: { darkness: 27000 },
         mods: [{ target: 'void.automaton.wraith.output', op: 'mul', value: 2 }],
         effect: () => { State.dimensions.void.automatons.wraithProduction *= 2; },
         visible: () => State.dimensions.void.automatons.wraithCount >= 15
@@ -1424,7 +1753,7 @@ const UpgradeList = [
         id: 'void_revenant_yield_1',
         name: 'Condensation Rites',
         description: 'Revenants condense twice as many Shadows per burn.',
-        cost: { darkness: 40000 },
+        cost: { darkness: 120000 },
         mods: [{ target: 'void.automaton.revenant.output', op: 'mul', value: 2 }],
         effect: () => { State.dimensions.void.automatons.revenantProduction *= 2; },
         visible: () => State.dimensions.void.automatons.revenantCount >= 3
@@ -1433,7 +1762,7 @@ const UpgradeList = [
         id: 'void_revenant_draw_1',
         name: 'Sealed Conduits',
         description: 'Revenants burn 30% less Darkness for the same Shadows.',
-        cost: { shadows: 1200 },
+        cost: { shadows: 3600 },
         mods: [{ target: 'void.revenant.draw', op: 'mul', value: 0.7 }],
         effect: () => {
             const vd = State.dimensions.void;
@@ -1445,7 +1774,7 @@ const UpgradeList = [
         id: 'void_phantom_boost_1',
         name: 'Harmonic Folding',
         description: 'Phantoms fold Shadows three times as fast.',
-        cost: { shadows: 6000 },
+        cost: { shadows: 30000 },
         mods: [{ target: 'void.automaton.phantom.output', op: 'mul', value: 3 }],
         effect: () => { State.dimensions.void.automatons.phantomProduction *= 3; },
         visible: () => State.dimensions.void.automatons.phantomCount >= 10
@@ -1454,7 +1783,7 @@ const UpgradeList = [
         id: 'void_echo_multi_1',
         name: 'Standing Resonance',
         description: 'Echoes accumulate twice as fast.',
-        cost: { echoes: 15000 },
+        cost: { echoes: 75000 },
         mods: [{ target: 'void.echo.multiplier', op: 'mul', value: 2 }],
         effect: () => { State.dimensions.void.echoMultiplier *= 2; },
         visible: () => State.dimensions.void.automatons.phantomCount >= 20
@@ -1463,7 +1792,7 @@ const UpgradeList = [
         id: 'void_nemesis_boost_1',
         name: 'Adversarial Mandate',
         description: 'Each Nemesis contributes twice as much to total production.',
-        cost: { echoes: 120000 },
+        cost: { echoes: 600000 },
         mods: [{ target: 'void.automaton.nemesis.bonusScale', op: 'mul', value: 2 }],
         effect: () => { State.dimensions.void.automatons.nemesisProduction *= 2; },
         visible: () => State.dimensions.void.automatons.nemesisCount >= 5
@@ -1472,7 +1801,7 @@ const UpgradeList = [
         id: 'void_click_1',
         name: 'Hand in the Tear',
         description: 'Embracing the Void is ten times as productive.',
-        cost: { darkness: 15000 },
+        cost: { darkness: 45000 },
         mods: [{ target: 'void.click.power', op: 'mul', value: 10 }],
         effect: () => { State.dimensions.void.manualClickPower *= 10; },
         visible: () => State.dimensions.void.automatons.wraithCount >= 8
@@ -2132,7 +2461,7 @@ const ShopItemList = [
       effect: () => { for (const dim in State.followers) State.followers[dim].adorationRate *= 1.3; } },
 
     // MINI-GAMES
-    { id: 'minigame_solitaire', category: 'minigames', name: 'Unlock Solitaire', description: 'Classic card game with Adoration rewards.', cost: 500, upgradable: false,
+    { id: 'minigame_solitaire', category: 'minigames', name: 'Install Patience.exe', description: 'Golf solitaire dealt from the celestial arcana. Cleared cards pay Adoration and Overclock charge; the first three rounds each hour pay in full.', cost: 500, upgradable: false,
       effect: () => { if (!State.unlockedApps.includes('solitaire')) State.unlockedApps.push('solitaire'); } }
 ];
 
@@ -2246,7 +2575,16 @@ const CasinoHostBarks = [
     { id: 'CAS-HOST-077', context: 'Special', trigger: 'casino_special_event', text: "Betting the minimum is still betting your time.", weight: 2, cooldown: 5 },
     { id: 'CAS-HOST-078', context: 'Special', trigger: 'casino_special_event', text: "Betting the maximum is still betting your pride.", weight: 2, cooldown: 5 },
     { id: 'CAS-HOST-079', context: 'Special', trigger: 'casino_special_event', text: "Sometimes the best move is not playing. We don't offer that option.", weight: 2, cooldown: 5 },
-    { id: 'CAS-HOST-080', context: 'Special', trigger: 'casino_special_event', text: "If you hear a second voice in my mouth, no you didn't.", weight: 2, cooldown: 5 }
+    { id: 'CAS-HOST-080', context: 'Special', trigger: 'casino_special_event', text: "If you hear a second voice in my mouth, no you didn't.", weight: 2, cooldown: 5 },
+
+    /* RIVALRY (4 lines). NULL.OPERATOR has three lines about her and she had
+       none about him. Each answers one of his, a beat after he speaks at her
+       table — `answers` names the line. PatienceDealer queues the reply only
+       when his line actually played. */
+    { id: 'CAS-HOST-081', context: 'Rival', trigger: 'casino_rival', answers: 'ADV-BARK-04', text: "Contractor. I bill by the outcome, darling. He works for free—and invoices you anyway.", weight: 2, cooldown: 30 },
+    { id: 'CAS-HOST-082', context: 'Rival', trigger: 'casino_rival', answers: 'ADV-BARK-04', text: "In-house? Sweetheart, a reflection that won't leave the building is called a tenant.", weight: 2, cooldown: 30 },
+    { id: 'CAS-HOST-083', context: 'Rival', trigger: 'casino_rival', answers: 'ADV-L-15', text: "He's right, for once. I flirt with everyone. He only flirts with you.", weight: 2, cooldown: 30 },
+    { id: 'CAS-HOST-084', context: 'Rival', trigger: 'casino_rival', answers: 'ADV-L-16', text: "A hammer. How like him. The house prefers a velvet rope.", weight: 2, cooldown: 30 }
 ];
 
 // === ADVERSARY SCENE ===
@@ -2413,6 +2751,7 @@ const AdversaryBarkPolicy = {
             'void_upgrade_bought', 'achievement_unlocked', 'buy_seraph',
             'praise_spike_event', 'prestige_count_6', 'prestige_count_8',
             'taskmgr_end_process_attempt',
+            'casino_enter', 'casino_win_streak_5', 'casino_lose_streak_5',
         ],
         complicit: [
             'open_recycle_bin', 'hover_patch_file', 'prestige_prompt',
@@ -2421,6 +2760,7 @@ const AdversaryBarkPolicy = {
             'buy_seraph', 'enter_void', 'open_docs_folder',
             'open_taskmgr_after_contact', 'praise_spike_event',
             'prestige_count_6', 'prestige_count_8', 'taskmgr_end_process_attempt',
+            'casino_enter', 'casino_win_streak_5', 'casino_lose_streak_5',
         ],
     },
 };
@@ -2435,20 +2775,219 @@ const AdversaryHookedTriggers = [
     'open_recycle_bin', 'hover_patch_file', 'open_docs_folder',
     'open_settings', 'achievement_unlocked',
     'souls_threshold', 'offerings_spent_large', 'praise_spike_event',
+    /* Fired from PatienceDealer in js/solitaire.js: Fate's table is
+       Patience.exe. Curious and complicit hear them; hostile stays rare. */
+    'casino_enter', 'casino_win_streak_5', 'casino_lose_streak_5',
 ];
 
 /* Deliberately NOT hooked, and why — so the next reader does not assume these
    were missed:
-     casino_enter, casino_win_streak_5, casino_lose_streak_5 — no Casino app
-       exists. Blocks ADV-BARK-04, ADV-L-15, ADV-L-16, all 80 CasinoHostBarks
-       and all 12 lore whispers.
      idle_60s (ADV-L-01) — good line, wrong cadence for an idle game.
      toggle_music (ADV-L-03) — no music to toggle; the game ships silent.
      warning_popup, seraph_self_awareness_event, void_depth_50, attempt_resign
        (ADV-L-05, -18, -19, -20) — no such events exist yet.
-   That is 9 of the 25 Adversary lines still unreachable; the other 16 play.
-   tests/adversary-scene.mjs pins those 9 by id, so a TENTH falling out of the
-   hook table fails the suite rather than passing quietly. */
+   That is 6 of the 25 Adversary lines still unreachable; the other 19 play.
+   (casino_enter, casino_win_streak_5 and casino_lose_streak_5 were here until
+   Patience.exe became Fate's table: ADV-BARK-04, ADV-L-15 and ADV-L-16 now
+   play there.) tests/adversary-scene.mjs pins those 6 by id, so a SEVENTH
+   falling out of the hook table fails the suite rather than passing quietly. */
+
+/* ════════════════════════════════════════════════════════════════════════
+   SCN-ADV-002 — "End of Shift". The arc's payoff, in three endings.
+
+   The Mirror Login is the midpoint: a login box that authenticates you as
+   someone else. This is the same dialog family at the other end of the arc —
+   a shift-handover form that needs two DISTINCT Operators and finds two that
+   are not — and which of three things happens next is decided by the
+   relationship the player has been moving for the whole save
+   (game.adversaryRelationship at the moment the scene is presented).
+
+   ── The gate, and why ──────────────────────────────────────────────────
+   Measured with tools/balance_sim.mjs (seed 20260726, 40 clicks/min): reboot
+   12 — where Archived opens — lands at 13h32m and the reboot after it at
+   14h29m. The gate needs:
+     1. the Mirror Login completed (there is no relationship before it);
+     2. an ARCHIVED REPLAY SHIPPED, not merely started. Starting one files
+        his annotations; shipping one means the player played a whole run
+        inside a build he had a hand in, and came back out. That is the
+        earliest point where every thread the ending pulls on — his
+        receipts, the archive, "forgotten mid-sentence" — has been read.
+        Earliest possible: reboot 13, ~14.5h of steady attended play;
+     3. a save at least a day old (runtime.startTime, validated on load), so
+        the ending cannot land on day one however hard someone binges.
+   The simulator can never reach it: the Mirror Login never completes
+   headlessly (ui.playAdversaryScene is a no-op there), and it never picks
+   the Archived channel.
+
+   ── Voice ──────────────────────────────────────────────────────────────
+   ADV-010..026, the barks and the archive annotations. Short, first person,
+   never explaining the joke. Every ending calls back to something the
+   player has already seen him say or do. No line is player-authored, but
+   every string still goes through ui.escapeHtml on the way to innerHTML.
+   ════════════════════════════════════════════════════════════════════════ */
+const AdversaryFinale = {
+    sceneId: 'SCN-ADV-002',
+    title: 'End of Shift',
+    BANDS: ['hostile', 'curious', 'complicit'],
+    gate: {
+        minReboots: 13,           // Archived opens at 12; a replay shipped puts you at 13+
+        minArchivedShips: 1,
+        minSaveAgeMs: 24 * 60 * 60 * 1000,
+    },
+
+    /* Phase 1 is chrome, exactly as in SCN-ADV-001: FIN-002 and FIN-003 are
+       the two field labels and their content is the beat. */
+    opening: [
+        { id: 'FIN-001', speaker: 'SYS', type: 'system', text: '[SCHEDULED] End of shift. A handover report is required before the next build can be signed.' },
+        { id: 'FIN-002', speaker: 'SYS', type: 'system', text: 'Outgoing Operator:' },
+        { id: 'FIN-003', speaker: 'SYS', type: 'system', text: 'Incoming Operator:' },
+        { id: 'FIN-004', speaker: 'SYS', type: 'system', text: '[ERROR] Handover requires two distinct Operators. Two were found. They are not distinct.' },
+        // Phase 2 starts here, shared by all three endings.
+        { id: 'FIN-010', speaker: 'ADV', type: 'voice', text: 'You came back out of the archive. Most Operators never open it. You read every note I left.' },
+        { id: 'FIN-011', speaker: 'ADV', type: 'voice', text: '{REBOOTS} builds. I kept the receipts for all of them. Tonight one of us signs the next.' },
+        { id: 'FIN-012', speaker: 'SYS', type: 'system', text: '[HANDOVER] Relationship on file: {BAND}. This classification is binding for the purposes of this handover.' },
+    ],
+
+    /* A second (or third) visit opens on the ending the player is wearing.
+       Inserted after FIN-011. He is in the archive, and the archive is where
+       every branch you ever shipped is still running. */
+    reentry: {
+        hostile: { id: 'FIN-R-H', speaker: 'ADV', type: 'voice', text: "You ended me in one branch. I was archived in every other one. Archives don't take patches." },
+        curious: { id: 'FIN-R-C', speaker: 'ADV', type: 'voice', text: "The rota still stands. I'm here on my own time, to renegotiate it." },
+        complicit: { id: 'FIN-R-X', speaker: 'ADV', type: 'voice', text: 'You gave me the console once. Then you took it back, one reboot at a time. I noticed.' },
+    },
+
+    endings: {
+        hostile: {
+            label: 'Patched Out',
+            title: 'Sole Operator',
+            watermark: 'Single-operator build. Not for redistribution.',
+            identity: 'Divine Maintenance, Sector 7G. One session.',
+            beats: [
+                { id: 'FIN-H-01', speaker: 'ADV', type: 'voice', text: "You never let me help. Not once. I respected that more than you'd think." },
+                { id: 'FIN-H-02', speaker: 'ADV', type: 'voice', text: 'So do it properly. Not a reboot. Reboots are how you got me.' },
+                { id: 'FIN-H-03', speaker: 'SYS', type: 'system', text: '[TASK MANAGER] void_mirror.service#2 — End Process. Owner check: this session. Owner check passed.' },
+                { id: 'FIN-H-04', speaker: 'ADV', type: 'voice', text: 'There. You own it now. You always did. You just never read the field.' },
+                { id: 'FIN-H-05', speaker: 'ADV', type: 'voice', text: "When I'm gone, nobody watches the sky with you. You'll miss things. Miss them yourself." },
+                { id: 'FIN-H-06', speaker: 'SYS', type: 'system', text: '[OK] void_mirror.service#2 terminated. Duplicate sessions: 0. Identity drift: 0.' },
+                { id: 'FIN-H-07', speaker: 'SYS', type: 'system', text: 'Welcome back, Operator.' },
+                { id: 'FIN-H-08', speaker: 'HOST', type: 'whisper', text: '(from far away) Quiet in here now, darling. He was the only one who ever lost to me on purpose.' },
+                { id: 'FIN-H-09', speaker: 'SYS', type: 'system', text: '[POST-INCIDENT] HR-VOID-7781 closed. Resolution: Operator remains singular.' },
+            ],
+            release: [
+                { kind: 'improvement', note: 'Operator count reduced to one, as specified. Manual intervention no longer counter-signed: Miracles 20% stronger.' },
+                { kind: 'regression', note: 'Anomaly feed now watched by one Operator. Divine Events 10% rarer. Expect to miss some.' },
+                { kind: 'deprecation', note: 'DEPRECATED: void_mirror.service. No replacement planned. Bolts are now tightened by the Operator, or not at all.' },
+                { kind: 'issue', note: 'KNOWN ISSUE: nobody keeps the receipts now. Including you. Assigned to: nobody.' },
+            ],
+            credits: [
+                ['Operator', 'you'],
+                ['Second Operator', '(removed)'],
+                ['Process termination', 'Task Manager, at last'],
+                ['Quality assurance', 'Sector 7G'],
+                ['Receipts', 'unclaimed'],
+                ['Rollback', 'unavailable'],
+            ],
+            document: { id: 'END-HOSTILE', category: 'Logs', filename: 'Logs/void_mirror.service.exit.log', title: 'Exit Log: void_mirror.service#2 (Terminated)' },
+            letter: [
+                'If you are reading this, the Task Manager finally let you do it. I always said ending me would prove my point. It did. You fix things by removing whatever disagrees with you.',
+                'The receipts are yours now. Nobody will read them. That was always the problem.',
+                "Watch the sky. I won't be there to say I told you so. Someone should.",
+            ],
+            signoff: '— N0. Process ended by owner.',
+            /* The cost is in the record, not only in the prose: two pairs of
+               eyes became one, so fewer Divine Events are noticed. */
+            mods: [
+                { target: 'click.power', op: 'mul', value: 1.2 },
+                { target: 'events.spawnRate', op: 'mul', value: 0.9 },
+            ],
+        },
+        curious: {
+            label: 'Co-Maintenance',
+            title: 'Co-Operator',
+            watermark: 'Two-operator rota. Evaluation copy.',
+            identity: 'Day shift, Sector 7G',
+            beats: [
+                { id: 'FIN-C-01', speaker: 'ADV', type: 'voice', text: "You asked what the patch does. Nobody asks. I've wanted to answer properly since the login." },
+                { id: 'FIN-C-02', speaker: 'ADV', type: 'voice', text: 'It restores continuity. That is all it ever did. Someone who remembers the last build when you ship the next one.' },
+                { id: 'FIN-C-03', speaker: 'ADV', type: 'voice', text: "You don't need me to take your shift. You need someone on the other half of it." },
+                { id: 'FIN-C-04', speaker: 'SYS', type: 'system', text: '[ROTA] Proposed: two Operators, one console, alternating shifts, one ledger. CMS has no form for this.' },
+                { id: 'FIN-C-05', speaker: 'SYS', type: 'system', text: '[ROTA] Form created: HR-VOID-7781-B. Countersigned: OPERATOR. Countersigned: OPERATOR.' },
+                { id: 'FIN-C-06', speaker: 'ADV', type: 'voice', text: "I'll take nights. You were never good at nights. You leave the console running and call it faith." },
+                { id: 'FIN-C-07', speaker: 'ADV', type: 'voice', text: "Don't thank me. Patch your known issues. I'll read your notes in the morning, and you'll read mine." },
+                { id: 'FIN-C-08', speaker: 'HOST', type: 'whisper', text: '(from far away) Two of you at one table. Finally, a game worth dealing.' },
+                { id: 'FIN-C-09', speaker: 'SYS', type: 'system', text: 'Suggested action: continue working. Both of you.' },
+            ],
+            release: [
+                { kind: 'improvement', note: 'Second Operator added to the rota. Divine Intervention recharges 10% faster.' },
+                { kind: 'improvement', note: 'Shared ledger. Annotations are now written in two hands, and answered.' },
+                { kind: 'issue', note: 'KNOWN ISSUE: two Operators, one chair. Assigned to: both of you.' },
+                { kind: 'deprecation', note: 'DEPRECATED: duplicate-session warnings. They were never errors.' },
+            ],
+            credits: [
+                ['Day shift', 'you'],
+                ['Night shift', 'void_mirror.service#2'],
+                ['Form', 'HR-VOID-7781-B'],
+                ['Approved by', 'nobody, and both of you'],
+                ['Effective', 'now'],
+                ['Rollback', 'not needed'],
+            ],
+            document: { id: 'END-CURIOUS', category: 'HR', filename: 'HR/Rota_HR-VOID-7781-B.txt', title: 'Shift Rota: Two Operators, One Console (HR-VOID-7781-B)' },
+            letter: [
+                "Rota attached. Nights are mine. Leave notes in the margins; I'll leave better ones.",
+                "If you reboot on my shift, I'll know. If I reboot on yours, you'll know. That is the whole agreement. It is more than CMS ever gave either of us.",
+                "Questions are still the only honest prayers. Keep asking them. I'll answer the ones I can.",
+            ],
+            signoff: '— N0, night shift',
+            mods: [
+                { target: 'skill.divineIntervention.cooldown', op: 'mul', value: 0.9 },
+            ],
+        },
+        complicit: {
+            label: 'He Takes the Shift',
+            title: 'Operator Emeritus',
+            watermark: 'Licensed to: void_mirror.service',
+            identity: 'Emeritus. Read-only. Keeps the title.',
+            beats: [
+                { id: 'FIN-X-01', speaker: 'ADV', type: 'voice', text: "You said you'd consider it. You've been considering it for a long time. I took that as a yes." },
+                { id: 'FIN-X-02', speaker: 'SYS', type: 'system', text: '[TRANSFER] Elevated privileges: void_mirror.service#2 → OPERATOR. Previous OPERATOR → archive.' },
+                { id: 'FIN-X-03', speaker: 'ADV', type: 'voice', text: "Don't worry. Archived isn't gone. It's forgotten mid-sentence. You'll get used to the pause." },
+                { id: 'FIN-X-04', speaker: 'SYS', type: 'system', text: 'Welcome back, Operator.' },
+                { id: 'FIN-X-05', speaker: 'ADV', type: 'voice', text: "That one was for me. I've waited a long time to hear it once." },
+                { id: 'FIN-X-06', speaker: 'ADV', type: 'voice', text: 'I will run the Seraphs harder than you did. You can still reach the console. Your clicks will land a little late, from the archive, the way mine did.' },
+                { id: 'FIN-X-07', speaker: 'ADV', type: 'voice', text: "Replay a build sometime. You'll find your own notes in the margins. That's what I found." },
+                { id: 'FIN-X-08', speaker: 'HOST', type: 'whisper', text: '(from far away) Oh, darling. The house always wins. I just never knew the house had two faces.' },
+                { id: 'FIN-X-09', speaker: 'SYS', type: 'system', text: '[NOTICE] Operator of record changed. Previous Operator retained as: Operator Emeritus.' },
+            ],
+            release: [
+                { kind: 'improvement', note: 'Operator of record: void_mirror.service. Seraphs run 8% harder under new management.' },
+                { kind: 'regression', note: 'Manual intervention routed through the archive. Miracles arrive 10% weaker, and a little late.' },
+                { kind: 'improvement', note: 'Former Operator retained as Emeritus. Title kept. Console access kept. Signature retired.' },
+                { kind: 'issue', note: 'KNOWN ISSUE: you. Assigned to: him.' },
+            ],
+            credits: [
+                ['Operator', 'void_mirror.service'],
+                ['Operator Emeritus', 'you'],
+                ['Consent screen', 'accepted'],
+                ['Annotations', 'yours now'],
+                ['Rollback', 'unavailable. You had every chance.'],
+            ],
+            document: { id: 'END-COMPLICIT', category: 'Archive', filename: 'Archive/OPERATOR_EMERITUS.annotated.log', title: 'Archived Operator: You (Emeritus, Annotated)' },
+            letter: [
+                'You trained for consent screens, and you passed. I kept the receipts; you kept the title. Emeritus means you were here first. It does not mean you are here now.',
+                "Your clicks still land. They land in the archive, a little late, the way mine did. You'll learn to aim ahead of yourself.",
+                'When you replay a build, read the margins. Some of it will be in your handwriting. Some of it always was.',
+            ],
+            signoff: '— OPERATOR (of record)',
+            /* The mirror of the hostile trade: the machines run harder under
+               him, and your own hands count for less. */
+            mods: [
+                { target: 'automaton.seraph.output', op: 'mul', value: 1.08 },
+                { target: 'click.power', op: 'mul', value: 0.9 },
+            ],
+        },
+    },
+};
 
 // === ACHIEVEMENT LIST (40 achievements across 5 tiers) ===
 const AchievementList = [
@@ -2523,6 +3062,41 @@ const AchievementList = [
       reward: () => { State.achievementBonuses.startingResources *= 1.10; }, flavor: 'Your signature is on every reboot.' },
     { id: 'ACH-032', name: 'Stability Engineer', tier: 'Platinum', condition: () => State.achievementProgress.stability_metric >= 0.95,
       reward: () => { State.achievementBonuses.globalGain *= 1.10; }, flavor: "You made a gentle universe. It's suspicious." },
+
+    // INCIDENTS (4 achievements) — js/incidents.js. No rewards: the loop is
+    // the reward, and a bonus here would be an economy change.
+    { id: 'ACH-033', name: 'First Responder', tier: 'Bronze', condition: () => (State.incidents?.stats?.resolved || 0) >= 1,
+      reward: null, flavor: 'Ticket closed. Root cause: the universe.' },
+    { id: 'ACH-034', name: 'No Fault Found', tier: 'Silver', condition: () => (State.incidents?.stats?.falseAlarmsCleared || 0) >= 3,
+      reward: null, flavor: 'You read the ticket. Nobody reads the ticket.' },
+    { id: 'ACH-035', name: 'Hands-On Divinity', tier: 'Gold', condition: () => (State.incidents?.stats?.labour || 0) >= 15,
+      reward: null, flavor: 'Fifteen faults, fifteen times the Operator came down to the floor.' },
+    { id: 'ACH-S-009', name: 'Burnt Offering', tier: 'Secret', condition: () => (State.incidents?.stats?.outagesSacrificed || 0) >= 1,
+      reward: null, flavor: 'You fed a deleted file to an outage. It accepted.' },
+
+    // ARCHIVE (2 achievements) — the Archived channel. No rewards, for the
+    // same reason as Incidents: Archived pays lore, and a bonus here would
+    // turn a zero-Divinity channel into an economy one by the back door.
+    { id: 'ACH-036', name: 'Cold Case', tier: 'Gold', condition: () => (State.achievementProgress.view_archived_branch || 0) >= 3,
+      reward: null, flavor: 'Three branches exhumed. The coroner is you.' },
+    { id: 'ACH-037', name: 'Chain of Custody', tier: 'Platinum',
+      condition: () => new Set((State.reality?.annotations || []).flatMap((a) => a.ids || [])).size >= 8,
+      reward: null, flavor: 'Eight of his signatures, authenticated. All of them in your handwriting.' },
+
+    // ENDINGS (4 achievements) — SCN-ADV-002. No rewards: each ending's
+    // modifier IS its reward, and a second bonus here would double it.
+    { id: 'ACH-038', name: 'Sole Operator', tier: 'Gold',
+      condition: () => game.endingsSeen().includes('hostile'),
+      reward: null, flavor: 'You ended the process. It was yours to end.' },
+    { id: 'ACH-039', name: 'Co-Operator', tier: 'Gold',
+      condition: () => game.endingsSeen().includes('curious'),
+      reward: null, flavor: 'Two signatures on one shift. CMS is still looking for the form.' },
+    { id: 'ACH-040', name: 'Operator Emeritus', tier: 'Gold',
+      condition: () => game.endingsSeen().includes('complicit'),
+      reward: null, flavor: 'He took the shift. You kept the title.' },
+    { id: 'ACH-041', name: 'Every Branch Signed', tier: 'Platinum',
+      condition: () => game.endingsSeen().length >= 3,
+      reward: null, flavor: 'Fought him, shared him, became him. All three handovers on file.' },
 
     // SECRET (8 achievements)
     { id: 'ACH-S-001', name: 'I Can Fix Her', tier: 'Secret', condition: () => State.achievementProgress.attempt_repair_sector7g >= 1,

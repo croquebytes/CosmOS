@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 
-const baseUrl = process.env.COSMOS_TEST_URL || 'http://127.0.0.1:5173';
+const baseUrl = process.env.COSMOS_TEST_URL || 'http://localhost:5173';
 const browser = await chromium.launch({
     headless: true,
     args: ['--use-gl=angle', '--use-angle=swiftshader']
@@ -73,16 +73,33 @@ try {
     await scenePage.goto(`${baseUrl}/?testMode=1`, { waitUntil: 'domcontentloaded' });
     await scenePage.getByRole('button', { name: 'Perform Miracle' }).waitFor();
 
-    const scene = await scenePage.evaluate(() => {
+    await scenePage.evaluate(() => {
+        /* Record the title the instant the scene renders. The scene opens a
+           probe-round-trip after the trigger (V4), and its own timers move
+           it past the login phase within seconds; reading the title later,
+           on a loaded machine, could catch the transcript instead. */
+        window.__advFirstTitle = null;
+        new MutationObserver(() => {
+            if (window.__advFirstTitle === null) {
+                const t = document.getElementById('adv-title');
+                if (t) window.__advFirstTitle = t.textContent;
+            }
+        }).observe(document.getElementById('system-modal-layer'), { childList: true, subtree: true, characterData: true });
         ui.dismissSystemModal();
         // Put the save where the trigger fires from, then let it fire.
         State.totalStats.soulsGained = 800000;
         State.dimensions.void.unlocked = true;
         State.achievementProgress.prestige_count = 3;
         game.checkAdversaryTrigger();
+    });
+    /* Not synchronous any more: the V4 Mirror Login reel is probed first and
+       the scene opens when the probe answers (at once, with no reel). */
+    const openedInTime = await scenePage.waitForFunction(() => ui.isAdversarySceneOpen(), null, { timeout: 4000, polling: 50 })
+        .then(() => true, () => false);
 
-        const opened = ui.isAdversarySceneOpen();
-        const loginTitle = (document.getElementById('adv-title') || {}).textContent;
+    const scene = await scenePage.evaluate((openedInTime) => {
+        const opened = openedInTime && ui.isAdversarySceneOpen();
+        const loginTitle = window.__advFirstTitle;
 
         // Drive to the choice, answer it, and require the scene to TERMINATE.
         let guard = 0;
@@ -107,7 +124,7 @@ try {
             patch: State.recycleBin.items.map((i) => i.name),
             mirrorAchievement: !!State.achievements['ACH-S-005'],
         };
-    });
+    }, openedInTime);
 
     assert.equal(scene.opened, true, 'the Adversary scene did not fire on a qualifying save');
     assert.match(scene.loginTitle || '', /AUTHENTICATION/,

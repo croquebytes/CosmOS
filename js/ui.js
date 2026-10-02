@@ -58,12 +58,16 @@ const ui = {
     update(now = Date.now(), force = false) {
         this.animateCore();
         this.animateVoidCore();
+        // The stabilisation needle is the one other thing that must move at
+        // frame rate; it returns at once when no ritual is in progress.
+        this.animateIncidentLabour();
 
         if (!force && now - (this.lastPanelRefresh || 0) < this.PANEL_INTERVAL) return;
         this.lastPanelRefresh = now;
 
         this.syncResources();
         this.applyDesktopPlate();
+        this.applyPostGameMark();
         this.renderAutomatons();
         this.renderRepeatables();
         this.renderRealityPanel();
@@ -71,6 +75,16 @@ const ui = {
         this.updateLoopPanels();
         this.updateDimensionDisplay();
         this.updateOperatorStatus();
+        this.updateIncidentChrome();
+        /* The Divine Settings readout was only ever rendered by that window's
+           onOpen, so the award and the stability line sat frozen at whatever
+           they were when it was opened — for a panel whose entire job is
+           showing a decision that moves. Cheap: it returns immediately when
+           the elements are not in the document. */
+        this.updatePrestigeInfo();
+        // The ship dialog quotes terms that move underneath it. See
+        // refreshShipDialog — it returns immediately when the dialog is closed.
+        this.refreshShipDialog();
     },
 
     /* Synchronous full redraw, for callers that change how everything is
@@ -275,6 +289,14 @@ const ui = {
             ? `<p class="offline-overflow">Storage overflowed and discarded <strong>${spilled.join(', ')}</strong>. Expand your vaults under Standing Requisitions before the next shift.</p>`
             : '';
 
+        /* Held tickets are the other thing a returning player needs to know:
+           that nothing happened to them, and that the clocks start again
+           when they do. See ABSENCE IS NEVER PUNISHED in js/incidents.js. */
+        const held = this.incidentsAvailable?.() ? Incidents.state().open.length : 0;
+        const heldNotice = held
+            ? `<p class="offline-held"><span class="code-stamp">ON HOLD</span> ${held} incident ticket${held === 1 ? ' was' : 's were'} held while you were away: no penalty, no escalation. Clocks resume when you do, with at least ${Incidents.RETURN_GRACE}s each.</p>`
+            : '';
+
         layer.innerHTML = `
             <section class="system-dialog offline-report" role="dialog" aria-modal="true" aria-labelledby="offline-title">
                 <div class="system-dialog-titlebar">
@@ -288,6 +310,7 @@ const ui = {
                         <h2 id="offline-title">The universe kept running.</h2>
                         <p>Your processes operated for ${this.formatNumber(elapsedMinutes)} minutes while the console was closed, at ${efficiencyPct}% of attended output.${report.capped ? ` Accrual was capped at ${simulatedHours} hours — the Providence Capacitor extends that window.` : ''}</p>
                         ${overflowNotice}
+                        ${heldNotice}
                     </div>
                 </div>
                 <ul class="offline-gains">${gained || '<li><span>No active production</span><strong>—</strong></li>'}</ul>
@@ -305,36 +328,74 @@ const ui = {
        fiction are the same object here. */
     releaseMarks: { improvement: '+', issue: '\u2715', regression: '!', deprecation: '\u2298' },
 
+    /* Content goes into innerHTML in a dozen places here, and one changelog
+       note is written the way a person writes:
+
+           'Anomaly detection muted by a previous Operator. Note left: "too
+            noisy".'
+
+       Interpolated raw into `title="${entry.note}"`, those quotes closed the
+       attribute early. The tooltip was truncated at 'Note left: ' \u2014 the
+       punchline cut off \u2014 and the parser turned the remainder into two stray
+       attributes on the button, `too` and `noisy".`.
+
+       Nothing here is player-authored, so this is a correctness and
+       typography problem rather than an injection one. It becomes an
+       injection problem the moment any content string is, so escaping is the
+       cheaper habit. */
+    escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    },
+
     showReleaseNotes(build) {
         const layer = document.getElementById('system-modal-layer');
         if (!layer || !build) return;
+        /* The V2 reel plays between the ship confirm and these notes. While a
+           cinematic holds the slot the notes wait for it — with no reel
+           installed nothing holds it and this returns false at once. */
+        if (typeof media !== 'undefined' && media.deferUntilClear?.(() => this.showReleaseNotes(build))) return;
 
+        // NULL.OPERATOR as the source of regressions, when you believe he is.
+        const attribution = game.regressionAttribution?.() || null;
         const lines = (build.entries || []).map((entry) => {
             const mark = this.releaseMarks[entry.kind] || '-';
             const sev = entry.severity ? ` <span class="rn-sev">SEV-${entry.severity}</span>` : '';
+            const signed = attribution && entry.kind === 'regression'
+                ? ` <span class="rn-attrib">${this.escapeHtml(attribution)}</span>` : '';
             return `<li class="rn-line rn-${entry.kind}">
                 <span class="rn-mark">${mark}</span>
-                <span class="rn-note">${entry.note}${sev}</span>
+                <span class="rn-note">${this.escapeHtml(entry.note)}${sev}${signed}</span>
             </li>`;
         }).join('');
 
         const channel = RealityChannels[build.channel]?.label || build.channel;
+        const archived = build.channel === 'archived' ? this.archivedNotesParts(build) : null;
 
         layer.innerHTML = `
-            <section class="system-dialog release-notes" role="dialog" aria-modal="true" aria-labelledby="rn-title">
+            <section class="system-dialog release-notes${archived ? ' is-archived' : ''}" role="dialog" aria-modal="true" aria-labelledby="rn-title">
                 <div class="system-dialog-titlebar">
-                    <span>REALITY — RELEASE NOTES</span>
+                    <span>REALITY — RELEASE NOTES${archived ? ' (ARCHIVED)' : ''}</span>
                     <button type="button" onclick="ui.closeReleaseNotes()" aria-label="Close release notes">X</button>
                 </div>
                 <div class="rn-head">
                     <div>
-                        <div class="briefing-eyebrow">${channel} channel</div>
-                        <h2 id="rn-title">COSMOS — REALITY v${build.version}</h2>
-                        <p class="rn-meta">Released to Sector 7G &middot; Operator: you &middot; Rollback: unavailable</p>
+                        <div class="briefing-eyebrow">${this.escapeHtml(channel)} channel${archived ? ` &middot; replay of ${this.escapeHtml(archived.source)}` : ''}</div>
+                        <h2 id="rn-title">COSMOS — REALITY v${this.escapeHtml(build.version)}</h2>
+                        <p class="rn-meta">${archived
+                            ? `Restored from the archive &middot; first shipped at reboot ${archived.level} &middot; pays no Divinity`
+                            : 'Released to Sector 7G &middot; Operator: you &middot; Rollback: unavailable'}</p>
                     </div>
                 </div>
+                ${archived ? archived.stamp : ''}
                 <ul class="rn-list">${lines || '<li class="rn-line"><span class="rn-mark">-</span><span class="rn-note">No changes recorded. Suspicious.</span></li>'}</ul>
-                <p class="rn-foot">Known issues can be patched from the Universal Engine, or routed around. Your call.</p>
+                <p class="rn-foot">${archived
+                    ? archived.foot
+                    : 'Known issues can be patched from the Universal Engine, or routed around. Your call.'}</p>
                 <div class="system-dialog-actions">
                     <button class="dialog-primary" type="button" onclick="ui.closeReleaseNotes()">Accept this reality</button>
                 </div>
@@ -343,9 +404,362 @@ const ui = {
         layer.classList.add('active');
     },
 
+    /* The parts of the release notes that change on a replay. The changelog
+       itself is unchanged — it IS the original's, entry for entry, which is
+       the point — so what changes is the frame around it: where it came from,
+       that it pays nothing, and what NULL.OPERATOR left on it. */
+    archivedNotesParts(build) {
+        const source = Reality.sanitiseReplayOf(build.replayOf) || { level: 0, source: 'stable' };
+        const annotation = (State.reality?.annotations || []).find((a) => a.level === source.level);
+        const freshly = annotation && annotation.filedOn === (State.prestigeLevel || 0);
+        const count = annotation ? annotation.ids.length : 0;
+        let stamp;
+        if (freshly) {
+            stamp = `<div class="rn-archive-stamp">
+                    <span class="code-stamp is-alarm">Annotated by NULL.OPERATOR</span>
+                    <p>${count
+                        ? `${count} annotation${count === 1 ? '' : 's'} on what this build shipped with`
+                        : 'A file on a build that shipped clean'} &mdash; filed to Recovered Documents &rsaquo; Archive.</p>
+                </div>`;
+        } else if (annotation) {
+            stamp = `<div class="rn-archive-stamp is-filed">
+                    <span class="code-stamp">Already on file</span>
+                    <p>His annotations on this build were filed at reboot ${annotation.filedOn}. This replay adds nothing new to read.</p>
+                </div>`;
+        } else {
+            stamp = '';
+        }
+        return {
+            source: RealityChannels[source.source]?.label || source.source,
+            level: source.level,
+            stamp,
+            foot: 'An archived replay pays no Divinity, and the reboot bar does not move. Its known issues still degrade the build, and still scar if you ship them unpatched.',
+        };
+    },
+
     closeReleaseNotes() {
         this.dismissSystemModal();
         this.renderRealityPanel();
+    },
+
+    /* ── Shipping ─────────────────────────────────────────────────────────
+       The reboot used to be a browser confirm() listing what it would reset.
+       It is a release now, and a release has terms: what it pays, what it
+       costs, which known issues go on the permanent record, and which Mandate
+       path the next run runs on.
+
+       The path is the load-bearing half and it has NO DEFAULT. Shipping stays
+       disabled until one is picked, because the alternative is a player
+       clicking through a dialog they have seen twenty times and discovering
+       three hours later that their tree is dormant. That is the same reasoning
+       as the Adversary scene's arming guard, arrived at by a cheaper route:
+       there, the choice was hidden inside a click-to-continue rhythm and had
+       to be defended against the rhythm; here the choice IS the button's
+       precondition, so a reflex click cannot resolve it. */
+    shipSelection: null,
+
+    openShipDialog() {
+        const layer = document.getElementById('system-modal-layer');
+        if (!layer) return;
+        if (!game.canPrestige()) {
+            this.log('This build has not earned a release yet. More Souls this run.');
+            return;
+        }
+        this.shipSelection = game.certification().path;
+        this.renderShipDialog();
+        layer.classList.add('active');
+    },
+
+    renderShipDialog() {
+        const layer = document.getElementById('system-modal-layer');
+        if (!layer) return;
+
+        const build = State.reality?.build;
+        const cascade = game.cascadeState();
+        const award = game.getPrestigeAward();
+        const residue = Math.round(Economy.certificationResidue * 100);
+        const dirty = Reality.unpatchedIssues(build);
+        const scars = State.reality?.scars || [];
+        const fresh = dirty.filter((e) => !scars.includes(e.id));
+
+        const paths = game.CERT_BRANCHES.map((branch) => {
+            const s = game.branchStanding(branch);
+            const selected = this.shipSelection === branch;
+            const note = s.owned === 0
+                ? 'nothing enacted yet'
+                : `${s.owned} enacted &middot; ${s.spent} DP invested`;
+            return `<button type="button"
+                        class="ship-path${selected ? ' is-selected' : ''}"
+                        aria-pressed="${selected ? 'true' : 'false'}"
+                        onclick="ui.selectShipPath('${branch}')">
+                    <span class="ship-path-name">Path of ${branch}</span>
+                    <span class="ship-path-note">${note}</span>
+                    <span class="ship-path-status">${s.status === 'certified' ? 'current' : s.status === 'residue' ? `lapsed — ${residue}%` : 'never certified'}</span>
+                </button>`;
+        }).join('');
+
+        const scarBlock = fresh.length
+            ? `<div class="ship-scars">
+                   <span class="code-stamp is-alarm">${fresh.length} known issue${fresh.length === 1 ? '' : 's'} unpatched</span>
+                   <p>Shipping files ${fresh.length === 1 ? 'it' : 'them'} permanently. Each keeps
+                      ${Math.round(Economy.scarResidue * 100)}% of its bite, on every run from now on.</p>
+                   <ul>${fresh.map((e) => `<li>SEV-${e.severity || 3} — ${this.escapeHtml(e.note.split('.')[0])}.</li>`).join('')}</ul>
+               </div>`
+            : '<p class="ship-clean">No unpatched known issues. This release goes out clean.</p>';
+
+        const cascadeBlock = this.shipCascadeBlock(cascade);
+        const replaying = build?.channel === 'archived';
+        const blocked = this.shipBlockedBy();
+
+        layer.innerHTML = `
+            <section class="system-dialog ship-dialog" role="dialog" aria-modal="true" aria-labelledby="ship-title">
+                <div class="system-dialog-titlebar">
+                    <span>SHIP BUILD</span>
+                    <button type="button" onclick="ui.closeShipDialog()" aria-label="Cancel release">X</button>
+                </div>
+                <div class="ship-head">
+                    <h2 id="ship-title">Release v${this.escapeHtml(build?.version || '?')}</h2>
+                    <p class="rn-meta">${RealityChannels[build?.channel]?.label || 'Stable'} channel &middot;
+                        ${replaying
+                            ? 'an archived replay &mdash; pays <strong id="ship-award">no</strong> Divinity, and ships anyway'
+                            : `pays <strong id="ship-award">${this.formatNumber(award)}</strong> Divinity`}</p>
+                </div>
+                <div id="ship-cascade-slot">${cascadeBlock}</div>
+                ${scarBlock}
+                ${this.shipChannelBlock()}
+                <div class="ship-cert">
+                    <span class="briefing-eyebrow">Certify the next run on</span>
+                    <div class="ship-paths">${paths}</div>
+                </div>
+                <div class="system-dialog-actions">
+                    <button class="win-btn" type="button" onclick="ui.closeShipDialog()">Keep running</button>
+                    <button class="dialog-primary" type="button" id="ship-confirm"
+                            ${blocked ? 'disabled' : ''}
+                            onclick="ui.confirmShip()">
+                        ${blocked || `Ship on ${this.shipSelection}`}
+                    </button>
+                </div>
+            </section>
+        `;
+    },
+
+    /* What is stopping the ship button, as its label, or null. Both choices
+       that shape the next run have NO DEFAULT: the path (see shipSelection)
+       and, on Archived, which past build. A player who left the selector on
+       Archived from last time is stopped here rather than silently replaying
+       a universe for nothing. */
+    shipBlockedBy() {
+        if (!game.CERT_BRANCHES.includes(this.shipSelection)) return 'Choose a path';
+        if (State.reality?.channel === 'archived' && !game.archivedPick()) return 'Choose an archived build';
+        return null;
+    },
+
+    /* Where the next build comes from. Shown once there is more than one
+       channel to choose, so the first reboots' dialog is unchanged. Archived
+       appears only once unlocked (reboot 12), and opens a release history to
+       pick from. */
+    shipChannelBlock() {
+        const available = Reality.channelsFor(State.prestigeLevel || 0);
+        if (available.length < 2) return '';
+        const current = State.reality?.channel || 'stable';
+        const builds = game.archivedBuilds();
+
+        const channels = available.map((key) => {
+            const spec = RealityChannels[key];
+            const selected = current === key;
+            const empty = key === 'archived' && !builds.length;
+            const terms = key === 'archived'
+                ? (empty ? 'no builds on file yet' : 'no Divinity &middot; his annotations')
+                : `${spec.divinity}&times; Divinity`;
+            return `<button type="button"
+                        class="ship-channel${selected ? ' is-selected' : ''}"
+                        aria-pressed="${selected ? 'true' : 'false'}"
+                        ${empty ? 'disabled' : ''}
+                        onclick="ui.selectShipChannel('${key}')">
+                    <span class="ship-channel-name">${spec.label}</span>
+                    <span class="ship-channel-terms">${terms}</span>
+                </button>`;
+        }).join('');
+
+        const history = current === 'archived' && builds.length
+            ? this.archiveHistoryBlock(builds)
+            : '';
+
+        return `<div class="ship-next">
+                <span class="briefing-eyebrow">Pull the next build from</span>
+                <div class="ship-channels" role="group" aria-label="Release channel">${channels}</div>
+                ${history}
+            </div>`;
+    },
+
+    /* The release history, typeset as one: version, channel, path, reboot,
+       and what it shipped with. Every field reaching this markup came through
+       Reality.normaliseRecord, and is escaped anyway. */
+    archiveHistoryBlock(builds) {
+        const pick = State.reality?.replay;
+        const rows = builds.map((r) => {
+            const selected = pick === r.reboot;
+            const version = Reality.versionOfLevel(r.level);
+            const dirty = r.unpatched.length;
+            const annotated = game.isAnnotated(r.level);
+            const when = Number.isFinite(r.shippedAt) && r.shippedAt > 0
+                ? new Date(r.shippedAt).toISOString().slice(0, 10)
+                : '';
+            return `<button type="button" role="radio"
+                        class="archive-row${selected ? ' is-selected' : ''}${annotated ? ' is-annotated' : ''}"
+                        aria-checked="${selected ? 'true' : 'false'}"
+                        onclick="ui.selectArchivedBuild(${r.reboot})">
+                    <span class="archive-version">v${this.escapeHtml(version)}</span>
+                    <span class="archive-channel">${this.escapeHtml(RealityChannels[r.source]?.label || r.source)}</span>
+                    <span class="archive-meta">reboot ${r.reboot}${r.certified ? ` &middot; ${this.escapeHtml(r.certified)}` : ''}</span>
+                    <span class="archive-dirty${dirty ? ' is-dirty' : ''}">${dirty
+                        ? `${dirty} issue${dirty === 1 ? '' : 's'} shipped unpatched`
+                        : 'shipped clean'}</span>
+                    <span class="archive-when">${when}</span>
+                    <span class="archive-note">${annotated ? 'annotations on file' : 'his notes unread'}</span>
+                </button>`;
+        }).join('');
+        return `<div class="ship-archive">
+                <div class="archive-head" aria-hidden="true">
+                    <span>Release</span><span>Channel</span><span>Shipped</span><span>Known issues</span>
+                </div>
+                <div class="archive-list" role="radiogroup" aria-label="Archived builds">${rows}</div>
+            </div>`;
+    },
+
+    selectShipChannel(channel) {
+        if (!Reality.channelsFor(State.prestigeLevel || 0).includes(channel)) return;
+        if (channel === 'archived' && !game.archivedBuilds().length) return;
+        game.setBuildChannel(channel);
+        this.renderShipDialog();
+    },
+
+    selectArchivedBuild(reboot) {
+        if (!game.selectArchivedBuild(reboot)) return;
+        this.renderShipDialog();
+    },
+
+    shipCascadeBlock(cascade) {
+        if (cascade.tier <= 0) return '';
+        return `<div class="ship-cascade tier-${cascade.tier}">
+                   <span class="code-stamp is-alarm">${cascade.label}</span>
+                   <p>${cascade.award > 0
+                        ? `The award is reduced to ${Math.round(cascade.award * 100)}% while the build is degraded.`
+                        : 'A collapsed build pays nothing. You can still ship it — patch the outstanding issues first if you want to be paid for this run.'}</p>
+               </div>`;
+    },
+
+    /* The dialog states the TERMS of a release, and the terms move while it is
+       open: instability keeps accruing in the tick underneath, and confirmShip
+       pays game.getPrestigeAward() evaluated fresh.
+
+       Rendered once at open, it could therefore quote a number it would not
+       pay. Reproduced: a run one tick below CASCADE FAILURE, dialog open,
+       reading "pays 6 Divinity — reduced to 40%"; twelve minutes of
+       deliberation later it still said exactly that and shipping banked ZERO.
+       It bites at every boundary and in both directions — a clean run's quote
+       goes stale LOW as Souls accrue.
+
+       Worse, this is the one place a tier change is guaranteed to be
+       invisible: showCascadeAlert refuses to paint over an open modal (it
+       must), and the scrim covers every live readout underneath. The dialog
+       has to tell the player itself.
+
+       Only the award and the cascade block are volatile — the unpatched-issue
+       list cannot change while the scrim covers the Universal Engine — so
+       this updates those two in place rather than re-rendering, which would
+       fight the player's path selection on every panel tick.
+
+       This is the same defect the Divine Settings readout had, one surface
+       over, and it is noted in ui.update()'s comment. Adding a panel that
+       shows a moving decision means adding it to the tick. */
+    refreshShipDialog() {
+        const layer = document.getElementById('system-modal-layer');
+        if (!layer || !layer.classList.contains('active')) return;
+        if (!document.querySelector('.ship-dialog')) return;
+
+        const awardEl = document.getElementById('ship-award');
+        // An archived replay's award is not a number that moves: it is "no".
+        if (awardEl && State.reality?.build?.channel !== 'archived') {
+            const award = this.formatNumber(game.getPrestigeAward());
+            if (awardEl.innerText !== award) awardEl.innerText = award;
+        }
+
+        const slot = document.getElementById('ship-cascade-slot');
+        if (slot) {
+            const block = this.shipCascadeBlock(game.cascadeState());
+            if (slot.innerHTML !== block) slot.innerHTML = block;
+        }
+    },
+
+    selectShipPath(branch) {
+        if (!game.CERT_BRANCHES.includes(branch)) return;
+        this.shipSelection = branch;
+        this.renderShipDialog();
+    },
+
+    closeShipDialog() {
+        this.shipSelection = null;
+        this.dismissSystemModal();
+    },
+
+    /* The only path from the dialog into the reboot. performPrestige remains
+       callable without options — the simulator and four test harnesses do
+       exactly that — but everything a player can click routes through here,
+       so the certification choice cannot be skipped by a UI that forgot it. */
+    confirmShip() {
+        const path = this.shipSelection;
+        if (!game.CERT_BRANCHES.includes(path)) return;
+        // The button's own guard, restated: the button can be stale.
+        if (State.reality?.channel === 'archived' && !game.archivedPick()) return;
+        this.dismissSystemModal();
+        this.shipSelection = null;
+        game.sfx('ship');
+        // V2 Ship the Build. Claimed before the reboot so the release notes
+        // it raises queue behind the reel instead of under it.
+        game.cinematic('ship-the-build');
+        game.performPrestige({ confirmed: true, certifyOn: path });
+    },
+
+    /* The OS opening a window you did not ask for. DESIGN_DIRECTION §5.3 —
+       a cursed operating system that notices a cascade and says nothing is
+       just a number going down. Suppressed while another modal is up so it
+       cannot paint over the release notes it would otherwise interrupt. */
+    showCascadeAlert(cascade) {
+        const layer = document.getElementById('system-modal-layer');
+        // Returns whether it actually rendered. game.announceCascade only
+        // marks the tier as announced on a true, and retries otherwise — a
+        // warning suppressed by a modal collision must not be lost.
+        if (!layer || layer.classList.contains('active')) return false;
+
+        layer.innerHTML = `
+            <section class="system-dialog cascade-alert tier-${cascade.tier}" role="alertdialog" aria-modal="true" aria-labelledby="cascade-title">
+                <div class="system-dialog-titlebar">
+                    <span>SYSTEM &mdash; UNSOLICITED</span>
+                    <button type="button" onclick="ui.dismissSystemModal()" aria-label="Acknowledge">X</button>
+                </div>
+                <div class="cascade-body">
+                    <span class="code-stamp is-alarm">${cascade.label}</span>
+                    <h2 id="cascade-title">Reality is degrading.</h2>
+                    <p>Unpatched known issues have been accruing since this build shipped.
+                       Output is throttled to ${Math.round(cascade.output * 100)}% and the release
+                       ${cascade.award > 0 ? `now pays ${Math.round(cascade.award * 100)}% of its award` : 'now pays nothing'}.</p>
+                    <p class="cascade-advice">${cascade.tier >= Economy.cascadeTiers.length
+                        ? 'Patch the outstanding issues from the Universal Engine. A build with nothing left on file settles on its own.'
+                        : 'Patch them from the Universal Engine, or ship now and take what this run is still worth.'}</p>
+                </div>
+                <div class="system-dialog-actions">
+                    <button class="dialog-primary" type="button" onclick="ui.dismissSystemModal()">Acknowledged</button>
+                </div>
+            </section>
+        `;
+        layer.classList.add('active');
+        game.sfx('cascade', { tier: cascade.tier });
+        // V3: the tier's loop in a monitor strip, when installed. Never awaited.
+        if (typeof media !== 'undefined') {
+            media.attachLoop?.(layer.querySelector('.cascade-body'), `cascade-tier${Math.max(1, Math.min(3, cascade.tier))}`);
+        }
+        return true;
     },
 
     /* ════════════════════════════════════════════════════════════════════
@@ -411,6 +825,26 @@ const ui = {
     },
 
     playAdversaryScene() {
+        /* V4 Mirror Login opens the scene when installed. Claimed first so the
+           scene queues behind the reel (the V2 pattern in showReleaseNotes),
+           and only once per page so a re-presentation, or Cinematics set to
+           Always, cannot loop reel -> scene -> reel. With no reel installed
+           the director resolves at once and the scene opens as it always did. */
+        if (!this.mirrorReelClaimed && typeof media !== 'undefined') {
+            this.mirrorReelClaimed = true;
+            game.cinematic('mirror-login');
+            /* The deferred call presents only if nobody has presented the scene
+               since this claim. game.checkAdversaryTrigger's resume branch polls
+               once a second and may present it while the probe is out — and
+               the director holds deferred calls until the modal slot clears,
+               which for a presented scene is AFTER the player finishes it.
+               "Not open right now" would re-run a finished scene. */
+            const claim = this.advPresentations || 0;
+            if (media.deferUntilClear?.(() => {
+                if ((this.advPresentations || 0) === claim && !this.isAdversarySceneOpen()) this.playAdversaryScene();
+            })) return;
+        }
+
         /* Test exhaustion BEFORE spending the attempt. Incrementing first made
            the third presentation short-circuit, so the budget was really two
            renders while both comments said three. */
@@ -439,6 +873,7 @@ const ui = {
 
         const layer = document.getElementById('system-modal-layer');
         if (!layer) return;
+        this.advPresentations = (this.advPresentations || 0) + 1;
 
         this.advScene = { open: true, phase: 1, index: 0, choiceId: null, escapeArmed: false, timer: null };
 
@@ -466,6 +901,7 @@ const ui = {
             </section>
         `;
         layer.classList.add('active');
+        game.sfx('adversary');
 
         this.advBeats = this.buildAdversaryBeats(null);
         this.advStep();
@@ -551,6 +987,9 @@ const ui = {
     advanceAdversaryScene(fromTimer = false) {
         const s = this.advScene;
         if (!s || !s.open) return;
+        /* SCN-ADV-002 shares the slot, the guards and this entry point —
+           system.js routes every key here while either scene is open. */
+        if (s.kind === 'finale') { this.advanceFinale(fromTimer ? 'timer' : 'key'); return; }
         const current = this.advBeats[s.index];
         /* Block on the choice ONLY while it is unanswered. Without the
            `!s.choiceId` half, chooseAdversaryResponse — which repoints index
@@ -733,6 +1172,7 @@ const ui = {
     escapeAdversaryScene() {
         const s = this.advScene;
         if (!s || !s.open) return true;
+        if (s.kind === 'finale') return this.escapeFinale();
 
         const current = this.advBeats[s.index];
         if (current && current.type === 'choice_prompt' && !s.choiceId) {
@@ -805,6 +1245,349 @@ const ui = {
         State.save();
     },
 
+    /* ════════════════════════════════════════════════════════════════════
+       SCN-ADV-002 — "End of Shift"
+
+       The same renderer family as the Mirror Login, in three phases:
+
+         1. CMS vellum. A shift-handover form. Both Operator fields fill
+            themselves with the same name, and the form refuses: two were
+            found, and they are not distinct. FIN-002/003 are the field
+            labels, as ADV-003/004 were.
+         2. His transcript, on the dark panel — the same degradation the
+            Mirror Login performs, because it is the same man.
+         3. Back to vellum: the institution files the result. Release notes
+            for the last build, with an end-credits roll. The ending
+            RESOLVES when this phase is entered, so what the player is
+            reading is already on file in Recovered Documents.
+
+       It shares `advScene`, so every guard that keeps the Mirror Login safe
+       — the keyboard routing in system.js, the media director's isBlocked,
+       checkAdversaryTrigger's deferral, dismissSystemModal's teardown —
+       covers this scene without a second set of flags to forget. Every
+       string reaching innerHTML is escaped.
+       ════════════════════════════════════════════════════════════════════ */
+
+    finText(line, band) {
+        const reboots = State.achievementProgress?.prestige_count || 0;
+        return this.escapeHtml(String(line.text || '')
+            .replace('{REBOOTS}', reboots)
+            .replace('{BAND}', String(band || '').toUpperCase()));
+    },
+
+    playFinale() {
+        const band = State.endings?.pending;
+        if (!AdversaryFinale.BANDS.includes(band)) return;
+        if (this.isAdversarySceneOpen()) return;
+
+        /* A cinematic may hold the slot — the V2 reel plays between a ship
+           and its release notes, and the gate is most often met right after
+           an archived ship. Wait for it, on the V4 hook's guard: present only
+           if nobody has presented a scene since this claim. The poll keeps
+           calling while we wait, so several of these can be queued; the
+           counter is what stops the second one re-running a finished scene. */
+        if (typeof media !== 'undefined') {
+            const claim = this.advPresentations || 0;
+            if (media.deferUntilClear?.(() => {
+                if ((this.advPresentations || 0) === claim && !this.isAdversarySceneOpen()) this.playFinale();
+            })) return;
+        }
+
+        // Exhaustion is tested BEFORE an attempt is spent (see playAdversaryScene).
+        if (game.finaleExhausted()) {
+            game.resolveEnding(band);
+            this.log('[void_mirror] Handover closed without operator input.');
+            return;
+        }
+        /* Render-or-retry (cc11f22): never paint over an open modal. Nothing
+           is spent here, and the 1 Hz poll comes back for it. */
+        if (this.isSystemModalOpen()) return;
+
+        const layer = document.getElementById('system-modal-layer');
+        if (!layer) return;
+        State.endings.attempts = (State.endings.attempts || 0) + 1;
+        State.save();
+        this.advPresentations = (this.advPresentations || 0) + 1;
+
+        this.advScene = { open: true, kind: 'finale', band, phase: 1, index: 0, timer: null, closeArmed: false };
+        this.advBeats = game.finaleBeats(band);
+
+        layer.innerHTML = `
+            <section class="system-dialog adversary-scene fin-scene fin-${band} adv-phase-login" role="dialog" aria-modal="true"
+                     aria-labelledby="adv-title" onclick="ui.advanceFinale('click')">
+                <div class="system-dialog-titlebar" id="adv-titlebar">
+                    <span id="adv-title">CMS &mdash; SHIFT HANDOVER</span>
+                </div>
+                <div class="adv-body" id="adv-body">
+                    <div class="adv-login">
+                        <p class="adv-notice" id="adv-notice"></p>
+                        <div class="adv-field">
+                            <label for="fin-out" id="fin-out-label">Outgoing Operator</label>
+                            <input id="fin-out" type="text" value="" disabled autocomplete="off">
+                        </div>
+                        <div class="adv-field">
+                            <label for="fin-in" id="fin-in-label">Incoming Operator</label>
+                            <input id="fin-in" type="text" value="" disabled autocomplete="off">
+                        </div>
+                        <div class="adv-welcome" id="adv-welcome" aria-live="polite"></div>
+                    </div>
+                </div>
+                <p class="adv-hint" id="adv-hint">Click to continue</p>
+            </section>
+        `;
+        layer.classList.add('active');
+        game.sfx('adversary');
+        this.finStep();
+    },
+
+    finStep() {
+        const s = this.advScene;
+        if (!s || !s.open || s.kind !== 'finale') return;
+        const beat = this.advBeats[s.index];
+        if (!beat) return;
+        const speed = this.advSpeed();
+
+        if (s.phase === 1) {
+            const label = (text) => this.escapeHtml(String(text).replace(/:\s*$/, ''));
+            if (beat.id === 'FIN-001') {
+                const notice = document.getElementById('adv-notice');
+                if (notice) notice.innerHTML += `<span class="adv-notice-line">${this.finText(beat, s.band)}</span>`;
+            } else if (beat.id === 'FIN-002') {
+                const el = document.getElementById('fin-out-label');
+                if (el) el.innerHTML = label(beat.text);
+                this.advTypeInto(document.getElementById('fin-out'), 'OPERATOR', speed);
+            } else if (beat.id === 'FIN-003') {
+                const el = document.getElementById('fin-in-label');
+                if (el) el.innerHTML = label(beat.text);
+                // The second field fills with the same name. Nobody typed either.
+                this.advTypeInto(document.getElementById('fin-in'), 'OPERATOR', speed);
+            } else if (beat.id === 'FIN-004') {
+                const section = document.querySelector('.fin-scene');
+                const title = document.getElementById('adv-title');
+                const welcome = document.getElementById('adv-welcome');
+                if (section) section.classList.add('adv-conflict');
+                if (title) title.textContent = 'CMS — HANDOVER CONFLICT';
+                if (welcome) welcome.innerHTML += `<span class="adv-error-line">${this.finText(beat, s.band)}</span>`;
+            }
+        } else {
+            this.finAppendLine(beat);
+        }
+
+        if (s.index >= this.advBeats.length - 1) {
+            // The end of the transcript waits for the player: what comes
+            // next is the record, and it should not arrive on a timer.
+            const hint = document.getElementById('adv-hint');
+            if (hint) hint.textContent = 'Click to file the release notes';
+            return;
+        }
+        const dwell = !speed ? 0
+            : beat.id === 'FIN-004' ? 2200
+            : s.phase === 1 ? 1300
+            : 2300;
+        clearTimeout(s.timer);
+        s.timer = setTimeout(() => this.advanceFinale('timer'), dwell);
+    },
+
+    finAppendLine(beat) {
+        const list = document.getElementById('adv-transcript');
+        if (!list || !beat) return;
+        const cls = beat.speaker === 'ADV' ? 'adv-voice'
+            : beat.speaker === 'HOST' ? 'adv-host' : 'adv-sys';
+        const mark = beat.speaker === 'ADV' ? '◆' : beat.speaker === 'HOST' ? '✧' : 'SYS';
+        list.insertAdjacentHTML('beforeend', `<li class="adv-line ${cls}" data-beat="${this.escapeHtml(beat.id)}">
+            <span class="adv-mark">${mark}</span>
+            <span class="adv-text">${this.finText(beat, this.advScene?.band)}</span>
+        </li>`);
+        list.scrollTop = list.scrollHeight;
+    },
+
+    finEnterPhaseTwo() {
+        const s = this.advScene;
+        if (!s || s.phase !== 1) return;
+        s.phase = 2;
+        // The renderer has proved itself on this machine; refund the attempt,
+        // for the same reasons advEnterPhaseTwo gives.
+        if (State.endings?.attempts) {
+            State.endings.attempts = 0;
+            State.save();
+        }
+        const section = document.querySelector('.fin-scene');
+        const body = document.getElementById('adv-body');
+        const title = document.getElementById('adv-title');
+        if (section) { section.classList.remove('adv-phase-login'); section.classList.add('adv-phase-voice'); }
+        if (title) title.textContent = 'SESSION 0003 — HANDOVER';
+        if (body) body.innerHTML = '<ol class="adv-transcript" id="adv-transcript"></ol>';
+    },
+
+    /* 'timer' advances a line; 'click' and 'key' advance a line, or at the
+       end of the transcript move on to the record. In the record itself
+       neither does anything: it closes on Escape or on its own button,
+       which arms after a beat — a player mashing through the transcript
+       must not close the release notes in the same breath. */
+    advanceFinale(source = 'click') {
+        const s = this.advScene;
+        if (!s || !s.open || s.kind !== 'finale') return;
+        if (s.phase === 3) return;
+        clearTimeout(s.timer);
+        if (s.index >= this.advBeats.length - 1) {
+            if (source === 'timer') return;
+            this.finEnterCredits();
+            return;
+        }
+        s.index++;
+        const next = this.advBeats[s.index];
+        if (s.phase === 1 && next && next.id === 'FIN-010') this.finEnterPhaseTwo();
+        this.finStep();
+    },
+
+    /* Escape never skips anything unread. In the theatre it draws every
+       remaining line at once and parks at the end; at the end it files the
+       record; in the record it closes. */
+    escapeFinale() {
+        const s = this.advScene;
+        if (!s || !s.open) return true;
+        if (s.phase === 3) { this.finishFinale(); return true; }
+        const last = this.advBeats.length - 1;
+        if (s.index < last) {
+            clearTimeout(s.timer);
+            const start = s.phase === 2
+                ? s.index + 1
+                : this.advBeats.findIndex((b) => b.id === 'FIN-010');
+            if (s.phase === 1) this.finEnterPhaseTwo();
+            for (let i = Math.max(0, start); i <= last; i++) this.finAppendLine(this.advBeats[i]);
+            s.index = last;
+            const hint = document.getElementById('adv-hint');
+            if (hint) hint.textContent = 'Click to file the release notes';
+            return true;
+        }
+        this.finEnterCredits();
+        return true;
+    },
+
+    finEnterCredits() {
+        const s = this.advScene;
+        if (!s || !s.open || s.kind !== 'finale' || s.phase === 3) return;
+        clearTimeout(s.timer);
+        s.phase = 3;
+
+        // Filed before it is shown: the record on screen is already on file.
+        game.resolveEnding(s.band);
+        const doc = game.endingDocuments().find((d) => d.ending === s.band)
+            || game.endingDocument({ ending: s.band, reboot: State.prestigeLevel || 0 });
+        const section = document.querySelector('.fin-scene');
+        if (!section || !doc) { this.finishFinale(); return; }
+
+        const esc = (v) => this.escapeHtml(v);
+        const lines = doc.release.map((entry) => `<li class="rn-line rn-${esc(entry.kind)}">
+                <span class="rn-mark">${this.releaseMarks[entry.kind] || '-'}</span>
+                <span class="rn-note">${esc(entry.note)}</span>
+            </li>`).join('');
+        const credits = doc.credits.map(([role, name]) =>
+            `<div class="fin-credit"><dt>${esc(role)}</dt><dd>${esc(name)}</dd></div>`).join('');
+
+        section.className = `system-dialog adversary-scene fin-scene fin-${esc(s.band)} fin-phase-credits`;
+        section.setAttribute('aria-labelledby', 'fin-rn-title');
+        section.innerHTML = `
+            <div class="system-dialog-titlebar">
+                <span>REALITY &mdash; RELEASE NOTES (FINAL BUILD)</span>
+                <button type="button" onclick="event.stopPropagation();ui.finishFinale()" aria-label="Close release notes">X</button>
+            </div>
+            <div class="rn-head">
+                <div>
+                    <div class="briefing-eyebrow">Signed at handover &middot; ${esc(doc.label)}</div>
+                    <h2 id="fin-rn-title">COSMOS &mdash; REALITY v${esc(doc.version)}</h2>
+                    <p class="rn-meta">The last build of this shift &middot; Released to Sector 7G &middot; Rollback: unavailable</p>
+                </div>
+            </div>
+            <ul class="rn-list">${lines}</ul>
+            <div class="fin-roll" role="group" aria-label="Credits">
+                <dl class="fin-roll-inner${this.advSpeed() ? '' : ' is-still'}">${credits}</dl>
+            </div>
+            <p class="rn-foot">Filed to Recovered Documents &rsaquo; ${esc(doc.category)}. Title on file: <strong>${esc(doc.endTitle)}</strong>. The shift continues.</p>
+            <div class="system-dialog-actions">
+                <button class="dialog-primary fin-close is-arming" type="button"
+                        onclick="event.stopPropagation();ui.finishFinale()">Return to work</button>
+            </div>
+            <p class="adv-hint" id="adv-hint">Esc or Return to work</p>
+        `;
+        game.sfx('ship');
+        this.applyPostGameMark(true);
+
+        setTimeout(() => {
+            if (this.advScene !== s || !s.open) return;
+            s.closeArmed = true;
+            section.querySelector('.fin-close')?.classList.remove('is-arming');
+        }, this.advSpeed() ? 900 : 0);
+    },
+
+    finishFinale() {
+        const s = this.advScene;
+        if (!s || s.kind !== 'finale') return;
+        clearTimeout(s.timer);
+        s.open = false;
+        // Closed from outside before the record was reached: still resolve,
+        // so a pending ending can never be left behind an empty layer.
+        if (State.endings?.pending === s.band) game.resolveEnding(s.band);
+
+        this.dismissSystemModal();
+        this.advScene = null;
+        this.applyPostGameMark(true);
+        this.updateTaskManagerList();
+
+        /* Complicit: the console is his now, and he opens a window you did
+           not ask for — the record of you, in the archive. The other two
+           leave the desktop alone: one of them is alone, and the other one
+           respects a rota. */
+        if (s.band === 'complicit' && game.endingWorn() === 'complicit') {
+            setTimeout(() => {
+                system.openApp('notepad');
+                this.viewDocument('END-COMPLICIT');
+                this.log('[void_mirror] Recovered Documents opened. You did not open it.');
+            }, this.advSpeed() ? 700 : 0);
+        }
+        State.save();
+    },
+
+    /* The post-game mark: the title in the Genesis menu, a build stamp on
+       the desktop in the corner a test build's watermark sits, and the
+       window rivets (style.css, body[data-ending]). Follows the ending worn.
+       Runs on the panel tick and only touches the DOM when something
+       changed, like applyDesktopPlate. */
+    applyPostGameMark(force = false) {
+        const band = game.endingWorn?.() || null;
+        const version = State.reality?.build?.version || '';
+        const key = `${band}|${version}`;
+        if (!force && this.postGameKey === key) return;
+        this.postGameKey = key;
+
+        const ending = band ? AdversaryFinale.endings[band] : null;
+        if (document.body) {
+            if (ending) document.body.dataset.ending = band;
+            else delete document.body.dataset.ending;
+        }
+        const identity = document.querySelector('.start-menu-identity');
+        if (identity) {
+            const strong = identity.querySelector('strong');
+            const line = identity.querySelector('span');
+            if (strong) strong.textContent = ending ? ending.title.toUpperCase() : 'OPERATOR';
+            if (line) line.textContent = ending ? ending.identity : 'Divine Maintenance, Sector 7G';
+        }
+
+        let mark = document.getElementById('build-watermark');
+        if (!ending) { mark?.remove(); return; }
+        if (!mark) {
+            const desktop = document.getElementById('desktop');
+            if (!desktop) return;
+            mark = document.createElement('div');
+            mark.id = 'build-watermark';
+            mark.className = 'build-watermark';
+            mark.setAttribute('aria-hidden', 'true');
+            desktop.appendChild(mark);
+        }
+        mark.innerHTML = `<span>CosmOS Reality${version ? ` v${this.escapeHtml(version)}` : ''} &mdash; ${this.escapeHtml(ending.title)}</span>
+            <span>${this.escapeHtml(ending.watermark)}</span>`;
+    },
+
     displayAdversaryBark(bark) {
         if (!bark) return;
         const host = document.getElementById('adversary-bark-layer') || document.body;
@@ -812,6 +1595,7 @@ const ui = {
         el.className = 'adversary-bark';
         el.innerHTML = `<span class="adversary-bark-mark">◆</span><span>${bark.text}</span>`;
         host.appendChild(el);
+        game.sfx('adversaryBark');
         setTimeout(() => el.classList.add('is-visible'), 20);
         setTimeout(() => {
             el.classList.remove('is-visible');
@@ -838,10 +1622,10 @@ const ui = {
             const affordable = cost && (cost.bag[cost.resource] || 0) >= cost.amount;
             return `<button class="win-btn reality-issue ${affordable ? '' : 'unaffordable'}"
                         onclick="game.patchKnownIssue('${entry.id}')"
-                        title="${entry.note}">
+                        title="${this.escapeHtml(entry.note)}">
                     <span class="reality-issue-note">
                         <span class="code-stamp is-alarm">SEV-${entry.severity || 3}</span>
-                        ${entry.note.split('.')[0]}.
+                        ${this.escapeHtml(entry.note.split('.')[0])}.
                     </span>
                     <span class="reality-issue-cost">${cost ? `Patch — ${this.formatNumber(cost.amount)} ${cost.resource}` : 'will not fix'}</span>
                 </button>`;
@@ -855,16 +1639,48 @@ const ui = {
         const selector = available.length > 1
             ? `<label class="reality-next">Next build:
                    <select onchange="game.setBuildChannel(this.value)">
-                     ${available.map((key) => `<option value="${key}"${State.reality.channel === key ? ' selected' : ''}>${RealityChannels[key].label} — ${RealityChannels[key].divinity}x Divinity</option>`).join('')}
+                     ${available.map((key) => key === 'archived'
+                         /* Archived is picked here, but WHICH build is picked
+                            in the ship dialog, where the history is shown. */
+                         ? `<option value="archived"${State.reality.channel === key ? ' selected' : ''}${game.archivedBuilds().length ? '' : ' disabled'}>Archived — no Divinity, pick a build at ship</option>`
+                         : `<option value="${key}"${State.reality.channel === key ? ' selected' : ''}>${RealityChannels[key].label} — ${RealityChannels[key].divinity}x Divinity</option>`).join('')}
                    </select>
                </label>`
             : '';
 
-        host.innerHTML = `
+        /* The stability meter. Instability is invisible without it, and an
+           invisible timer that throttles your output and your award is a
+           betrayal rather than a decision — the whole mechanic depends on the
+           player being able to watch it climb and decide what to do. */
+        const cascade = game.cascadeState();
+        const pct = Math.min(100, Math.round((cascade.instability / cascade.ceiling) * 100));
+        const trend = cascade.ratePerHour > 0
+            ? `+${cascade.ratePerHour.toFixed(2)}/h from ${issues.length} unpatched`
+            : cascade.recovering
+                ? `settling &minus;${cascade.recoveryPerHour.toFixed(2)}/h &mdash; nothing left on file`
+                : 'holding';
+        const stability = `
+            <div class="reality-stability tier-${cascade.tier}">
+                <div class="stability-line">
+                    <span class="code-stamp${cascade.tier > 0 ? ' is-alarm' : ''}">${cascade.label}</span>
+                    ${cascade.tier > 0
+                        ? '<button type="button" class="win-btn stability-why" data-breakdown="rate:praise:throttle" aria-label="Why is output throttled?">Why?</button>'
+                        : ''}
+                    <span class="stability-trend">${trend}</span>
+                </div>
+                <div class="stability-track"><div class="stability-fill" style="width:${pct}%"></div></div>
+                ${cascade.tier > 0
+                    ? `<p class="stability-note">Output &times;${cascade.output} &middot; release pays ${Math.round(cascade.award * 100)}%</p>`
+                    : ''}
+            </div>`;
+
+        const html = `
             <div class="reality-head">
                 <span class="reality-version">REALITY v${build.version}</span>
-                <span class="reality-channel">${channel}</span>
+                <span class="reality-channel">${channel}${build.channel === 'archived' && Reality.sanitiseReplayOf(build.replayOf)
+                    ? ` &middot; replay of reboot ${Reality.sanitiseReplayOf(build.replayOf).level}` : ''}</span>
             </div>
+            ${stability}
             ${selector}
             ${issues.length
                 ? `<div class="reality-issues">${issueRows}</div>`
@@ -874,10 +1690,19 @@ const ui = {
                 <ul class="rn-list">${(build.entries || []).map((entry) => `
                     <li class="rn-line rn-${entry.kind}${entry.patched ? ' rn-patched' : ''}">
                         <span class="rn-mark">${this.releaseMarks[entry.kind] || '-'}</span>
-                        <span class="rn-note">${entry.patched ? '<s>' : ''}${entry.note}${entry.patched ? '</s> <em>patched</em>' : ''}</span>
+                        <span class="rn-note">${entry.patched ? '<s>' : ''}${this.escapeHtml(entry.note)}${entry.patched ? '</s> <em>patched</em>' : ''}</span>
                     </li>`).join('')}</ul>
             </details>
         `;
+        /* Only touch the DOM when the markup changed. This runs on the panel
+           tick, and rewriting identical markup ten times a second replaced
+           every button under the pointer and the keyboard — focus on a patch
+           button or on "Why?" was gone a tenth of a second after it landed,
+           and an opened changelog snapped shut. */
+        if (html !== this.lastRealityPanelHtml || !host.firstElementChild) {
+            host.innerHTML = html;
+            this.lastRealityPanelHtml = html;
+        }
     },
 
     closeOfflineReport() {
@@ -893,6 +1718,7 @@ const ui = {
         const s = document.getElementById('val-souls');
         const u = document.getElementById('val-uptime');
         const pRate = document.getElementById('val-praise-rate');
+        const oRate = document.getElementById('val-offering-rate');
         const sRate = document.getElementById('val-soul-rate');
 
         if (p) {
@@ -970,6 +1796,7 @@ const ui = {
            the game the player could actually read, and it was wrong. */
         const rates = game.getProductionRates();
         if (pRate) pRate.innerText = this.formatNumber(rates.praise, 1);
+        if (oRate) oRate.innerText = this.formatNumber(rates.offerings, 1);
         if (sRate) sRate.innerText = this.formatNumber(rates.souls, 1);
     },
 
@@ -1180,7 +2007,20 @@ const ui = {
         }
     },
 
+    /* A reboot can unlock half a dozen achievements in one tick, and every
+       toast used to stack up the full height of the screen at once, each
+       with its own stinger. At most TOAST_LIMIT show; the rest queue and
+       slide in as earlier ones leave, with a plaque saying how many wait.
+       Sound and pulse fire when a toast is shown, not when it is queued. */
+    TOAST_LIMIT: 3,
+    toastQueue: [],
+
     showAchievementToast(achievement) {
+        if (document.querySelectorAll('.achievement-toast').length >= this.TOAST_LIMIT) {
+            this.toastQueue.push(achievement);
+            this.updateToastOverflow();
+            return;
+        }
         const toast = document.createElement('div');
         toast.className = `achievement-toast tier-${achievement.tier?.toLowerCase() || 'bronze'}`;
 
@@ -1191,14 +2031,15 @@ const ui = {
             <div class="achievement-icon">${tierIcon}</div>
             <div class="achievement-content">
                 <div class="achievement-title">Achievement Unlocked!</div>
-                <div class="achievement-name">${achievement.name}</div>
-                ${achievement.tier ? `<div class="achievement-tier">${achievement.tier}</div>` : ''}
-                <div class="achievement-desc">${achievement.flavor || achievement.description || ''}</div>
+                <div class="achievement-name">${this.escapeHtml(achievement.name)}</div>
+                ${achievement.tier ? `<div class="achievement-tier">${this.escapeHtml(achievement.tier)}</div>` : ''}
+                <div class="achievement-desc">${this.escapeHtml(achievement.flavor || achievement.description || '')}</div>
             </div>
         `;
 
         document.body.appendChild(toast);
         this.repositionAchievementToasts();
+        game.sfx('achievement', { tier: achievement.tier });
 
         // Slide in from right
         setTimeout(() => toast.classList.add('show'), 10);
@@ -1209,6 +2050,9 @@ const ui = {
             setTimeout(() => {
                 toast.remove();
                 this.repositionAchievementToasts();
+                const next = this.toastQueue.shift();
+                this.updateToastOverflow();
+                if (next) this.showAchievementToast(next);
             }, 500);
         }, 6000);
 
@@ -1242,7 +2086,7 @@ const ui = {
 
     binCodes: {
         patch: 'PCH', achievement: 'ACH', resource: 'RES',
-        automaton: 'AUT', document: 'DOC', other: 'MSC'
+        automaton: 'AUT', document: 'DOC', backup: 'BAK', log: 'LOG', other: 'MSC'
     },
 
     codeStamp(code, alarm = false) {
@@ -1250,9 +2094,25 @@ const ui = {
     },
 
     repositionAchievementToasts() {
-        document.querySelectorAll('.achievement-toast').forEach((toast, index) => {
+        const toasts = document.querySelectorAll('.achievement-toast');
+        toasts.forEach((toast, index) => {
             toast.style.bottom = `${50 + (index * 112)}px`;
         });
+        const plaque = document.getElementById('achievement-overflow');
+        if (plaque) plaque.style.bottom = `${50 + (toasts.length * 112)}px`;
+    },
+
+    updateToastOverflow() {
+        let plaque = document.getElementById('achievement-overflow');
+        const waiting = this.toastQueue.length;
+        if (!waiting) { plaque?.remove(); return; }
+        if (!plaque) {
+            plaque = Object.assign(document.createElement('div'), { id: 'achievement-overflow', className: 'achievement-overflow' });
+            plaque.setAttribute('role', 'status');
+            document.body.appendChild(plaque);
+        }
+        plaque.textContent = `+${waiting} more achievement${waiting === 1 ? '' : 's'} filed`;
+        this.repositionAchievementToasts();
     },
 
     /* ── Authored engine art ──────────────────────────────────────────────
@@ -1886,6 +2746,7 @@ const ui = {
         element.onclick = () => game.clickDivineEvent();
 
         document.body.appendChild(element);
+        game.sfx('eventAppear');
     },
 
     hideDivineEvent() {
@@ -2018,8 +2879,52 @@ const ui = {
             `${this.formatNumber(Math.floor(held))} Divinity available`);
     },
 
+    /* The certification header. Certification is chosen at ship time, so this
+       is not a control — it is the statement of what is live, what is lapsed,
+       and what each path is worth if you switch to it. That last part is the
+       decision, and it is unanswerable without seeing all three at once. */
+    renderCertification() {
+        const host = document.getElementById('mandate-certification');
+        if (!host) return;
+
+        const cert = game.certification();
+        const residue = Math.round(Economy.certificationResidue * 100);
+
+        if (!cert.path && !cert.everCertified.length) {
+            host.innerHTML = `<p class="cert-none">Uncertified. A Mandate does nothing until you certify on its path,
+                and you certify when you ship a build. Buy freely — a node you own is yours permanently.</p>`;
+            return;
+        }
+
+        const rows = game.CERT_BRANCHES.map((branch) => {
+            const s = game.branchStanding(branch);
+            const status = s.status === 'certified' ? 'CERTIFIED'
+                : s.status === 'residue' ? `LAPSED — ${residue}%`
+                : 'DORMANT';
+            return `<li class="cert-row is-${s.status}">
+                <span class="cert-branch">${branch}</span>
+                <span class="code-stamp${s.status === 'certified' ? ' is-live' : ''}">${status}</span>
+                <span class="cert-owned">${s.owned}/${s.total} enacted &middot; ${s.spent} DP</span>
+            </li>`;
+        }).join('');
+
+        host.innerHTML = `
+            <div class="cert-head">
+                <span class="briefing-eyebrow">Certification</span>
+                <span class="cert-current">${cert.path ? `Path of ${cert.path}` : 'none'}</span>
+            </div>
+            <ul class="cert-list">${rows}</ul>
+            <p class="cert-foot">Only the certified path pays in full. A path you have certified on before pays
+                ${residue}% of what you bought. Change it when you ship.</p>
+        `;
+    },
+
     updateMandates() {
+        this.renderCertification();
         this.renderDoctrine();
+
+        const certPath = game.certification().path;
+        const everCertified = game.certification().everCertified;
 
         // Update each branch
         ['creation', 'maintenance', 'entropy'].forEach(branch => {
@@ -2028,7 +2933,21 @@ const ui = {
 
             container.innerHTML = '';
 
-            const branchMandates = MandateList.filter(m => m.branch === branch);
+            /* Sorted by cost rather than left in table order. entropy_ultimate
+               is declared last in MandateList despite being entropy_t4's
+               prerequisite, so the raw order draws a tier-5 node beneath its
+               own dependents. Cost is monotonic along every branch, so it is
+               the progression. Display only — the array order is load-bearing
+               for the modifier fold and is not touched. */
+            const branchMandates = MandateList
+                .filter(m => m.branch === branch)
+                .slice()
+                .sort((a, b) => a.cost - b.cost);
+            const live = branch === certPath;
+            const lapsed = !live && everCertified.includes(branch);
+            container.classList.toggle('is-certified', live);
+            container.classList.toggle('is-lapsed', lapsed);
+            container.classList.toggle('is-dormant', !live && !lapsed);
             branchMandates.forEach(mandate => {
                 const isPurchased = State.purchasedMandates[mandate.id];
 
@@ -2054,10 +2973,18 @@ const ui = {
                 if (!prereqsMet && !isPurchased) node.classList.add('locked');
                 if (!canAfford && !isPurchased && prereqsMet) node.classList.add('unaffordable');
 
+                /* An enacted node on a path you are not certified on is not
+                   "ENACTED" in any sense the player can spend, and saying so
+                   is the whole point of the mechanic being legible. */
+                const standing = !isPurchased ? ''
+                    : live ? 'ENACTED'
+                    : lapsed ? `LAPSED — ${Math.round(Economy.certificationResidue * 100)}%`
+                    : 'DORMANT';
+
                 node.innerHTML = `
-                    <div class="mandate-name">${mandate.name}</div>
-                    <div class="mandate-desc">${mandate.description}</div>
-                    <div class="mandate-cost">${isPurchased ? 'ENACTED' : (prereqsMet ? `${effectiveCost} DP${effectiveCost < mandate.cost ? ` (Base ${mandate.cost})` : ''}` : 'Prerequisites not met')}</div>
+                    <div class="mandate-name">${this.escapeHtml(mandate.name)}</div>
+                    <div class="mandate-desc">${this.escapeHtml(mandate.description)}</div>
+                    <div class="mandate-cost">${isPurchased ? standing : (prereqsMet ? `${effectiveCost} DP${effectiveCost < mandate.cost ? ` (Base ${mandate.cost})` : ''}` : 'Prerequisites not met')}</div>
                 `;
 
                 if (!isPurchased && prereqsMet) {
@@ -2103,17 +3030,18 @@ const ui = {
                 <div class="resource-panel">
                     <div class="stat-box">
                         <label>PRAISE</label>
-                        <div id="dim-val-praise" class="stat-value">0</div>
-                        <div class="stat-rate">+<span id="dim-val-praise-rate">0</span>/s</div>
+                        <div id="dim-val-praise" class="stat-value" data-breakdown="cap:praise" tabindex="0">0</div>
+                        <div class="stat-rate" data-breakdown="rate:praise" tabindex="0">+<span id="dim-val-praise-rate">0</span>/s</div>
                     </div>
                     <div class="stat-box">
                         <label>OFFERINGS</label>
-                        <div id="dim-val-offerings" class="stat-value">0</div>
+                        <div id="dim-val-offerings" class="stat-value" data-breakdown="cap:offerings" tabindex="0">0</div>
+                        <div class="stat-rate" data-breakdown="rate:offerings" tabindex="0">+<span id="dim-val-offering-rate">0</span>/s</div>
                     </div>
                     <div class="stat-box">
                         <label>SOULS</label>
-                        <div id="dim-val-souls" class="stat-value">0</div>
-                        <div class="stat-rate">+<span id="dim-val-soul-rate">0</span>/s</div>
+                        <div id="dim-val-souls" class="stat-value" data-breakdown="cap:souls" tabindex="0">0</div>
+                        <div class="stat-rate" data-breakdown="rate:souls" tabindex="0">+<span id="dim-val-soul-rate">0</span>/s</div>
                     </div>
                 </div>
 
@@ -2159,17 +3087,18 @@ const ui = {
                 <div class="resource-panel">
                     <div class="stat-box void-stat">
                         <label>DARKNESS</label>
-                        <div id="dim-val-darkness" class="stat-value">0</div>
-                        <div class="stat-rate">+<span id="dim-val-darkness-rate">0</span>/s</div>
+                        <div id="dim-val-darkness" class="stat-value" data-breakdown="cap:darkness" tabindex="0">0</div>
+                        <div class="stat-rate" data-breakdown="rate:darkness" tabindex="0">+<span id="dim-val-darkness-rate">0</span>/s</div>
                     </div>
                     <div class="stat-box void-stat">
                         <label>SHADOWS</label>
-                        <div id="dim-val-shadows" class="stat-value">0</div>
+                        <div id="dim-val-shadows" class="stat-value" data-breakdown="cap:shadows" tabindex="0">0</div>
+                        <div class="stat-rate" data-breakdown="rate:shadows" tabindex="0">+<span id="dim-val-shadow-rate">0</span>/s</div>
                     </div>
                     <div class="stat-box void-stat">
                         <label>ECHOES</label>
-                        <div id="dim-val-echoes" class="stat-value">0</div>
-                        <div class="stat-rate">+<span id="dim-val-echo-rate">0</span>/s</div>
+                        <div id="dim-val-echoes" class="stat-value" data-breakdown="cap:echoes" tabindex="0">0</div>
+                        <div class="stat-rate" data-breakdown="rate:echoes" tabindex="0">+<span id="dim-val-echo-rate">0</span>/s</div>
                     </div>
                 </div>
 
@@ -2228,6 +3157,8 @@ const ui = {
 
             if (praiseRateEl) praiseRateEl.innerText = this.formatNumber(praisePerSec, 1);
             if (soulRateEl) soulRateEl.innerText = this.formatNumber(soulPerSec, 1);
+            const offeringRateEl = document.getElementById('dim-val-offering-rate');
+            if (offeringRateEl) offeringRateEl.innerText = this.formatNumber(primordialRates.offerings, 1);
 
             // Update automaton counts
             const seraphCountEl = document.getElementById('dim-seraph-count');
@@ -2263,6 +3194,8 @@ const ui = {
 
             if (darknessRateEl) darknessRateEl.innerText = this.formatNumber(darknessPerSec, 1);
             if (echoRateEl) echoRateEl.innerText = this.formatNumber(echoPerSec, 1);
+            const shadowRateEl = document.getElementById('dim-val-shadow-rate');
+            if (shadowRateEl) shadowRateEl.innerText = this.formatNumber(voidRates.shadows, 1);
 
             this.renderAutomatons('void-automaton-list', 'void');
             this.renderRepeatables('void-repeatable-list', 'void');
@@ -2327,6 +3260,16 @@ const ui = {
                 shopIcon.style.display = 'none';
             }
         }
+
+        const patienceIcon = document.getElementById('icon-solitaire');
+        if (patienceIcon) {
+            patienceIcon.style.display = State.unlockedApps.includes('solitaire') ? 'block' : 'none';
+        }
+
+        const mediaIcon = document.getElementById('icon-mediaplayer');
+        if (mediaIcon) {
+            mediaIcon.style.display = State.unlockedApps.includes('mediaplayer') ? 'block' : 'none';
+        }
     },
 
     // === DOCUMENT SYSTEM UI ===
@@ -2338,12 +3281,13 @@ const ui = {
             <div class="doc-notif-icon"><img class="app-glyph" src="assets/icons/notepad_96.png" alt=""></div>
             <div class="doc-notif-content">
                 <div class="doc-notif-title">Document Unlocked</div>
-                <div class="doc-notif-name">${doc.title}</div>
-                <div class="doc-notif-category">${doc.category}</div>
+                <div class="doc-notif-name">${this.escapeHtml(doc.title)}</div>
+                <div class="doc-notif-category">${this.escapeHtml(doc.category)}</div>
             </div>
         `;
 
         document.body.appendChild(notification);
+        game.sfx('document');
 
         // Slide in from right
         setTimeout(() => notification.classList.add('show'), 10);
@@ -2373,6 +3317,10 @@ const ui = {
         let docsToShow = DocumentManifest.filter(doc =>
             State.documents.collected.includes(doc.id)
         );
+        /* NULL.OPERATOR's annotations on replayed builds. Generated from the
+           save rather than shipped as files, so they live beside the manifest
+           instead of in it, and file under Archive with ALPHA-2. */
+        docsToShow = docsToShow.concat(game.generatedDocuments?.() || []);
 
         // Filter by category if not 'all'
         if (category !== 'all') {
@@ -2422,7 +3370,7 @@ const ui = {
 
         item.innerHTML = `
             <span class="doc-item-icon">${icon}</span>
-            <span class="doc-item-title">${doc.title}</span>
+            <span class="doc-item-title">${this.escapeHtml(doc.title)}</span>
         `;
 
         item.onclick = () => this.viewDocument(doc.id);
@@ -2434,8 +3382,19 @@ const ui = {
     },
 
     async viewDocument(docId) {
-        const doc = DocumentManifest.find(d => d.id === docId);
+        const doc = DocumentManifest.find(d => d.id === docId)
+            || (game.generatedDocuments?.() || []).find(d => d.id === docId);
         if (!doc) return;
+        /* Last request wins. A shipped document loads by fetch, so without
+           this a slow response overwrote whatever was opened after it — the
+           Notepad's own onOpen preview landing on top of a document opened
+           a moment later (the complicit ending does exactly that). */
+        const ticket = this.docViewTicket = (this.docViewTicket || 0) + 1;
+        if (doc.generated) {
+            if (doc.kind === 'ending') this.viewEndingDocument(doc);
+            else this.viewArchiveDocument(doc);
+            return;
+        }
 
         const titleEl = document.getElementById('document-title');
         const contentEl = document.getElementById('document-content');
@@ -2465,6 +3424,7 @@ const ui = {
                 }
 
                 const markdown = await response.text();
+                if (ticket !== this.docViewTicket) return; // a later document owns the viewer
 
                 // Strip frontmatter (YAML between --- delimiters)
                 let content = markdown.replace(/^---\n[\s\S]*?\n---\n/, '');
@@ -2474,6 +3434,7 @@ const ui = {
 
                 contentEl.innerHTML = content;
             } catch (error) {
+                if (ticket !== this.docViewTicket) return;
                 contentEl.innerHTML = `
                     <div class="error">
                         <strong>Error loading document</strong>
@@ -2490,6 +3451,87 @@ const ui = {
             if (item.dataset.docId === doc.id) {
                 item.classList.add('selected');
             }
+        });
+    },
+
+    /* An annotated archived build, typeset as the postmortem it is. Every
+       string here is escaped: the text is authored, but the version, path
+       and ids came out of a save, and a save can be pasted in. */
+    viewArchiveDocument(doc) {
+        const titleEl = document.getElementById('document-title');
+        const contentEl = document.getElementById('document-content');
+        const metaEl = document.getElementById('document-meta');
+        const esc = (v) => this.escapeHtml(v);
+        if (titleEl) titleEl.innerText = doc.title;
+        if (metaEl) {
+            metaEl.innerHTML = `
+                <span class="doc-meta-item"><strong>Category:</strong> ${esc(doc.category)}</span>
+                <span class="doc-meta-item"><strong>File:</strong> ${esc(doc.filename)}</span>
+                <span class="doc-meta-item"><strong>ID:</strong> ${esc(doc.id)}</span>
+            `;
+        }
+        if (contentEl) {
+            const source = RealityChannels[doc.source]?.label || doc.source;
+            const notes = doc.notes.map((n) => `
+                <li class="arc-note arc-${esc(n.kind)}">
+                    <div class="arc-entry"><span class="arc-mark">${n.kind === 'regression' ? '!' : '\u2715'}</span>
+                        ${n.kind === 'regression' ? 'REGRESSION' : `KNOWN ISSUE${n.severity ? ` (SEV-${esc(n.severity)})` : ''}`}
+                        &mdash; ${esc(n.note)}.</div>
+                    <blockquote class="arc-line"><span class="arc-who">NULL.OPERATOR:</span> ${esc(n.line)}</blockquote>
+                </li>`).join('');
+            contentEl.innerHTML = `
+                <div class="arc-doc">
+                    <pre class="arc-header">ARCHIVED BRANCH POSTMORTEM
+REALITY v${esc(doc.version)} &middot; ${esc(source)} channel
+Originally shipped: reboot ${esc(doc.level)}${doc.certified ? ` &middot; certified on ${esc(doc.certified)}` : ''}
+Replayed: reboot ${esc(doc.filedOn)}
+Annotated by: void_mirror.service (shadow instance)</pre>
+                    ${notes ? `<ol class="arc-notes">${notes}</ol>` : `<p class="arc-clean">${esc(doc.clean)}</p>`}
+                    <p class="arc-signoff">&mdash; ${esc(doc.signoff)}</p>
+                </div>`;
+        }
+        document.querySelectorAll('.document-item').forEach(item => {
+            item.classList.toggle('selected', item.dataset.docId === doc.id);
+        });
+    },
+
+    /* A handover record, typeset: his letter, then the release notes for
+       the last build with their credits. Escaped throughout — the version
+       comes out of a save. */
+    viewEndingDocument(doc) {
+        const titleEl = document.getElementById('document-title');
+        const contentEl = document.getElementById('document-content');
+        const metaEl = document.getElementById('document-meta');
+        const esc = (v) => this.escapeHtml(v);
+        if (titleEl) titleEl.innerText = doc.title;
+        if (metaEl) {
+            metaEl.innerHTML = `
+                <span class="doc-meta-item"><strong>Category:</strong> ${esc(doc.category)}</span>
+                <span class="doc-meta-item"><strong>File:</strong> ${esc(doc.filename)}</span>
+                <span class="doc-meta-item"><strong>ID:</strong> ${esc(doc.id)}</span>
+            `;
+        }
+        if (contentEl) {
+            const letter = doc.letter.map((p) => `<p>${esc(p)}</p>`).join('');
+            const notes = doc.release.map((entry) => `<li class="rn-line rn-${esc(entry.kind)}">
+                    <span class="rn-mark">${this.releaseMarks[entry.kind] || '-'}</span>
+                    <span class="rn-note">${esc(entry.note)}</span></li>`).join('');
+            const credits = doc.credits.map(([role, name]) =>
+                `<div class="fin-credit"><dt>${esc(role)}</dt><dd>${esc(name)}</dd></div>`).join('');
+            contentEl.innerHTML = `
+                <div class="arc-doc fin-doc">
+                    <pre class="arc-header">SHIFT HANDOVER RECORD &middot; SCN-ADV-002
+Outcome: ${esc(doc.label)}
+Signed at: reboot ${esc(doc.reboot)} &middot; REALITY v${esc(doc.version)}
+Title on file: ${esc(doc.endTitle)}</pre>
+                    <div class="fin-letter">${letter}<p class="arc-signoff">${esc(doc.signoff)}</p></div>
+                    <h3 class="fin-doc-head">Release notes &mdash; the last build of the shift</h3>
+                    <ul class="rn-list">${notes}</ul>
+                    <dl class="fin-roll-inner is-still">${credits}</dl>
+                </div>`;
+        }
+        document.querySelectorAll('.document-item').forEach(item => {
+            item.classList.toggle('selected', item.dataset.docId === doc.id);
         });
     },
 
@@ -2568,12 +3610,38 @@ const ui = {
             const remaining = game.getSoulsUntilNextPoint();
             const runSouls = game.getRunSouls();
             const payout = game.getPrestigeChannelPayout();
-            const nextAward = Math.floor((game.calculateDivinityPoints() + 1) * payout);
+            // Cascade penalty included, or the panel promises an award the
+            // reboot will not pay — the same drift getPrestigeAward() was
+            // introduced to close between the panel and the channel multiplier.
+            const nextAward = Math.floor(
+                (game.calculateDivinityPoints() + 1) * payout * game.getCascadePenalty(),
+            );
             // "banked" would be wrong here: these Souls are earned but not yet
             // cashed in, and cashing in is the decision being described.
-            nextEl.innerText = divinityGain > 0
-                ? `+${this.formatNumber(nextAward)} after ${this.formatNumber(remaining)} more Souls this run`
-                : `first point after ${this.formatNumber(remaining)} more Souls (${this.formatNumber(runSouls)} earned this run)`;
+            /* An archived replay never has a "next point" — its payout is zero
+               by design — so the only number worth showing is how far it is
+               from being shippable at all. */
+            const replaying = State.reality?.build?.channel === 'archived';
+            nextEl.innerText = replaying
+                ? (game.canPrestige()
+                    ? 'archived replay — ready to ship, pays no Divinity'
+                    : `archived replay — ships after ${this.formatNumber(remaining)} more Souls, pays no Divinity`)
+                : divinityGain > 0
+                    ? `+${this.formatNumber(nextAward)} after ${this.formatNumber(remaining)} more Souls this run`
+                    : `first point after ${this.formatNumber(remaining)} more Souls (${this.formatNumber(runSouls)} earned this run)`;
+        }
+
+        /* Shipping is a decision under rising pressure, so the panel that
+           hosts the button has to show the pressure. */
+        const stabilityEl = document.getElementById('prestige-stability');
+        if (stabilityEl) {
+            const cascade = game.cascadeState();
+            stabilityEl.innerText = cascade.tier > 0
+                ? `${cascade.label} — output ×${cascade.output}, award ${Math.round(cascade.award * 100)}%`
+                : cascade.ratePerHour > 0
+                    ? `nominal, degrading +${cascade.ratePerHour.toFixed(2)}/h`
+                    : cascade.recovering ? 'settling' : 'nominal';
+            stabilityEl.className = cascade.tier > 0 ? 'is-alarm' : '';
         }
 
         if (buttonEl) {
@@ -2842,6 +3910,8 @@ const ui = {
             // The shadow instance does not exist until it announces itself in
             // ADV-013, and cannot be removed afterwards.
             if (proc.hiddenUntilContact && !State.adversary?.contacted) return;
+            // Terminated at handover (SCN-ADV-002, the hostile ending).
+            if (proc.hiddenUntilContact && game.endingWorn?.() === 'hostile') return;
 
             runningCount++;
             totalCPU += proc.cpu;
@@ -2900,6 +3970,302 @@ const ui = {
         if (countEl) countEl.innerText = runningCount;
         if (cpuEl) cpuEl.innerText = totalCPU.toFixed(1) + '%';
         if (memEl) memEl.innerText = totalMemory.toFixed(0) + ' MB';
+
+        this.incidentSignature = null;
+        this.renderIncidentTriage();
+    },
+
+    /* ════════════════════════════════════════════════════════════════════
+       INCIDENTS — Task Manager as the triage console.
+
+       The logic is js/incidents.js; this only draws what Incidents.view()
+       returns. Three surfaces:
+
+         - the triage queue at the top of Task Manager, where every ticket
+           shows as a process that is Not Responding, with its clock and its
+           three answers;
+         - an alarm lamp in the system tray and a line on the operator panel,
+           so a ticket is visible without opening anything;
+         - the SEV-1 dialog, which opens itself.
+
+       Every string from a template goes through escapeHtml. None of it is
+       player-authored, but `tell` lines are written the way people write —
+       quotes, apostrophes — and dd40134 is what happens when that reaches an
+       attribute raw.
+       ════════════════════════════════════════════════════════════════════ */
+
+    incidentsAvailable() {
+        return typeof Incidents !== 'undefined' && typeof game !== 'undefined' && game.incidentsLive();
+    },
+
+    formatClock(seconds) {
+        const s = Math.max(0, Math.ceil(seconds));
+        return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    },
+
+    resourceLabel(resource) {
+        return resource ? resource.charAt(0).toUpperCase() + resource.slice(1) : '';
+    },
+
+    /* Called by Incidents whenever the queue changes shape. */
+    onIncidentsChanged() {
+        this.incidentSignature = null;
+        this.updateIncidentChrome();
+    },
+
+    /* Panel tick (~10Hz). Cheap when nothing is open and Task Manager is shut. */
+    updateIncidentChrome() {
+        if (!this.incidentsAvailable()) return;
+        const summary = Incidents.summary();
+
+        const led = document.getElementById('tray-incident-led');
+        if (led) {
+            const lit = summary.open > 0;
+            led.hidden = !summary.everFiled;
+            led.classList.toggle('is-lit', lit);
+            led.classList.toggle('is-outage', lit && summary.worst === 1 && !summary.onHold);
+            led.classList.toggle('is-held', lit && summary.onHold);
+            const label = lit
+                ? `${summary.open} open incident${summary.open === 1 ? '' : 's'} — worst SEV-${summary.worst}${summary.onHold ? ', on hold while you are away' : ''}. Open Task Manager.`
+                : 'No open incidents.';
+            if (led.title !== label) {
+                led.title = label;
+                led.setAttribute('aria-label', label);
+            }
+        }
+
+        const line = document.getElementById('operator-incidents');
+        if (line) {
+            line.hidden = !summary.everFiled;
+            const text = summary.open > 0
+                ? `${summary.open} ${summary.onHold ? 'HELD' : 'OPEN'} · WORST SEV-${summary.worst}`
+                : 'QUEUE CLEAR';
+            const valueEl = line.querySelector('[data-role="count"]');
+            if (valueEl && valueEl.innerText !== text) valueEl.innerText = text;
+            line.classList.toggle('is-alarm', summary.open > 0 && !summary.onHold);
+        }
+
+        this.renderIncidentTriage();
+    },
+
+    renderIncidentTriage() {
+        const host = document.getElementById('taskmgr-incidents');
+        if (!host || !this.incidentsAvailable()) return;
+
+        const now = Date.now();
+        const open = Incidents.state().open;
+        const summary = Incidents.summary();
+        const views = open.map((inc) => Incidents.view(inc, now));
+
+        /* Structure re-renders only when the queue changes shape; clocks,
+           prices and affordability update in place. Re-rendering at 10Hz
+           would eat the click on any button the player was reaching for. */
+        const signature = JSON.stringify([summary.everFiled, summary.onHold, views.map((v) => [
+            v.id, v.severity, !!v.prophet, v.labour ? [v.labour.band.at, v.labour.hits] : null,
+            v.artifact?.id || null, v.canProphet,
+        ])]);
+        if (signature !== this.incidentSignature) {
+            this.incidentSignature = signature;
+            host.hidden = !summary.everFiled;
+            host.innerHTML = this.incidentQueueHtml(views, summary);
+        }
+
+        for (const v of views) {
+            const row = host.querySelector(`[data-incident="${v.id}"]`);
+            if (!row) continue;
+            const clock = row.querySelector('[data-role="clock"]');
+            const clockText = v.held
+                ? 'On hold — clock frozen while you are away'
+                : v.prophet
+                ? `Prophet on site — closes in ${this.formatClock(v.prophet.remaining)}`
+                : v.severity === 1
+                    ? `OUTAGE — ${v.line} on backup · on-call rota contains it in ${this.formatClock(v.remaining)}`
+                    : `Escalates to ${v.nextSeverity === 1 ? 'OUTAGE' : `SEV-${v.nextSeverity}`} in ${this.formatClock(v.remaining)}`;
+            if (clock && clock.innerText !== clockText) clock.innerText = clockText;
+
+            const pay = row.querySelector('[data-role="pay"]');
+            if (pay) {
+                const text = v.cost
+                    ? `Pay ${this.formatNumber(v.cost.amount)} ${this.resourceLabel(v.cost.resource)}`
+                    : 'Cannot be paid off';
+                if (pay.innerText !== text) pay.innerText = text;
+                const disabled = !v.cost || !v.cost.affordable;
+                if (pay.disabled !== disabled) pay.disabled = disabled;
+            }
+        }
+    },
+
+    incidentQueueHtml(views, summary) {
+        const esc = (v) => this.escapeHtml(v);
+        const head = `
+            <div class="incident-queue-head">
+                <span class="code-stamp${views.length ? ' is-alarm' : ''}">INCIDENT QUEUE</span>
+                <span class="incident-queue-count">${views.length
+                    ? `${views.length} open · worst SEV-${summary.worst}`
+                    : 'No open incidents. The universe is, for the moment, someone else’s problem.'}</span>
+            </div>`;
+        if (!views.length) return head;
+        const held = summary.onHold ? `
+            <p class="incident-hold-note"><span class="code-stamp">ON HOLD</span>
+                You stepped away, so the queue did too: penalties lifted, clocks frozen.
+                Touch anything to resume — every ticket gets at least ${Incidents.RETURN_GRACE}s back.</p>` : '';
+
+        const rows = views.map((v) => {
+            const id = esc(v.id);
+            const labour = v.labour ? `
+                <div class="incident-labour" data-role="labour-strip">
+                    <div class="labour-track" aria-hidden="true">
+                        <div class="labour-band" style="left:${(v.labour.band.at * 100).toFixed(2)}%;width:${(v.labour.band.width * 100).toFixed(2)}%"></div>
+                        <div class="labour-marker" data-role="marker"></div>
+                    </div>
+                    <div class="labour-readout">
+                        <span class="labour-pips" aria-label="${v.labour.hits} of ${v.labour.need} aligned">${
+                            Array.from({ length: v.labour.need }, (_, i) => `<i class="${i < v.labour.hits ? 'is-set' : ''}"></i>`).join('')
+                        }</span>
+                        <button type="button" class="incident-btn labour-align" onclick="ui.incidentAction('${id}', 'align')">Align</button>
+                    </div>
+                    <p class="labour-hint">Align when the needle crosses the lit band. A miss costs one.</p>
+                </div>` : '';
+
+            const extra = [
+                v.artifact ? `<button type="button" class="incident-btn is-sacrifice" onclick="ui.incidentAction('${id}', 'sacrifice')"
+                    title="Delete ${esc(v.artifact.name)} from the Recycle Bin to close this ticket">Sacrifice ${esc(v.artifact.name)}</button>` : '',
+                v.canProphet ? `<button type="button" class="incident-btn" onclick="ui.incidentAction('${id}', 'prophet')">Dispatch a Prophet</button>` : '',
+            ].join('');
+
+            return `
+                <article class="incident-row sev-${v.severity}${v.prophet ? ' has-prophet' : ''}" data-incident="${id}">
+                    <header class="incident-row-head">
+                        <span class="code-stamp is-alarm incident-sev">SEV-${v.severity}</span>
+                        <span class="incident-process">${esc(v.process)}</span>
+                        <span class="incident-status">Not Responding</span>
+                        <span class="incident-clock" data-role="clock"></span>
+                    </header>
+                    <div class="incident-title"><span class="incident-id">${id}</span> ${esc(v.title)}</div>
+                    <p class="incident-desc">${esc(v.desc)}</p>
+                    <p class="incident-effect">Reported impact: ${esc(v.effect)}</p>
+                    ${v.prophet ? '' : `<div class="incident-actions">
+                        <button type="button" class="incident-btn is-labour" onclick="ui.incidentAction('${id}', 'labour')"
+                            ${v.labour ? 'disabled' : ''}>${esc(v.labourVerb)}</button>
+                        <button type="button" class="incident-btn" data-role="pay" onclick="ui.incidentAction('${id}', 'resources')"></button>
+                        <button type="button" class="incident-btn is-debt" onclick="ui.incidentAction('${id}', 'debt')"
+                            title="Close the ticket now. The penalty stays until this build ships.">Defer — ${esc(v.debt)} this build</button>
+                        ${extra}
+                    </div>`}
+                    ${labour}
+                </article>`;
+        }).join('');
+
+        return `${head}${held}
+            <p class="incident-queue-note">Unhandled tickets escalate while you are on shift. Tickets raised in error close themselves.
+                Telemetry is not always telling the truth. A hands-on fix pays Overclock charge.</p>
+            ${rows}`;
+    },
+
+    /* Per frame, and only while a ritual is in progress: the needle has to
+       move smoothly or the timing is a guess. One style write per strip. */
+    animateIncidentLabour() {
+        if (!this.incidentsAvailable()) return;
+        const open = Incidents.state().open;
+        if (!open.some((inc) => inc.labour)) return;
+        const now = Date.now();
+        for (const inc of open) {
+            if (!inc.labour) continue;
+            const marker = document.querySelector(`[data-incident="${inc.id}"] [data-role="marker"]`);
+            if (marker) marker.style.left = `${(Incidents.labourMarker(inc, now) * 100).toFixed(2)}%`;
+        }
+    },
+
+    /* Every incident button lands here, from the queue or from the SEV-1
+       dialog. `fromDialog` closes the dialog first; labour then needs the
+       console, so it opens Task Manager on the ticket. */
+    incidentAction(id, action, fromDialog = false) {
+        if (!this.incidentsAvailable()) return;
+        if (fromDialog) this.dismissSystemModal();
+        const now = Date.now();
+        let ok = false;
+        switch (action) {
+            case 'labour':
+                ok = !!Incidents.beginLabour(id, now);
+                if (fromDialog || !system.windows?.taskmgr) system.openApp('taskmgr');
+                break;
+            case 'align': {
+                const result = Incidents.labourPulse(id, now);
+                ok = !result.ignored;
+                const row = document.querySelector(`[data-incident="${id}"] .labour-track`);
+                if (row && !result.ignored && !result.done) {
+                    row.classList.remove('is-hit', 'is-miss');
+                    void row.offsetWidth;   // restart the flash
+                    row.classList.add(result.hit ? 'is-hit' : 'is-miss');
+                }
+                break;
+            }
+            case 'resources': ok = Incidents.payResources(id, now); break;
+            case 'debt': ok = Incidents.defer(id, now); break;
+            case 'sacrifice': ok = Incidents.sacrifice(id, null, now); break;
+            case 'prophet': ok = Incidents.dispatchProphet(id); break;
+            default: return;
+        }
+        if (ok) {
+            this.incidentSignature = null;
+            this.renderIncidentTriage();
+            this.updateIncidentChrome();
+            State.save();
+        }
+        // Keep the keyboard on the instrument: re-rendering replaced it.
+        if (action === 'labour' || action === 'align') {
+            document.querySelector(`[data-incident="${id}"] .labour-align`)?.focus({ preventScroll: true });
+        }
+    },
+
+    /* The OS opens a window you did not ask for. Same contract as
+       showCascadeAlert: refuses to paint over an open modal and SAYS so, so
+       Incidents.announce() can retry it on the next tick instead of
+       recording an outage nobody was told about. */
+    showIncidentAlert(view) {
+        const layer = document.getElementById('system-modal-layer');
+        if (!layer || layer.classList.contains('active') || !view) return false;
+        const esc = (v) => this.escapeHtml(v);
+        const id = esc(view.id);
+        const pay = view.cost
+            ? `<button class="dialog-secondary" type="button" onclick="ui.incidentAction('${id}', 'resources', true)"
+                   ${view.cost.affordable ? '' : 'disabled'}>Pay ${this.formatNumber(view.cost.amount)} ${this.resourceLabel(view.cost.resource)}</button>`
+            : '';
+        const sacrifice = view.artifact
+            ? `<button class="dialog-secondary" type="button" onclick="ui.incidentAction('${id}', 'sacrifice', true)">Sacrifice ${esc(view.artifact.name)}</button>`
+            : '';
+
+        layer.innerHTML = `
+            <section class="system-dialog incident-alert" role="alertdialog" aria-modal="true" aria-labelledby="incident-alert-title">
+                <div class="system-dialog-titlebar">
+                    <span>SYSTEM &mdash; UNSOLICITED</span>
+                    <button type="button" onclick="ui.dismissSystemModal()" aria-label="Acknowledge">X</button>
+                </div>
+                <div class="incident-alert-body">
+                    <div class="incident-alert-stamps">
+                        <span class="code-stamp is-alarm">SEV-1 OUTAGE</span>
+                        <span class="incident-alert-id">${id} &middot; ${esc(view.process)} &middot; Not Responding</span>
+                    </div>
+                    <h2 id="incident-alert-title">${esc(view.title)}</h2>
+                    <p>${esc(view.desc)}</p>
+                    <p class="incident-alert-impact">The <strong>${esc(view.line)}</strong> is running on backup at ${Math.round(Incidents.OUTAGE_SCALE * 100)}% until this is resolved.
+                        Reported impact: ${esc(view.effect)}.</p>
+                    <p class="incident-alert-advice">Stabilise it by hand, pay it off, or defer it and carry
+                        <strong>${esc(view.debt)}</strong> until this build ships.</p>
+                </div>
+                <div class="system-dialog-actions incident-alert-actions">
+                    <button class="dialog-secondary" type="button" onclick="ui.dismissSystemModal()">Later</button>
+                    <button class="dialog-secondary" type="button" onclick="ui.incidentAction('${id}', 'debt', true)">Defer</button>
+                    ${sacrifice}
+                    ${pay}
+                    <button class="dialog-primary" type="button" onclick="ui.incidentAction('${id}', 'labour', true)">${esc(view.labourVerb)}</button>
+                </div>
+            </section>
+        `;
+        layer.classList.add('active');
+        // V7: the alarm lamp in a monitor strip, when installed. Never awaited.
+        if (typeof media !== 'undefined') media.attachLoop?.(layer.querySelector('.incident-alert-body'), 'sev1-alarm');
+        return true;
     },
 
     endProcess(processName) {
@@ -2979,24 +4345,26 @@ const ui = {
                 itemDiv.addEventListener('mouseenter', () => game.triggerAdversaryBark('hover_patch_file'));
             }
             if (item.type === 'achievement') itemDiv.classList.add('item-achievement');
+            if (item.incidentArtifact) itemDiv.classList.add('item-artifact');
 
             const icon = this.getRecycleBinItemIcon(item.type);
 
             itemDiv.innerHTML = `
                 <div class="item-icon">${icon}</div>
                 <div class="item-info">
-                    <div class="item-name">${item.name}</div>
-                    <div class="item-desc">${item.description || ''}</div>
+                    <div class="item-name">${this.escapeHtml(item.name)}</div>
+                    <div class="item-desc">${this.escapeHtml(item.description || '')}</div>
                     <div class="item-meta">
                         <span class="item-type">${item.type}</span>
                         ${item.sacrificeValue ? `<span class="item-value">Value: ${item.sacrificeValue}</span>` : ''}
                     </div>
                 </div>
                 <div class="item-actions">
-                    ${item.type === 'patch' ?
+                    ${item.incidentArtifact ? this.artifactActionsHtml(item) : ''}
+                    ${item.incidentArtifact ? '' : item.type === 'patch' ?
                         `<button class="btn-execute-patch" onclick="ui.executeAdversaryPatch('${item.id}')">Execute</button>` :
                         ''}
-                    ${item.deletable !== false ?
+                    ${item.incidentArtifact ? '' : item.deletable !== false ?
                         `<button class="btn-restore" onclick="ui.restoreItem('${item.id}')">Restore</button>
                          <button class="btn-delete-permanent" onclick="ui.deleteItemPermanently('${item.id}')">Delete</button>
                          ${item.sacrificeValue ? `<button class="btn-sacrifice" onclick="ui.sacrificeItem('${item.id}')">Sacrifice</button>` : ''}` :
@@ -3006,6 +4374,31 @@ const ui = {
 
             container.appendChild(itemDiv);
         });
+    },
+
+    /* An incident artifact cannot be restored — there is nowhere to restore
+       a superseded module or a quarantined false alarm TO — so it offers the
+       one thing it is for, and deletion. */
+    artifactActionsHtml(item) {
+        const id = this.escapeHtml(item.id);
+        const target = this.incidentsAvailable()
+            ? [...Incidents.state().open].sort((a, b) => a.severity - b.severity)[0]
+            : null;
+        const feed = target
+            ? `<button class="btn-sacrifice" onclick="ui.feedArtifact('${id}')">Sacrifice to ${this.escapeHtml(target.id)}</button>`
+            : '<span class="no-action">No open incident</span>';
+        return `${feed}<button class="btn-delete-permanent" onclick="ui.deleteItemPermanently('${id}')">Delete</button>`;
+    },
+
+    feedArtifact(itemId) {
+        if (!this.incidentsAvailable()) return;
+        const target = [...Incidents.state().open].sort((a, b) => a.severity - b.severity)[0];
+        if (!target) return;
+        if (Incidents.sacrifice(target.id, itemId)) {
+            this.updateRecycleBinList();
+            this.onIncidentsChanged();
+            State.save();
+        }
     },
 
     getRecycleBinItemIcon(type) {
@@ -3193,48 +4586,16 @@ const ui = {
     },
 
     // === CASINO HOST BARK DISPLAY ===
+    /* Fate speaks from the dealer strip inside Patience.exe
+       (PatienceView.speak), never as a toast: this used to append a sliding
+       notification to <body> per line, with the line in innerHTML unescaped.
+       The one line that can arrive with the table shut is her parting line
+       (casino_exit, after the window is gone); it goes to the engine log,
+       which writes innerText. */
     displayHostBark(bark) {
         if (!bark) return;
-
-        // Create bark notification
-        const barkDiv = document.createElement('div');
-        barkDiv.className = 'host-bark-notification';
-
-        // Special styling for lore whispers
-        if (bark.context === 'Lore Whisper') {
-            barkDiv.classList.add('lore-whisper');
-        }
-
-        barkDiv.innerHTML = `
-            <div class="host-bark-icon">${this.codeStamp('CAS')}</div>
-            <div class="host-bark-content">
-                <div class="host-bark-name">The Host</div>
-                <div class="host-bark-text">${bark.text}</div>
-            </div>
-        `;
-
-        document.body.appendChild(barkDiv);
-
-        // Slide in
-        setTimeout(() => barkDiv.classList.add('show'), 10);
-
-        // Click to dismiss
-        barkDiv.onclick = () => {
-            barkDiv.classList.remove('show');
-            setTimeout(() => barkDiv.remove(), 300);
-        };
-
-        // Auto-remove after 8 seconds (longer for lore whispers)
-        const duration = bark.context === 'Lore Whisper' ? 12000 : 8000;
-        setTimeout(() => {
-            barkDiv.classList.remove('show');
-            setTimeout(() => barkDiv.remove(), 300);
-        }, duration);
-
-        // Visual feedback
-        if (bark.context === 'Lore Whisper') {
-            this.screenPulse('rgba(218, 165, 32, 0.2)');
-        }
+        if (typeof PatienceView !== 'undefined' && PatienceView.speak(bark)) return;
+        this.log(`[Patience.exe] The house: \u201c${bark.text}\u201d`);
     },
 
     // === SETTINGS FUNCTIONS ===
@@ -3256,6 +4617,9 @@ const ui = {
         if (perfCheckbox) {
             perfCheckbox.checked = State.settings.performanceMode || false;
         }
+
+        if (typeof audio !== 'undefined') audio.syncSettingsUI();
+        if (typeof media !== 'undefined') media.syncSettingsUI();
     },
 
     updateNotationMode(mode) {

@@ -799,3 +799,511 @@ the harness rather than what the name claims.
 - `archived` remains unoffered — it is byte-identical to stable and pays no
   Divinity, so reaching reboot 12 unlocks nothing yet. That is a separate
   unimplemented feature, not a curve problem.
+
+---
+
+## 2026-09-03 — Session 5: certification, and shipping as a decision
+
+Two of `DESIGN_DIRECTION.md`'s Phase 2 items, which are really one decision
+seen from both ends: **§4.2 certification** (the Mandate tree stops being a
+checklist) and **§4.4 the ship-the-build run exit** (a run acquires a shape and
+a way to end badly).
+
+### What the reboot is now
+
+You do not press Divine Reboot. You **ship a build**, and the dialog asks for
+terms: what it pays, which known issues go on the permanent record, and which
+Mandate path the next run is certified on. That last one has **no default** and
+the button stays disabled until you answer it — the Adversary scene's arming
+problem solved by a cheaper route, since a choice that is the button's
+precondition cannot be resolved by a reflex click.
+
+**Certification.** A branch's bonuses apply only while you are certified on it.
+A branch you have certified on before pays a 10% residue forever; one you never
+have pays nothing. Buying a node still unlocks it permanently — certification
+decides which unlocked nodes are switched on. Everything mandate-derived lives
+under a new `scope: 'cert'` so the whole set can be dropped and rebuilt in one
+call, which keeps the residue arithmetic in exactly one place.
+
+The residue scales a modifier's **distance from 1**, not its value. A tenth of
+`mul 1.4` is `mul 1.04`. A tenth of the *value* is `mul 0.14` — an 86%
+production cut dressed as a consolation prize, and indistinguishable from the
+correct answer to any test that only asserts "less than full". There is a test
+that names this.
+
+**Instability and the cascade.** Unpatched known issues accrue instability by
+severity weight, `(4 - severity)` per hour. Three tiers: SEV-2 DEGRADED at 1.0
+(output ×0.6, award 75%), SEV-1 OUTAGE at 1.5 (×0.3, 40%), CASCADE FAILURE at
+2.0 (×0.1, **award 0**). Fully deterministic — no roll — because randomness
+would have cost the golden master and let a player reload-shop a better
+outcome, the same reasoning that made Reality Builds seeded.
+
+**Scars.** Ship with an issue unpatched and it is filed permanently, keeping
+15% of its bite. One entry per id ever, so the ledger is bounded by the eleven
+issues in the pool and a hundred runs cannot compound into an unplayable game.
+
+### Three decisions that were not obvious
+
+- **The opening build does not degrade.** Instability is gated on
+  `prestigeLevel > 0`. Sector 7G's failed integrity check is the tutorial; a new
+  player idling two hours before their first reboot would otherwise return to a
+  collapsed universe having never been told the mechanic exists.
+- **A clean build settles.** Without recovery, clearing every issue on a
+  degraded build strands you at whatever you had accrued with nothing left to
+  patch — punished for doing exactly what the mechanic asked. Instability now
+  bleeds off at 0.5/h once nothing is on file.
+- **A collapsed build can still be shipped.** Shipping is gated on the run's
+  *score*, not its *award*. Gating on the award would trap the player inside
+  the cascade, since the only other exit is a patch a collapsed run may not be
+  able to fund. Shipping for zero is a bad outcome you chose; being unable to
+  ship is a soft-lock, and this project has already shipped two.
+
+### Measured
+
+`tools/balance_sim.mjs` gained a certification policy (rotating by default,
+which is the harsher case), a patch policy, `--push=N` for a patient player and
+`--no-patch` for one who never opens the panel.
+
+Convergence holds — 31 reboots by 48h against 36 before, gaps lengthening
+65→145 min. The certification nerf is visible and modest: `multipliers.praise`
+15.90 → 14.60 at 2h. Lifetime Souls actually rise (129k → 173k at 2h) because
+the simulator now patches.
+
+The cascade only bites the player it is for:
+
+| policy (24h) | reboots | Divinity | shipped degraded |
+|---|---|---|---|
+| patches, ships early | 18 | 18 | never |
+| never patches, ships early | 16 | 16 | never |
+| never patches, pushes to +3 | 3 | **9** | collapsed |
+| never patches, nightly, +3 | 5 | 17 | twice |
+| never patches, pushes to +6 (48h) | 1 | 6 | collapsed |
+
+Pushing a run while ignoring its changelog halves your Divinity. Ignoring the
+changelog while shipping promptly costs nothing but scars. Both are legitimate,
+which is the §4.1 rule that ignoring must sometimes be viable.
+
+### On the tests, a fifth time — and the first that worked
+
+23 new tests, and every one **mutation-verified**: 14 deliberate breaks, 14
+caught. Two survived the first pass and both were the familiar failure:
+
+- *"a grant mandate is not issued on an uncertified path"* only asserted the
+  positive half, so it passed a build that issued every grant regardless of path.
+- *"the same issue is only ever filed once"* poked the scar ledger directly and
+  never exercised the filing dedupe in `performPrestige`.
+
+Also caught by the harness itself: `game_()` handed every test 5000 Divinity to
+shop with, which **raises the reboot bar**, so five tests were asserting against
+a `performPrestige` that had refused and returned. They passed anyway.
+
+### And one bug only the browser could find
+
+`bootstrapCertification` re-derived `everCertified` from the purchase ledger on
+every boot, so buying a single node on a dormant path silently promoted it to
+the residue on the next reload — free value, and it collapses *dormant* and
+*lapsed* into each other, which is the distinction the mechanic is made of.
+Found by reloading the page and watching Entropy relabel itself.
+
+The ship dialog also shipped light-on-light in its first draft: `.system-dialog`
+is a **light** vellum surface and the CSS inherited the dark-panel inks used
+elsewhere in the file. No test can see that.
+
+### Carried forward
+
+- The storage repeatables are broken and **the economy needs them broken** —
+  see `38ea619`. Rank 2+ of every vault is silently discarded, so praise sits
+  capped at 7,000 for an entire 8h run. Fixing it diverges the reboot loop at
+  every grant curve tried. It needs the id fix, the storage curve and the
+  prestige curve re-measured together at 48h and 72h.
+- **That is also why patching is currently free**, and therefore why an
+  attentive player never sees a cascade: every resource sits pinned at its cap,
+  so a cost denominated in resources costs nothing. The cascade is correct and
+  measurable today only under `--no-patch`. Its pressure arrives on its own
+  when storage is fixed.
+- `Modifiers.explain()` still renders nowhere. It is now the obvious home for
+  showing a cascade throttle and a lapsed-path residue in the same stack.
+
+### The review pass, and what it cost to actually look
+
+Four defects, all found after the feature commit was already green, and none
+of them findable by the suite that was passing.
+
+**Temporal Rift was a free hour.** (`0a7040f`) The Rift grants a simulated hour
+of production without going through `tick()`, so it accrued no instability.
+Rifted Souls raise the prestige award like any others, which makes an hour of
+them at no degradation strictly dominant: rift, bank a bigger award, never meet
+a cascade. It defeated the mechanic shipped one commit earlier. Found by reading
+the two code paths that simulate time in bulk — offline progress is the other,
+and its exemption is deliberate and now asserted as a pair with this one so the
+asymmetry is stated rather than inferred.
+
+**A crafted save could switch the whole tree off.** (`335f41f`) Found by
+feeding twenty hostile save shapes through the real loader. Nothing threw and
+no save was reported lost — but the normaliser read
+`cert.path = cert.path || null`, which is a no-op for every truthy value. A
+save carrying `path: "nonsense"` kept it, no branch ever matched, and every
+node the player had ever bought went dormant with no explanation and no way to
+fix it before the next ship. The same amputation `bootstrapCertification` was
+written to prevent, arriving through a different door. `Number(x) || 0` also
+let a *negative* instability through, which would make a player immune to the
+cascade for a hundred hours — reachable, since `importSave` decodes pasted text
+straight into `State`.
+
+**A cascade warning could be swallowed.** (`cc11f22`) `alertedTier` was marked
+before the dialog rendered, and `showCascadeAlert` correctly refuses to paint
+over an open modal. So a collision dropped the warning and recorded it as
+delivered — and `syncCascade` early-returns on an unchanged tier, so there was
+no second chance. Output throttled, award cut, nothing saying why. Not a corner
+case: modals are open exactly when a tier turns over — release notes on every
+reboot, the offline report on every load, the Adversary scene at its
+thresholds. The alert now reports whether it rendered and is retried until it
+lands. Reproduced and fixed against the real collision in a browser.
+
+**A note written with quotes broke the markup around it.** (`dd40134`)
+`'Note left: "too noisy".'` interpolated into `title="${entry.note}"` closed
+the attribute early: the tooltip truncated at `Note left: ` — the punchline
+cut, which is the actual damage here — and two stray attributes appeared on the
+button. Pre-existing, in a panel this session extended. `ui.escapeHtml` now
+covers the six sites where content reaches `innerHTML`.
+
+The mutation harness ended at **21 breaks, 21 caught**, and 28 tests in
+`tests/certification.mjs`. Worth noting what the harness could *not* have
+found: three of these four needed either a browser or a deliberately hostile
+input, and the fourth needed reading two functions side by side and asking why
+they disagreed.
+
+### The adversarial sweep
+
+A three-lens review with two refuters per finding raised 13 and killed 9. The
+four that survived all reproduced, and three of them were holes in the fixes
+above.
+
+**The ship dialog quoted an award it would not pay.** `renderShipDialog` ran
+once, at open, while instability kept accruing underneath and `confirmShip`
+paid `getPrestigeAward()` evaluated fresh. Reproduced: opens at 86 Divinity on
+a SEV-1 build, the run tips into CASCADE FAILURE while the player deliberates,
+the dialog still says 86, shipping banks 0. And this was the *one* place a tier
+change was guaranteed to be invisible, because the cascade alert correctly
+refuses to paint over an open modal — the fix two entries up created the blind
+spot. The award and the cascade block now refresh from the panel tick. Same
+defect as the Divine Settings readout one surface over, which `ui.update()`'s
+own comment already describes: a panel that shows a moving decision has to be
+on the tick.
+
+**Reloading inflated storage caps.** `applyCertification` and `applyScars`
+rebuild derived records every boot, and `dropScope` + re-add *appends* — so
+those records jumped behind everything bought since. On `caps.*` that is not
+float noise, because mandates fold `mulfloor` and storage repeatables fold
+`add`: `floor(base × 1.5 × 3) + 2500` became `floor((base + 2500) × 1.5 × 3)`.
+Measured at **4,750 → 13,500 by pressing reload**, and the verifiers widened it
+— `purchaseMandate` calls `applyCertification` too, so buying any mandate did
+it mid-run with no reload. `Modifiers.reconcileScope` now updates in place,
+appends only what is new, and drops what is no longer wanted.
+
+> I had already dismissed this hazard as "float epsilon" earlier in the
+> session. That was wrong: I only considered `mul`, and never looked at the
+> `mulfloor`/`add` mix on the cap targets.
+
+**The Rift paid its hour at the pre-hour tier.** `tick()` accrues before
+reading rates so a crossing throttles the tick that caused it; the Rift did the
+opposite, and there the ordering is worth a full hour. The previous commit's
+claim that "the rates already carry the throttle" was true only of the tier in
+force *before* the rift.
+
+**A suspended tab degraded the build.** `loop()` replays the whole wall-clock
+gap through one tick, clamped to 8 hours, for exactly the suspended-tab case —
+so instability accrued for time the player was absent, making leaving the game
+*open* strictly worse than closing it. Three bulk-time paths, not the two the
+Rift commit claimed to have audited.
+
+And two lessons that were not findings:
+
+- **A surviving mutant found an untested branch that mattered.**
+  `maintenance_apex` sets `offline.efficiency` to 1, and `residueValue` returns
+  null for `set` — so a lapsing path must *drop* that record, not keep it at
+  its old value. The behaviour was already correct; nothing tested it until the
+  harness said so.
+- **One of my own new tests was vacuous.** The first Rift test compared Souls
+  banked between rifting and living the hour, and both were **zero** — the
+  hand-built fixture had no working production chain, so it passed under either
+  ordering. It now asserts which tier is in force at the moment the rates are
+  read, which is the real property and cannot go vacuous. Sixth time in this
+  project; the first one caught by a mutation harness rather than by a later
+  session.
+
+Final: 32 tests in `tests/certification.mjs`, **26 mutants, 26 caught**, full
+suite green, golden master unchanged.
+
+## 2026-09-30 — Session 6: sinks, loops, sound, and the plan for moving pictures
+
+Current request: find where progress stopped, then improve UI/UX, gameplay,
+time sinks and resource sinks, and plan a visual upgrade (video scenes,
+training videos, animations) with concise Krea art direction.
+
+Branch `session-6/sinks-and-loops` (23 commits on top of `f52cd9c`), not yet
+merged to `main`. Four slices were built in parallel worktrees and merged
+here; the economy re-tune was done on the branch itself.
+
+### Where progress had stopped
+Session 5 (2026-09-03) shipped certification and ship-the-build, then left a
+documented, deliberately-unfixed defect: rank 2+ of every storage repeatable
+was discarded while still charged, so the whole economy sat under a ~7,000
+Praise ceiling — and, because every resource was pinned at its cap, every
+resource sink in the game cost nothing. The handoff said the next session
+should be the storage/economy re-tune. It was.
+
+### The economy (d212027, 5b141cf)
+- Rank is part of a modifier's identity (`Modifiers.autoId`); rank 1 keeps its
+  historical id so saves match themselves, and `reconcileRepeatableRanks`
+  restores ranks a save paid for, filed behind that vault's rank 1 so the
+  `mulfloor`/`add` fold order on caps is preserved.
+- A vault rank costs **65% of the vault it extends**. Geometric cost against a
+  geometric grant was either free forever (caps ran to 7.6e20) or walled (a
+  geometric floor walled every run at the identical 3.3e9). Share-of-vault is
+  scale-invariant and makes storage a sink that competes with automatons.
+- Prestige re-measured on top: bar 35,000 -> 1e8, bar growth 0.8 -> 1.2,
+  payout exponent 0.9 -> 0.75. Measured 22 / 66 / 296 Divinity at 24h / 72h /
+  240h, nothing collapsing toward the five-minute gate. A moderately deeper
+  run pays ~15–25% more; a very deep one wastes hours (runs saturate).
+- Void-tier upgrades 3x, capstones 5x: the first run no longer buys all 44
+  upgrades by minute 37. Void at ~17 min, last capstone ~66 min, first
+  reboot ~86 min for a steady clicker.
+- `tools/balance_sim.mjs --tune=file.json` overrides Economy, vaults,
+  repeatables and upgrade costs per run. The re-tune was a search over ~40
+  configurations at three horizons; this is how it was done.
+
+**Six existing tests went red and all six had gone vacuous, not wrong.** They
+stated runs in raw Souls (500K, 4M, 5M) that were comfortable multiples of the
+old bar and below the new one, so both sides paid zero. Restated in bars. The
+same pattern recurred in two merged slices' fixtures (breakdown, incidents) —
+both caught by their own "fixture check: the reboot happened" guards, which is
+the guard doing its job. **Any future change to the bar: grep tests for
+literal Soul amounts.**
+
+### Incidents — the maintenance loop the premise promised (js/incidents.js)
+14 ticket templates; at most 3 open; SEV-3 -> SEV-2 -> SEV-1 over attended
+minutes; a SEV-1 halts its production line and opens its own dialog (the
+`showCascadeAlert` render-or-retry contract). Every ticket offers **labour**
+(a needle-and-band timing ritual, ~15–45s), **resources** (seconds of
+production, bounded by cap fractions — now a real sink), or **debt** (a
+run-scoped penalty). ~25% are false alarms with a textual tell that close
+themselves if ignored and drop a quarantined log in the Recycle Bin, which —
+with patched-module `.bak` files — can be sacrificed to close any ticket.
+Prophets can be dispatched to a SEV-3. Task Manager is the triage console; a
+tray LED and an operator-panel line show the queue. Offline, Temporal Rift and
+suspended-tab catch-up never file or escalate. Disabled in the simulator
+(`game.incidentsEnabled = false`) — **there is no incident policy in the sim
+yet.** 29 tests, 54/54 mutants caught.
+
+Not done on purpose: `createResourceSacrifice` is still uncalled, and should
+stay so — it grants an unbounded permanent `globalGain` (1e6 Praise ≈
++100,000%). It is a hazard if anything ever calls it.
+
+### Production breakdown (js/breakdown.js)
+Hover, focus or tap any rate or vault for a "Provenance" sheet: base, grouped
+multipliers with sources and ranks, certified-full vs lapsed-residue mandates,
+transients, the cascade throttle in alarm red, the Throne/Revenant draw as a
+subtraction. `getProductionRates` now runs through `computeProduction`, a fold
+over named factors in the exact old operand order, so the rate and its
+explanation share one code path and the golden was byte-identical. 21 tests
+asserting exact equality, 11/11 mutants caught. Also stopped
+`renderRealityPanel` rewriting identical HTML at 10Hz (it destroyed focus).
+
+### Audio (js/audio.js)
+Fully synthesised WebAudio — no files. Buses, limiter, ~22 cues (miracle bell
+climbing a pentatonic with the streak, purchase, the reimagined ding, tiered
+achievement stingers, cascade alarm per tier, adversary glitch, release
+chord, boot POST), an ambient drone that brightens with production and
+darkens/detunes under a cascade, settings in Divine Settings, a tray mute.
+Every call goes through `game.sfx`, inert headlessly. This session added an
+`incident` pager cue and wired Incidents and Patience.exe. Known: browsers
+block audio before a gesture, so the boot cue usually won't play.
+
+### Patience.exe (js/solitaire.js)
+The 500-Adoration Solitaire purchase that installed nothing — and, it turned
+out, could never be bought at all (`minigames` vs `miniGames` schema key) —
+now installs Golf solitaire with the four automaton ranks as suits. Pays
+Adoration and Overclock charge with a continuously-draining fatigue curve so
+it is a break, not a farm; Divine Mulligans (undo / reshuffle) cost 5% / 15%
+of the Praise vault. Rounds are seed + move list, replayed, so they survive
+reload and resist tampered saves. 43 + 9 browser tests, 39/39 mutants caught.
+
+### Visual upgrade plan
+`docs/VISUAL_UPGRADE_PLAN.md`: a paste-ready Krea style block and negative
+prompt, the palette tokens, five rules (never bake text into generated art),
+seven cinematics tied to the code site that plays each, six diegetic
+"CMS Operator Orientation" training tapes for a Sacred Media Player app, the
+sprite/animation sets with art hooks (Patience card classes included), the
+media-layer engineering spec, and a production order.
+
+### Verification
+`npm test` green: save 18, modifiers 78, reality 29, adversary 40, prestige 16,
+storage 12, certification 32, breakdown 21, incidents 29, solitaire 43, golden
+(recaptured twice, intentionally), e2e, Patience e2e 9; `test:audio` 14. The
+integrated build was driven in a browser: a SEV-2 ticket triaged by labour,
+the Provenance sheet on Praise/s, Patience.exe bought and dealt.
+
+### Process notes
+- The Agent tool created all four worktrees from `9db0b7e`, three commits
+  behind `main`. One agent noticed and fast-forwarded; the others were told.
+  **In every agent worktree, check `git merge-base --is-ancestor <expected-base> HEAD`.**
+- Agents share the session scratchpad; a generic filename (`dbg.mjs`) was
+  overwritten mid-session. Prefix scratch files.
+- Vite on this machine binds `localhost` (IPv6) only; the tests default to
+  `127.0.0.1`. Use `COSMOS_TEST_URL=http://localhost:5173`.
+
+### Next
+1. An incident policy in `tools/balance_sim.mjs`, then measure what triage
+   costs the curve (currently invisible to the sim).
+2. Merge `session-6/sinks-and-loops` to `main` (PR).
+3. The media layer (`js/media.js`) and Sacred Media Player from the visual
+   plan, then the first Krea assets: V2 *Ship the Build*, V6 *First Seraph*.
+4. Still open from before: the Archived channel; the Void's thin Reality
+   Build coverage; achievement rewards and shop items mutating `State`
+   directly.
+
+## 2026-10-01 — Session 6, part 2: absence is safe, the archive opens, the tapes roll
+
+Current request: incidents and outages shouldn't punish AFK play — propose
+a better model, then keep building. Same branch, `session-6/sinks-and-loops`
+(18 more commits; still not merged to `main`).
+
+### Incidents now reward attention instead of taxing absence (d45d226, 0dbd9a7)
+- **Presence, not visibility.** Input in the last 2 minutes (`game.isPresent`;
+  `system.trackPresence` installs passive listeners). A visible tab with
+  nobody at the keyboard is idle play.
+- **Away means ON HOLD.** Penalties lifted from the registry, clocks frozen,
+  nothing filed, no dialogs. A save boots held, which keeps offline accrual
+  clean (it reads rates committed straight after `Incidents.bootstrap`); a
+  slept laptop's catch-up tick holds the queue before it reads rates.
+  Return grace: held tickets resume with ≥60s. Deferrals stay applied.
+- **Outages degrade to 25%** instead of zeroing a line, and an outage
+  untouched for 10 attended minutes is **contained by the on-call rota**:
+  closed and filed as a deferral at outage depth (cleared at ship).
+- **A hands-on fix pays Overclock charge** (12 / 20 / 35); paying and
+  deferring pay nothing.
+- Headless there is no presence tracking, so the simulator and every vm
+  suite behave as before. 10 new tests; 14/14 mutants caught.
+
+### The simulator can triage (`--incidents=off|ignore|labour|pay|mixed`)
+Default `off`, golden byte-identical. Labour costs the simulated player its
+clicks for 20–36s and lands through `Incidents.completeLabour`, the same
+path and reward as the ritual. Measured (Divinity, baseline 22 / 66 at
+24h / 72h):
+
+| policy | 24h / 72h | note |
+|---|---|---|
+| labour, pay, mixed | 22 / 66 | mixed ≈ 9 min of attention a day |
+| ignore, before containment | **10 / 10** | soft-locked: 3 permanent outages, no run reaches the bar |
+| ignore, after containment | 20 / 63 | a few percent for not reading the queue |
+| Nightly 48h: off / ignore / mixed | 73 / 57 / 73 | Nightly's teeth; mixed ≈ 30 min/day |
+
+### Archived channel (agent slice, merged c21fe86)
+From reboot 12 the ship dialog offers Archived with a release history
+(`State.reality.history`, validated and capped). A replay regenerates the
+exact build, pays 0 Divinity without moving the bar (it still has to clear
+the run-score bar), and files NULL.OPERATOR's annotations on what you
+shipped unpatched to Notepad › Archive — making ACH-030 reachable for the
+first time, plus ACH-036/037. 18 + 10 tests, 35/35 mutants.
+Open design questions: old saves start with empty history; scars are
+once-per-id-ever, so replaying a cursed build rarely adds a scar.
+
+### Media layer + Sacred Media Player (agent slice, merged 6339cf4)
+`js/media.js` plays cinematics (V1 boot, V2 ship, V5 Void, V6 first Seraph)
+only when the file exists — with `assets/video/` empty the game is exactly
+as before (Vite answers a missing file with index.html + 200, so only a
+media content type counts). Cinematics queue behind system modals on the
+cc11f22 render-or-retry contract. `js/mediaplayer.js`: six training tapes,
+filed at milestones (T1 at 10 Miracles), playable NOW as captioned
+fallback slides from shipped art, with a toggleable CSS VHS treatment.
+Every caption's mechanic was checked against code. Drop-in contract and
+the 33-reel Krea shot list: `docs/VISUAL_UPGRADE_PLAN.md` §7.
+Settings → Cinematics (first time / always / off). 43 + 17 tests, 41/41.
+
+### Smaller
+- Windows reopen where you left them (own localStorage key, clamped,
+  desktop only). 7 browser checks.
+- Achievement bursts: max 3 toasts, the rest queue under a "+N more"
+  plaque; toast text escaped.
+- The welcome-back report says held tickets waited for you.
+- The Notepad counts archive annotations.
+- Every browser suite defaults to `localhost` (Vite here binds IPv6 only).
+
+### Verification
+`npm test` green end to end: 389 node assertions over 12 suites, golden
+unchanged, 5 browser suites (e2e, Patience 9, Archived 10, media 17,
+layout 7); `test:audio` 14 separately. dist rebuilt.
+
+### Next
+1. PR `session-6/sinks-and-loops` → `main` (not pushed; ask first).
+2. Generate Krea reels per §7 and drop them in — V2 *Ship the Build* first.
+3. V3 / V4 / V7 cinematic hooks (cascade, mirror login, SEV-1).
+4. The two Archived design questions above.
+
+### Decisions (user, 2026-10-01)
+- **Archived replays carry no extra stakes.** Shipping a replay dirty rarely
+  adds a scar (scars are once-per-id-ever), and that is accepted: Archived pays
+  0 Divinity and is a lore mode, so a penalty would make a no-reward mode
+  strictly worse. Do not add replay scars or replay rewards.
+- **Old saves start with empty release history.** Accepted. Archived fills in
+  after one more ship; no reconstructed or guessed history.
+- V3 / V4 / V7 cinematic hooks shipped (45ed8bb): dialog loops for the cascade
+  alert and the SEV-1 dialog, and Mirror Login before the Adversary scene,
+  with a presentation-counter guard so a slow probe cannot re-run a finished
+  scene. PR #2 open against `main` (which was still at 9db0b7e; it carries
+  sessions 5 and 6).
+
+### Session 6 part 3 — the arc ends, the Void changes per build (2026-10-01)
+
+**NULL.OPERATOR endings** (agent slice, merged ed0ae77). SCN-ADV-002 "End of
+Shift" opens once the Mirror Login is completed, an Archived replay has been
+*shipped*, reboot ≥ 13 and the save is ≥ 24h old (earliest ~14.5h of steady
+play; never day one; unreachable by the simulator). The relationship band at
+presentation picks the ending and is locked across reload:
+- hostile — *Patched Out*, title Sole Operator: you end void_mirror.service#2;
+  Miracles ×1.2, Divine Events ×0.9; his barks and audit log stop.
+- curious — *Co-Maintenance*, title Co-Operator: a two-Operator rota; Divine
+  Intervention cooldown ×0.9.
+- complicit — *He Takes the Shift*, title Operator Emeritus: you go to the
+  archive; Seraphs ×1.08, Miracles ×0.9.
+Each ends in "release notes for the last build" + a Notepad document; the
+game continues with the title in the Genesis menu, a desktop watermark and a
+per-ending chrome rivet. Modifiers use their own `'ending'` scope (not
+`'permanent'`: reconciling that scope would delete the adversary patch's
+unrebuildable records), re-derived on boot and reconciled in place.
+Replay route: another shipped Archived replay + a band whose ending is unseen.
+Hostile standing stamps regressions "Committed by void_mirror.service#2".
+ACH-038–041. Also fixed a pre-existing Notepad race (a slow fetch could
+overwrite a later-opened document). 39 + 20 tests; 43/44 mutants (1 equivalent).
+Agent's design notes worth a playtest: scripted endings with no in-scene act;
+±3 bands with reboots drifting hostile; the 24h calendar floor is blunt;
+stacked ending modifiers when several are worn.
+
+**Void Reality Builds** (agent slice, merged e34eec0). 13 Void entries (was
+2) across improvements, issues (some priced in Void currencies), regressions
+and a deprecation that cripples the Nemesis lift; eligible from reboot 1
+because performPrestige reseals the Void every reboot and no run ships
+without breaching it (a test pins that premise to the live tables).
+Deterministic, replay-exact. ~2 in 3 Stable builds and 96% of Nightly now
+touch the Void. Curve moved ~2% at 240h (push=1 22/68/311; push=3 27/84/390;
+Nightly 29/117/689); golden recaptured intentionally; Economy table updated.
+
+**Fate deals Patience.exe** (agent slice, merged). `PatienceDealer` in
+js/solitaire.js maps 79 of 80 CasinoHostBarks and all 12 lore whispers to
+real table moments (deal, par, clear, near miss, streaks, Mulligans,
+conceding, idle, tapping the dealer); Fate speaks from a strip under the
+toolbar that never takes focus. CAS-HOST-042 (the pity chip) is
+deliberately unreachable — its `effect` pays, and barks never pay. Fixed a
+cooldown bug (0-second authored cooldowns were read as 10s). NULL.OPERATOR's
+three Fate lines (ADV-BARK-04, ADV-L-15/16) are reachable for curious and
+complicit standing, and Fate answers him (CAS-HOST-081–084). Settings ›
+Dealer Chatter. Casino achievements stay unreachable on purpose (ACH-021
+carries a reward). 41 + 12 tests, 56/56 mutants. DOC-NEW-12 rewritten to
+describe the table that exists.
+
+**Integration:** two cross-slice test assumptions fixed (an endings proxy
+count on the hook table; a non-atomic title read in the smoke test that
+flaked under load). `npm test`: 479 node assertions over 14 suites, golden
+unchanged, 6 browser suites (smoke, Patience 12, Archived 10, media 23,
+layout 7, endings 20).

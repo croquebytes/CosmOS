@@ -76,6 +76,11 @@ const check = (name, fn) => {
 
 /* Put `souls` worth of production into the current run. */
 const earn = (env, souls) => { env.State.totalStats.soulsGained += souls; };
+/* The first reboot's bar. Fixtures are stated in multiples of it rather than
+   in raw Souls: the 2026-09-30 re-tune moved the bar from 35,000 to 1e8, and
+   three tests written in absolute Souls went quietly vacuous — both sides of
+   each comparison fell below the bar and paid zero. */
+const BAR = boot().game.getPrestigeThreshold();
 
 /* Bank the run the way performPrestige does, without the rest of the reset —
    these tests are about the award, not about what a reboot clears. */
@@ -99,7 +104,7 @@ check('reboot timing changes what you earn', () => {
        generate identical lifetime Souls; one banks in four instalments, the
        other in one. Their totals must differ — if they cannot, the reboot
        button is not a decision. */
-    const total = 4_000_000;
+    const total = 114 * BAR;
 
     const split = boot();
     for (let i = 0; i < 4; i++) { earn(split, total / 4); bank(split); }
@@ -118,12 +123,12 @@ check('Divinity is not a function of lifetime Souls alone', () => {
     // The same statement from the other side: identical lifetime, different
     // run history, different answer from the live formula.
     const a = boot();
-    earn(a, 500_000);
+    earn(a, 14 * BAR);
     bank(a);
-    earn(a, 500_000);
+    earn(a, 14 * BAR);
 
     const b = boot();
-    earn(b, 1_000_000);
+    earn(b, 28 * BAR);
 
     assert.equal(a.State.totalStats.soulsGained, b.State.totalStats.soulsGained);
     assert.notEqual(a.game.calculateDivinityPoints(), b.game.calculateDivinityPoints(),
@@ -242,13 +247,13 @@ check('the run baseline survives a real save and load', () => {
        boots a second game against it. */
     const store = {};
     const first = boot(store);
-    earn(first, 500_000);
-    bank(first);
+    earn(first, 5 * BAR);
+    assert.ok(bank(first) >= 1, 'the fixture run never cleared the bar');
     first.State.save();
     assert.ok(store.cosmos_save, 'save() wrote nothing');
 
     const second = boot(store);   // load() runs at the bottom of state.js
-    assert.equal(second.State.runSoulsBaseline, 500_000,
+    assert.equal(second.State.runSoulsBaseline, 5 * BAR,
         'the baseline did not survive the save');
     assert.equal(second.game.getRunSouls(), 0,
         'a reload re-opened the banked run — those Souls can be sold twice');
@@ -324,9 +329,12 @@ check('the Nightly channel is reachable in a plausible number of runs', () => {
        calls them the replayability payload. On the old curve reboot 8 needed
        ~6.1M lifetime Souls and landed at 45 hours of measured play.
 
-       Asserted as total Souls rather than wall-clock so it does not depend on
-       the production curve, and stated as a ceiling so a future rebalance that
-       makes it cheaper still passes. */
+       Asserted in units of the FIRST reboot's Souls rather than wall-clock,
+       so it does not depend on the production curve, and stated as a ceiling
+       so a future rebalance that makes it cheaper still passes. The ratio
+       depends only on the bar's growth: 26x at 0.8, 50x at 1.2 (the
+       2026-09-30 re-tune, where tools/balance_sim.mjs puts reboot 8 at 6h50
+       of play). Past ~64x the ladder's middle is where players stop. */
     /* Clears the bar by a hair rather than landing exactly on it: run Souls are
        a difference of two accumulating seven-digit floats, so an exact landing
        is ambiguous at the last bit. No player lands there — production is
@@ -340,8 +348,8 @@ check('the Nightly channel is reachable in a plausible number of runs', () => {
         const gain = bank(env);
         assert.ok(gain >= 1, `reboot ${reboot + 1} paid nothing at the bar`);
     }
-    assert.ok(souls < 2_000_000,
-        `reaching reboot 8 costs ${Math.round(souls)} Souls; the old curve's 6.1M is what made it unreachable`);
+    assert.ok(souls < 64 * BAR,
+        `reaching reboot 8 costs ${(souls / BAR).toFixed(1)}x the first reboot; the old curve's ~175x is what made it unreachable`);
     assert.ok(env.State.totalDivinityPoints >= 8);
 });
 

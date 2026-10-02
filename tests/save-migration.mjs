@@ -219,6 +219,71 @@ check('a fresh save starts with an open run, not a closed one', () => {
     assert.equal(State.runSoulsBaseline, 0);
 });
 
+/* ── The version stamp is code, not save data ──────────────────────────────
+
+   save() serialises `this`, and SAVE_KEY / BACKUP_KEY / SAVE_VERSION live on
+   State — so every real save file carries them. mergeInto copied them back
+   over the running build's constants, which pinned the game to whatever
+   version last wrote the file.
+
+   Both fixtures below carry SAVE_VERSION the way a REAL save does. The
+   existing v5 test above does not, which is exactly why it could not see
+   this: a hand-written fixture is not the shape save() produces. */
+
+check("a save cannot overwrite the running build's SAVE_VERSION", () => {
+    // Read the constant from a save-less boot rather than restating it, so
+    // this keeps testing the property and not the number of the day.
+    const current = bootWith({}).State.SAVE_VERSION;
+    const { State } = bootWith({
+        cosmos_save: JSON.stringify({
+            SAVE_VERSION: 3, saveVersion: 3,
+            resources: { praise: 5 },
+        }),
+    });
+    assert.equal(State.SAVE_VERSION, current,
+        'the save dictated the version constant — every later migration is now unreachable');
+    assert.equal(State.saveVersion, current, 'the stamp did not move forward');
+});
+
+check('a stale save cannot pin the game to its own version', () => {
+    /* The whole failure, end to end, because each half of it looks harmless
+       alone. A v4 save pins SAVE_VERSION to 4; the next save() stamps
+       saveVersion 4 again; migration 5 therefore runs on EVERY load, and
+       migration 5 closes the run. Measured on the real loader: runSouls
+       pinned at 0 forever, so the player can never reboot again.
+
+       Asserting on runSouls rather than on the version number is deliberate.
+       The version is the mechanism; a run that can never be banked is the
+       thing the player would actually notice. */
+    let store = {
+        cosmos_save: JSON.stringify({
+            SAVE_VERSION: 4, saveVersion: 4,
+            resources: { praise: 1 },
+            totalStats: { praiseGained: 0, offeringsGained: 0, soulsGained: 500_000 },
+        }),
+    };
+
+    // Load once: migration 5 legitimately closes the pre-v5 run.
+    let boot = bootWith(store);
+    assert.equal(boot.State.runSoulsBaseline, 500_000);
+    boot.State.save();
+    store = Object.fromEntries(boot.store);
+
+    // Play. Then reload twice, saving in between, as a returning player does.
+    boot = bootWith(store);
+    boot.State.totalStats.soulsGained += 100_000;
+    boot.State.save();
+    store = Object.fromEntries(boot.store);
+
+    boot = bootWith(store);
+    assert.equal(boot.State.runSoulsBaseline, 500_000,
+        'migration 5 re-ran and re-closed a run that was already open');
+    assert.equal(
+        boot.State.totalStats.soulsGained - boot.State.runSoulsBaseline, 100_000,
+        'the run was reset to zero on load — this player can never reboot again',
+    );
+});
+
 check('save() keeps the previous write as a backup', () => {
     const { State, store } = bootWith({ cosmos_save: JSON.stringify({ saveVersion: 3, resources: { praise: 5 } }) });
     State.resources.praise = 6;

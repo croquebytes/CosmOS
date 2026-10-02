@@ -6,7 +6,8 @@
  * plays the game with a simple greedy policy so progression can be measured
  * rather than guessed at.
  *
- *   node tools/balance_sim.mjs [hours] [--clicks-per-min N] [--quiet]
+ *   node tools/balance_sim.mjs [hours] [--clicks-per-min=N] [--push=N] [--no-patch]
+ *                              [--channel=stable] [--certify=path] [--tune=file.json] [--json] [--quiet]
  *
  * Reports when each milestone lands and when the player runs out of things to
  * buy, which is the number that actually matters for a game meant to be idled.
@@ -68,7 +69,7 @@ function makeSandbox() {
 }
 
 const ctx = makeSandbox();
-for (const file of ['js/state.js', 'js/modifiers.js', 'js/reality.js', 'js/game.js']) {
+for (const file of ['js/state.js', 'js/modifiers.js', 'js/reality.js', 'js/incidents.js', 'js/game.js']) {
     vm.runInContext(readFileSync(resolve(ROOT, file), 'utf8'), ctx, { filename: file });
 }
 
@@ -80,13 +81,98 @@ const { State, game, UpgradeList, MandateList, RepeatableList, AutomatonSpecs, E
         ctx,
     );
 
+/* --tune=file.json overrides balance constants for one run without editing
+   the source, so a curve can be swept rather than hand-edited and reverted:
+
+     { "economy":     { "prestigeThresholdGrowth": 0.85 },
+       "vaults":      { "costFraction": 0.6, "capacityGrowth": 1.3 },
+       "repeatables": { "praise_vault": { "baseCost": 500 } } }
+
+   "vaults" applies to every storage repeatable (the ones with a
+   capacityStep); "repeatables" patches one spec by id and wins over it;
+   "upgradeCostScale" multiplies one upgrade's whole cost by id. */
+const TUNE_PATH = (args.find((a) => a.startsWith('--tune=')) || '').split('=')[1] || null;
+if (TUNE_PATH) {
+    const tune = JSON.parse(readFileSync(resolve(process.cwd(), TUNE_PATH), 'utf8'));
+    Object.assign(Economy, tune.economy || {});
+    for (const spec of RepeatableList) {
+        if (spec.capacityStep && tune.vaults) Object.assign(spec, tune.vaults);
+        if (tune.repeatables?.[spec.id]) Object.assign(spec, tune.repeatables[spec.id]);
+    }
+    // "upgradeCostScale": { "void_unlock": 8 } multiplies every currency in that cost.
+    for (const upgrade of UpgradeList) {
+        const k = tune.upgradeCostScale?.[upgrade.id];
+        if (!k) continue;
+        for (const res of Object.keys(upgrade.cost)) upgrade.cost[res] = Math.ceil(upgrade.cost[res] * k);
+    }
+}
+
 /* Pin the Reality Build seed. Builds are a pure function of (runSeed,
    prestigeLevel, channel), so fixing the seed keeps the simulation
    deterministic and the golden master meaningful. Override with --seed to
    sample a different sequence of universes. */
 const SEED = Number((args.find((a) => a.startsWith('--seed')) || '').split('=')[1]) || 20260726;
 const CHANNEL = (args.find((a) => a.startsWith('--channel')) || '').split('=')[1] || 'stable';
-State.reality = { runSeed: SEED, channel: CHANNEL, build: null, shipped: 0 };
+/* Whole-object, so every field the schema declares has to be restated here.
+   A per-run field added under State.reality and forgotten in this literal is
+   `undefined` for the entire simulation, which looks like a balance change
+   rather than a missing pin. */
+State.reality = {
+    runSeed: SEED, channel: CHANNEL, build: null, shipped: 0,
+    instability: 0, cascadeTier: 0, alertedTier: 0, scars: [],
+};
+
+/* Which Mandate path the simulated player certifies on at each reboot.
+
+   `--certify=creation` pins one path. The default ROTATES, taking the branch
+   with the most owned nodes that is not the current one, because a player who
+   never rotates never sees the residue and a player who rotates every time
+   never keeps a bonus — and the mechanic is supposed to make both of those
+   legitimate. Rotation is the harsher of the two on the economy, so it is the
+   right default for a balance measurement. */
+const CERTIFY = (args.find((a) => a.startsWith('--certify')) || '').split('=')[1] || null;
+
+/* How deep the simulated player pushes a run before shipping it.
+
+   1 is the impatient player: bank the moment there is a point to bank. That
+   is the loop the reboot curve was tuned against and it stays the default.
+   Higher values model the player the cascade exists for — someone holding a
+   run open for a fatter award while unpatched issues degrade the build. The
+   whole ship-or-push decision is invisible at --push=1, because a run that
+   short never reaches a cascade tier. */
+const PUSH = Number((args.find((a) => a.startsWith('--push')) || '').split('=')[1]) || 1;
+
+/* --no-patch models the player who never opens the Universal Engine panel.
+   It is the only policy under which the cascade is currently reachable, and
+   it exists so that is measurable rather than assumed. */
+const NO_PATCH = args.includes('--no-patch');
+
+/* --incidents=off|ignore|labour|pay|mixed. Default OFF, which keeps the
+   golden master byte-identical: the economy constants are measured without
+   the triage layer, and incident cost is measured AGAINST that baseline.
+
+     ignore  never triages. Tickets escalate to outages (25% lines) and stay.
+     labour  fixes every ticket by hand. Labour costs attention: the player
+             stops clicking Miracles for LABOUR_SECONDS, then the ritual
+             lands through Incidents.completeLabour — the same path, and the
+             same Overclock reward, as the real ritual's last hit.
+     pay     pays every ticket the moment it is affordable, never labours.
+     mixed   a reasonable player: reads the ticket (spots a false alarm's
+             tell 70% of the time and ignores it), labours SEV-3s, pays
+             SEV-2 and outages when affordable, else labours them.
+
+   The simulated player is always present (no presence tracking headless),
+   so this measures the worst case: a player at the keyboard for every
+   second of the run. Spawning uses a seeded rng so runs stay deterministic. */
+const INCIDENTS = (args.find((a) => a.startsWith('--incidents=')) || '').split('=')[1] || 'off';
+const Incidents = vm.runInContext("typeof Incidents === 'undefined' ? null : Incidents", ctx);
+game.incidentsEnabled = INCIDENTS !== 'off';
+if (game.incidentsEnabled) {
+    if (!Incidents || !['ignore', 'labour', 'pay', 'mixed'].includes(INCIDENTS)) {
+        throw new Error(`--incidents=${INCIDENTS}: expected off|ignore|labour|pay|mixed`);
+    }
+    Incidents.random = vm.runInContext('mulberry32', ctx)((SEED ^ 0x1c1de) >>> 0);
+}
 
 // The registry has to be seeded before any rate is read, exactly as
 // game.initializeSession() does it in the browser.
@@ -128,6 +214,40 @@ function buyMandates(log, t) {
         game.purchaseMandate(mandate.id);
         if (State.purchasedMandates[mandate.id]) log(t, `mandate: ${mandate.name} (${mandate.cost} DP)`);
     }
+}
+
+/* The path to certify on at the next reboot. See CERTIFY above. */
+function nextCertification() {
+    if (CERTIFY) return CERTIFY;
+    const current = game.certification().path;
+    const ranked = game.CERT_BRANCHES
+        .map((b) => game.branchStanding(b))
+        .sort((a, b) => b.spent - a.spent);
+    return (ranked.find((s) => s.branch !== current) || ranked[0]).branch;
+}
+
+/* Known issues: patch when it is affordable without starving the run.
+
+   The policy exists because instability makes ignoring the changelog a real
+   cost, and a simulator that never patches would measure a game nobody
+   plays. The 1.6x reserve is the same shape as the repeatable policy's —
+   spend on repairs only out of genuine surplus, so patching does not simply
+   out-compete buying automatons. */
+function patchIssues(log, t) {
+    if (NO_PATCH) return false;
+    const build = State.reality?.build;
+    if (!build) return false;
+    let patched = false;
+    for (const entry of Reality.unpatchedIssues(build)) {
+        const cost = Reality.patchCostOf(build, entry.id);
+        if (!cost) continue;
+        if ((cost.bag[cost.resource] || 0) < cost.amount * 1.6) continue;
+        if (game.patchKnownIssue(entry.id)) {
+            patched = true;
+            log(t, `patched: ${entry.id} (${Math.ceil(cost.amount)} ${cost.resource})`);
+        }
+    }
+    return patched;
 }
 
 /* Repeatables: buy whenever affordable, but keep a reserve so the policy does
@@ -205,6 +325,45 @@ function playVoid(log, t) {
     return bought;
 }
 
+/* Attention a hand fix costs, by severity: a person with a few misses. */
+const LABOUR_SECONDS = { 3: 20, 2: 28, 1: 36 };
+const incidentTally = { labour: 0, pay: 0, ignoredFalse: 0, labourSeconds: 0 };
+let labouring = null;
+const readTell = new Map();
+const tellRng = Incidents ? vm.runInContext('mulberry32', ctx)((SEED ^ 0x7e11) >>> 0) : null;
+
+/* Returns true while the player's attention is on a ritual. */
+function triageIncidents(log, t, now) {
+    if (!game.incidentsEnabled || INCIDENTS === 'ignore') return false;
+    if (labouring) {
+        if (t < labouring.until) return true;
+        if (Incidents.completeLabour(labouring.id, now)) incidentTally.labour++;
+        labouring = null;
+    }
+    for (const inc of [...Incidents.state().open]) {
+        if (inc.prophet) continue;
+        if (INCIDENTS === 'mixed' && inc.falseAlarm) {
+            if (!readTell.has(inc.id)) readTell.set(inc.id, tellRng() < 0.7);
+            if (readTell.get(inc.id)) continue;
+        }
+        const wantsPay = INCIDENTS === 'pay' || (INCIDENTS === 'mixed' && inc.severity < 3);
+        if (wantsPay) {
+            const cost = Incidents.resourceCost(inc, now);
+            if (cost?.affordable && Incidents.payResources(inc.id, now)) {
+                incidentTally.pay++;
+                log(t, `incident ${inc.id} SEV-${inc.severity}: paid ${Math.ceil(cost.amount)} ${cost.resource}`);
+                continue;
+            }
+            if (INCIDENTS === 'pay') continue;
+        }
+        Incidents.beginLabour(inc.id, now);
+        labouring = { id: inc.id, until: t + LABOUR_SECONDS[inc.severity] };
+        incidentTally.labourSeconds += LABOUR_SECONDS[inc.severity];
+        return true;
+    }
+    return false;
+}
+
 function run() {
     const start = Date.now();
     let now = start;
@@ -228,7 +387,8 @@ function run() {
     for (let t = 0; t < totalSeconds; t++) {
         now = start + t * 1000;
 
-        if (t >= nextClick && Number.isFinite(clickInterval)) {
+        const busy = triageIncidents(log, t, now);
+        if (!busy && t >= nextClick && Number.isFinite(clickInterval)) {
             game.manualPraise(null);
             nextClick = t + clickInterval;
         }
@@ -248,6 +408,7 @@ function run() {
         if (buyRepeatables(log, t)) lastPurchaseSecond = t;
         if (buyAutomatons(log, t)) lastPurchaseSecond = t;
         if (playVoid(log, t)) lastPurchaseSecond = t;
+        if (patchIssues(log, t)) lastPurchaseSecond = t;
 
         /* Prestige like a player would.
 
@@ -265,12 +426,22 @@ function run() {
            patient player still lands within ~20%, which is what keeps it a
            decision rather than a solved one. Five minutes of spacing stands in
            for a player who is not staring at the button. */
-        const gain = game.calculateDivinityPoints();
-        if (gain >= 1 && t - lastPrestigeSecond > 300) {
-            game.performPrestige();
+        /* Ships on the AWARD, not the raw score. Under a cascade those two
+           diverge — the award is what the reboot actually pays — and a policy
+           that shipped on the score would happily bank a collapsed build for
+           nothing and call it progress. */
+        const gain = game.getPrestigeAward();
+        if (gain >= PUSH && t - lastPrestigeSecond > 300) {
+            const cascade = game.cascadeState();
+            game.performPrestige({ confirmed: true, certifyOn: nextCertification() });
             lastPrestigeSecond = t;
-            prestigeLog.push({ t, gain, total: State.totalDivinityPoints });
-            log(t, `PRESTIGE #${State.prestigeLevel} -> +${gain} DP (total ${State.totalDivinityPoints})`);
+            prestigeLog.push({
+                t, gain, total: State.totalDivinityPoints,
+                certified: game.certification().path,
+                tier: cascade.tier,
+                scars: State.reality.scars.length,
+            });
+            log(t, `PRESTIGE #${State.prestigeLevel} -> +${gain} DP (total ${State.totalDivinityPoints}), certified ${game.certification().path}`);
             lastPurchaseSecond = t;
         }
 
@@ -353,12 +524,24 @@ if (JSON_OUT) {
             shipped: State.reality.shipped,
             version: State.reality.build?.version,
             entries: (State.reality.build?.entries || []).map((e) => `${e.kind}:${e.id}${e.patched ? ':patched' : ''}`),
+            instability: State.reality.instability,
+            cascadeTier: State.reality.cascadeTier,
+            scars: [...State.reality.scars].sort(),
+        },
+        certification: {
+            path: State.certification.path,
+            everCertified: [...State.certification.everCertified].sort(),
         },
         upgradesOwned: Object.keys(State.upgrades).filter((k) => State.upgrades[k]).sort(),
         mandatesOwned: Object.keys(State.purchasedMandates).filter((k) => State.purchasedMandates[k]).sort(),
         lastPurchaseSecond,
         prestigeLog
     };
+    // Only when a policy is on, so the golden master's shape is untouched.
+    if (game.incidentsEnabled) {
+        snapshot.incidents = { policy: INCIDENTS, ...incidentTally, stats: { ...Incidents.state().stats },
+            open: Incidents.state().open.map((i) => `${i.template}@SEV-${i.severity}`) };
+    }
     console.log(JSON.stringify(snapshot, null, 1));
     process.exit(0);
 }
@@ -402,6 +585,12 @@ for (const entry of State.reality.build?.entries || []) {
 console.log(`  standing doctrine rank ${State.standingDoctrine || 0} (+${Math.round((game.getDoctrineBonus() - 1) * 100)}% all production)`);
 console.log(`  upgrades left     ${remainingUpgrades} / ${UpgradeList.length}`);
 console.log(`  mandates left     ${remainingMandates} / ${MandateList.length}`);
+if (game.incidentsEnabled) {
+    const st = Incidents.state().stats;
+    console.log(`  incidents (${INCIDENTS})  filed ${st.filed}, outages ${st.outages}, by hand ${incidentTally.labour}` +
+        ` (${Math.round(incidentTally.labourSeconds / 60)} min of attention), paid ${incidentTally.pay},` +
+        ` false alarms let close ${st.falseAlarmsCleared}, open now ${Incidents.state().open.length}`);
+}
 console.log(`  last purchase at  ${hhmmss(lastPurchaseSecond)}` +
             (lastPurchaseSecond < totalSeconds - 60
                 ? `  → ${hhmmss(totalSeconds - lastPurchaseSecond)} of DEAD TIME`
