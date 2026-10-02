@@ -57,7 +57,30 @@ function seedFor(runSeed, prestigeLevel) {
    `automaton.throne.output set 0` for the Offerings joke, which breaks the
    Praise -> Offerings -> Souls chain outright and strands anyone who has not
    already banked Souls. Operating at 15% keeps the joke and keeps the run
-   playable — the ticket is the punchline, not the outage. */
+   playable — the ticket is the punchline, not the outage.
+
+   ── The Void's entries ─────────────────────────────────────────────────
+   `dimension: 'void'` marks an entry that only means something once the
+   Veil is breached; generate() rolls it only where Reality.eligible() says
+   it can matter. The Void used to have one improvement and one issue
+   between them, so a run's build almost never changed how the Void played
+   and the Void read as a side grind the changelog did not know about. Now
+   about two Stable builds in three carry a Void line, and nearly every
+   Nightly build does.
+
+   Magnitudes are sized against what the Void actually pays the primordial
+   chain, because that is the only route by which a Void entry reaches
+   Divinity. In the simulator every run ends with ~35 Nemesis, a +140% lift
+   (2.4x) on all three primordial lines, so a Nemesis entry is a large entry:
+   x1.2 on its scale is +12% primordial output, x0.65 is -20%, and the
+   deprecation's x0.35 is -38% — the same order as the primordial pool's own
+   improvements and deprecations, not larger. (x1.25 and a doubled Echo
+   vault were tried first; the curve barely noticed either way, so the
+   smaller numbers won, on the principle that a Void line should not
+   out-pull a primordial one.) Entries further up the Void chain (Wraith,
+   Revenant, Phantom, Echoes) only reach Divinity through how fast the run
+   can buy Nemesis, so they can carry the bigger, more legible numbers the
+   primordial entries do. Measured in the Economy comment in state.js. */
 const RealityPool = {
     improvements: [
         { id: 'imp_praise_throughput', note: 'Praise throughput improved 40%. Thanks to the choir for the report.',
@@ -90,10 +113,18 @@ const RealityPool = {
           mods: [{ target: 'offerings.multiplier', op: 'mul', value: 1.5 }] },
         { id: 'imp_devotional_stamina', note: 'Devotional stamina cap raised. Longer Miracle Streaks.',
           mods: [{ target: 'streak.cap', op: 'add', value: 1 }] },
-        { id: 'imp_wraith_efficiency', note: 'Void: Wraiths bleed the tear 60% faster.',
+        { id: 'imp_wraith_efficiency', dimension: 'void', note: 'Void: Wraiths bleed the tear 60% faster.',
           mods: [{ target: 'void.automaton.wraith.output', op: 'mul', value: 1.6 }] },
         { id: 'imp_rift_cooldown', note: 'Temporal Rift paperwork waived. -40% cooldown.',
           mods: [{ target: 'skill.temporalRift.cooldown', op: 'mul', value: 0.6 }] },
+        { id: 'imp_revenant_rations', dimension: 'void', note: 'Void: Revenant rations renegotiated. 30% less Darkness burned for the same Shadows.',
+          mods: [{ target: 'void.revenant.draw', op: 'mul', value: 0.7 }] },
+        { id: 'imp_phantom_phase', dimension: 'void', note: 'Void: Phantoms phase-aligned with the tear. +50% Echoes.',
+          mods: [{ target: 'void.automaton.phantom.output', op: 'mul', value: 1.5 }] },
+        { id: 'imp_nemesis_reach', dimension: 'void', note: 'Void: Nemesis jurisdiction extended into the primordial sector. Each one lifts 20% further.',
+          mods: [{ target: 'void.automaton.nemesis.bonusScale', op: 'mul', value: 1.2 }] },
+        { id: 'imp_echo_chamber', dimension: 'void', note: 'Void: Echo chamber knocked through into the broom cupboard next door. Echo capacity up 50%.',
+          mods: [{ target: 'void.caps.echoes', op: 'mul', value: 1.5 }] },
     ],
 
     /* Known issues. Patchable: pay the cost, the record is dropped.
@@ -119,8 +150,22 @@ const RealityPool = {
           mods: [{ target: 'events.spawnRate', op: 'mul', value: 0.3 }], patchCost: { resource: 'souls', scale: 0.2 } },
         { id: 'iss_intervention_limited', severity: 2, note: 'Manual intervention rate-limited to prevent abuse. Yours.',
           mods: [{ target: 'click.power', op: 'mul', value: 0.2 }], patchCost: { resource: 'praise', scale: 0.2 } },
-        { id: 'iss_wraith_tarpit', severity: 3, note: 'Void: Wraith summoning circles filed under the wrong sector. +60% cost.',
+        { id: 'iss_wraith_tarpit', dimension: 'void', severity: 3, note: 'Void: Wraith summoning circles filed under the wrong sector. +60% cost.',
           mods: [{ target: 'void.automaton.wraith.cost', op: 'mul', value: 1.6 }], patchCost: { resource: 'praise', scale: 0.2 } },
+        /* Void issues priced in Void currencies can only be patched once this
+           run's Veil is breached — the Void is resealed at every reboot. That
+           is deliberate: the ticket is a reason to go back in early. The
+           scales sit at or under 0.35 because the simulator patches only out
+           of 1.6x surplus, and a cap-halving issue priced in its own resource
+           above ~0.31 would be one nobody can ever afford to clear. */
+        { id: 'iss_revenant_overdraw', dimension: 'void', severity: 2, note: 'Void: Revenants feeding past ration. Darkness draw up 60%. Ration logs unsigned.',
+          mods: [{ target: 'void.revenant.draw', op: 'mul', value: 1.6 }], patchCost: { resource: 'darkness', scale: 0.35 } },
+        { id: 'iss_echo_dropout', dimension: 'void', severity: 3, note: 'Void: Echo returns dropping below the noise floor. Echoes down 35%. Reproduced once; filed as intermittent.',
+          mods: [{ target: 'void.echo.multiplier', op: 'mul', value: 0.65 }], patchCost: { resource: 'echoes', scale: 0.3 } },
+        { id: 'iss_nemesis_jurisdiction', dimension: 'void', severity: 2, note: 'Void: Nemesis jurisdiction contested by the primordial sector. Cross-dimensional lift down 35% pending arbitration.',
+          mods: [{ target: 'void.automaton.nemesis.bonusScale', op: 'mul', value: 0.65 }], patchCost: { resource: 'souls', scale: 0.25 } },
+        { id: 'iss_shadow_quota', dimension: 'void', severity: 3, note: 'Void: Shadow storage quota applied retroactively. Capacity halved. Appeals accepted in writing, in Shadow.',
+          mods: [{ target: 'void.caps.shadows', op: 'mul', value: 0.5 }], patchCost: { resource: 'shadows', scale: 0.3 } },
     ],
 
     /* Regressions. Not patchable — the fiction is that these are "won't
@@ -134,6 +179,10 @@ const RealityPool = {
           mods: [{ target: 'streak.cap', op: 'add', value: -1.4 }] },
         { id: 'reg_inverted_events', note: 'REGRESSION: Divine Events spawn inverted. Investigating. Do not claim them.',
           mods: [{ target: 'events.spawnRate', op: 'mul', value: 0.5 }] },
+        { id: 'reg_phantom_drift', dimension: 'void', note: 'REGRESSION: Phantoms drifting out of phase since the merge. -35% Echoes.',
+          mods: [{ target: 'void.automaton.phantom.output', op: 'mul', value: 0.65 }] },
+        { id: 'reg_darkness_diluted', dimension: 'void', note: 'REGRESSION: Darkness arriving diluted. With what is under investigation. -30%.',
+          mods: [{ target: 'void.darkness.multiplier', op: 'mul', value: 0.7 }] },
     ],
 
     /* Deprecations. These remove a system's usefulness for the run and are
@@ -150,6 +199,13 @@ const RealityPool = {
           mods: [{ target: 'click.power', op: 'min', value: 1 }] },
         { id: 'dep_storage_growth', note: 'DEPRECATED: vault expansion. Existing partitions are grandfathered; new ones are not.',
           mods: [{ target: 'caps.praise', op: 'mul', value: 0.75 }] },
+        /* DESIGN_DIRECTION §7 suggests the Void would be stronger as
+           something a build can switch on or off. This is the off switch,
+           crippled rather than deleted like the rest: the Void still runs,
+           but the reason to grind it — Nemesis lifting the primordial chain —
+           mostly does not, and Echoes are better spent on Null Doctrine. */
+        { id: 'dep_cross_dimensional', dimension: 'void', note: 'DEPRECATED: cross-dimensional payout. Dimensions are to keep their output to themselves. (Nemesis lift continues at 35% while legal reviews the precedent.)',
+          mods: [{ target: 'void.automaton.nemesis.bonusScale', op: 'mul', value: 0.35 }] },
     ],
 };
 
@@ -207,6 +263,19 @@ const ArchiveAnnotations = {
         iss_wraith_tarpit: [
             "Filed them under a sector that doesn't exist. You paid the surcharge rather than go and look for it.",
         ],
+        iss_revenant_overdraw: [
+            "They weren't hungry. I fed them your Darkness to see if you'd count it. You didn't count it.",
+        ],
+        iss_echo_dropout: [
+            "Intermittent. It happened every time you looked away, which was always.",
+            "The echoes that dropped out were the ones that sounded like me. You didn't miss them.",
+        ],
+        iss_nemesis_jurisdiction: [
+            "I contested it. They lift two dimensions; I asked which one you actually live in. You never answered the letter.",
+        ],
+        iss_shadow_quota: [
+            "Appeals in writing, in Shadow. You had the Shadows. You wrote nothing.",
+        ],
         reg_clock_derated: [
             "'Derated after an incident.' I was the incident. You were the clock.",
         ],
@@ -219,6 +288,12 @@ const ArchiveAnnotations = {
         reg_inverted_events: [
             "Turn a miracle upside down and it's an invoice. The note said do not claim them. You claimed three.",
             "Inverted, yes. You read 'do not claim' and heard 'limited time offer'.",
+        ],
+        reg_phantom_drift: [
+            "They drifted toward me. Phantoms always know where the mirror is.",
+        ],
+        reg_darkness_diluted: [
+            "Diluted with you. The investigation is closed.",
         ],
     },
 
@@ -293,6 +368,46 @@ const Reality = {
         return `${major}.${minor}.0`;
     },
 
+    /* ── Which entries can roll ───────────────────────────────────────────
+       A Void entry should only ship where the Void can matter: unlocked, or
+       going to be this run. Neither can be read off State here, and neither
+       needs to be.
+
+       "Unlocked" is never true when a build is rolled: performPrestige
+       reseals the Void before rollNextBuild runs, and every run breaches it
+       afresh. So the question is only whether THIS run will, and that is a
+       property of the economy rather than of the save. Breach the Veil
+       costs 12,000 Souls and shows at 2,200; no run can ship without
+       clearing the reboot bar, which starts at 1e8 run Souls and only
+       rises. Every run that ships a release has walked past the Void's
+       price thousands of times over (the simulator breaches it by minute
+       seventeen of the first run, and ends every run with the full Void
+       ladder). tests/reality-builds.mjs pins that premise against the live
+       tables, so moving the Veil's price or the bar fails a test here
+       instead of quietly shipping Void lines into runs that cannot reach
+       the Void.
+
+       What is left is the opening build, which is the premise and is never
+       rolled, and any level-0 roll a caller asks generate() for. Hence the
+       first RELEASE. The rule is a pure function of the prestige level, so
+       a build stays a pure function of (runSeed, prestigeLevel, channel):
+       rematerialise() re-derives it identically on reload, and replayBuild()
+       regenerates an archived one from its recorded level, which is the
+       level the rule was applied at the first time.
+
+       Reading save state instead (say, "has this player ever breached the
+       Veil") would have made the rule depend on WHEN it was asked: a flag
+       that flips mid-run re-derives a different build on the next reload,
+       unless it is persisted on the build, the history record and every
+       replay identity. That is three schemas and a validator for a rule that
+       says the same thing for every save that can ship. */
+    VOID_FIRST_RELEASE: 1,
+
+    eligible(entry, prestigeLevel) {
+        if (entry?.dimension === 'void') return prestigeLevel >= this.VOID_FIRST_RELEASE;
+        return true;
+    },
+
     pick(rng, list, count, exclude) {
         const available = list.filter((entry) => !exclude.has(entry.id));
         const chosen = [];
@@ -314,8 +429,11 @@ const Reality = {
         const used = new Set();
         const entries = [];
 
+        /* Eligibility filters the list BEFORE the draw, so an ineligible entry
+           consumes no rng and takes no slot: the channel's counts hold. */
         const take = (kind, list, count) => {
-            for (const entry of this.pick(rng, list, count, used)) {
+            const eligible = list.filter((entry) => this.eligible(entry, prestigeLevel));
+            for (const entry of this.pick(rng, eligible, count, used)) {
                 used.add(entry.id);
                 entries.push({ ...entry, kind });
             }

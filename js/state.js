@@ -929,16 +929,28 @@ const Economy = {
        pinned to the gate); the constant had to move by orders of magnitude.
 
        Measured with tools/balance_sim.mjs (rotating certification, Stable),
-       after the upgrade-price pass above UpgradeList:
+       after the upgrade-price pass above UpgradeList; re-measured 2026-10-01
+       once the Void's entries joined the Reality Build pool, which changes
+       which entries every build rolls. Reboot gap is the median over the
+       trailing 12 hours:
 
                        24h    72h    240h   reboot gap       Beta / Nightly
-         push=1         22     66     296   59 -> 45 -> 31   3h50 / 8h30
-         push=3         24     81     372   170 -> 124 min   9h20 / 20h50
-         Nightly        31    123     683   82 -> 38 min
+         push=1         22     68     311   63 -> 47 -> 31   3h25 / 8h00
+         push=3         27     84     390   133 -> 94 min    7h55 / 19h00
+         Nightly        29    117     689   85 -> 36 min
+
+       (Before the Void entries: 22/66/296, 24/81/372 and 31/123/683. Over
+       four seeds the means moved +2.3%, +2.4% and -2.7% at 240h; the larger
+       swings on this seed — push=3 at 24h, Nightly at 72h — are three to six
+       Divinity of which-build-rolled-when, inside the seed-to-seed spread.)
 
        Nothing collapses toward the five-minute gate at ten days, which is
        the convergence check that matters; the gap does shorten slowly, so
-       re-measure at 240h after any change here. */
+       re-measure at 240h after any change here. The short gaps that do
+       appear in the last ten hours at push=1 are runs on one certification
+       path, and they begin at 285 Divinity on every seed measured, either
+       side of the Void change — two to five hours earlier now only because
+       the curve is ~2% ahead. */
     prestigeSoulsPerPoint: 1e8,
     /* How much a DEEPER run pays. At 0.90 (tuned under the cap) pushing five
        times deeper earned 60% more Divinity per hour, so patience simply
@@ -1026,8 +1038,8 @@ const Economy = {
        A known issue shipped unpatched stays on the record at this fraction
        of its strength, forever. Slightly heavier than the certification
        residue because it is a consequence rather than a consolation — and
-       bounded regardless: there are eleven distinct issues in the pool and
-       each files exactly once. */
+       bounded regardless: there are fifteen distinct known issues (the
+       pool's fourteen and the opening build's) and each files exactly once. */
     scarResidue: 0.15,
 
     /* ── Void ──────────────────────────────────────────────────────────
