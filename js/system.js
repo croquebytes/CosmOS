@@ -91,6 +91,7 @@ const system = {
         // No authored plaque yet: `glyph` names a CSS-drawn mark instead.
         solitaire: { label: 'Patience.exe', glyph: 'patience', hint: 'Golf solitaire, dealt from the arcana' },
         mediaplayer: { label: 'Sacred Media Player', glyph: 'mediaplayer', hint: 'Operator orientation tapes' },
+        mail: { label: 'CMS Mail', glyph: 'mail', hint: 'Interoffice mail, prayers and junk' },
         settings: { label: 'Divine Settings', art: 'settings', hint: 'Save, prestige, and display' }
     },
 
@@ -207,6 +208,10 @@ const system = {
             }
             // The Sacred Media Player claims Space and the arrows the same way.
             if (typeof MediaPlayerView !== 'undefined' && MediaPlayerView.handleKey(e, this.getTopWindowId())) {
+                return;
+            }
+            // CMS Mail claims the arrows, Enter and Delete while it is on top.
+            if (typeof MailView !== 'undefined' && MailView.handleKey(e, this.getTopWindowId())) {
                 return;
             }
 
@@ -409,7 +414,8 @@ const system = {
             taskmgr: { width: 860, height: 560 },
             recyclebin: { width: 700, height: 560 },
             solitaire: { width: 660, height: 590 },
-            mediaplayer: { width: 820, height: 600 }
+            mediaplayer: { width: 820, height: 600 },
+            mail: { width: 860, height: 620 }
         };
 
         return appSizes[id] || { width: 620, height: 560 };
@@ -1291,6 +1297,11 @@ const system = {
                 title: 'Sacred Media Player',
                 initialHTML: `<div class="mplayer" id="mplayer-root"></div>`,
                 onOpen: () => MediaPlayerView.open()
+            },
+            'mail': {
+                title: 'CMS Mail - Interoffice',
+                initialHTML: `<div class="mail" id="mail-root"></div>`,
+                onOpen: () => MailView.open()
             }
         };
         return configs[id] || { title: 'Unknown App', initialHTML: 'ERROR' };

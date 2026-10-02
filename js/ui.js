@@ -3270,6 +3270,11 @@ const ui = {
         if (mediaIcon) {
             mediaIcon.style.display = State.unlockedApps.includes('mediaplayer') ? 'block' : 'none';
         }
+
+        const mailIcon = document.getElementById('icon-mail');
+        if (mailIcon) {
+            mailIcon.style.display = State.unlockedApps.includes('mail') ? 'block' : 'none';
+        }
     },
 
     // === DOCUMENT SYSTEM UI ===
