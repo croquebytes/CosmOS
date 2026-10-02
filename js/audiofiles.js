@@ -10,16 +10,27 @@
    ── Names (docs/AUDIO_PLAN.md §5) ───────────────────────────────────────
      assets/audio/music__<id>.ogg | .mp3           a cue from MUSIC below
      assets/audio/vo__<speaker>__<line-id>.ogg | .mp3
+     assets/audio/sfx__<cue>.ogg | .mp3            foley under a synth cue
 
    Opus or Vorbis .ogg first, where the browser decodes it; .mp3 otherwise.
 
-   Speakers are slugs: instructor, null-operator, sys (and later fate).
+   Speakers are slugs: instructor, null-operator, sys, fate.
    A training-tape line id is  <tape>-s<shot>-<caption>:  the tape id, the
    1-based shot number (shot.n, the same number as the T1-S2 shot code),
    and the 0-based index of the caption in that shot. So the Instructor's
    first line in T1 shot 2 is  vo__instructor__t1-s2-0.ogg.  The id names a
    place, not the words, so a reworded caption keeps its id and only needs
    its file regenerated (assets/audio/MANIFEST.md records the exact text).
+
+   Every other line is named by the content id it already has:
+     Fate at Patience.exe   vo__fate__CAS-HOST-001         (CasinoHostBarks)
+     the Adversary scenes   vo__null-operator__ADV-010     (speaker ADV)
+                            vo__sys__ADV-001, vo__sys__FIN-H-03   (SYS)
+                            vo__fate__ADV-027              (HOST, from far away)
+   The scenes are SCN-ADV-001 (AdversaryScene, ADV-*) and SCN-ADV-002
+   (AdversaryFinale, FIN-*). A choice prompt is never spoken.
+   Foley is named by the synth cue it layers on, verbatim: sfx__purchase,
+   sfx__windowOpen (the keys of audio.SOUNDS).
 
    ── Layout of this file ─────────────────────────────────────────────────
      AudioFiles        pure: names, the music table, the probe verdict, the
@@ -32,6 +43,13 @@
      tapeVoice         that sync, bound to audio.voice. Inert where `audio`
                        is undefined or has no device: the vm suites, the
                        simulator, a muted player.
+     createSceneVoice(env) / sceneVoice
+                       the same contract for the Adversary scenes: a beat
+                       that has a line waits for it before its timer moves
+                       the scene on. Escape skips the line.
+     createFateVoice(env) / fateVoice
+                       Fate speaks the line her strip shows, never over
+                       anyone else's line.
    ════════════════════════════════════════════════════════════════════════ */
 
 const AudioFiles = (() => {
@@ -81,10 +99,77 @@ const AudioFiles = (() => {
         return `vo__${slug}__${lineId}`;
     }
 
+    /* ── Lines outside the tapes ─────────────────────────────────────────
+       Fate's lines are CasinoHostBarks rows; the scenes' beats are rows of
+       AdversaryScene.dialogue and AdversaryFinale. Each is named by its own
+       content id, under the speaker the row already declares. */
+    const FATE_ID = /^CAS-HOST-\d{3}$/;
+    const SCENE_ID = /^(ADV|FIN)(-[A-Z0-9]+)+$/;
+    const SCENE_SPEAKERS = Object.freeze({ ADV: 'null-operator', SYS: 'sys', HOST: 'fate' });
+
+    /* { speaker, id } for the line Fate's strip is showing, or null. */
+    function fateLine(bark) {
+        const id = bark && typeof bark === 'object' ? bark.id : null;
+        return typeof id === 'string' && FATE_ID.test(id) ? { speaker: 'fate', id } : null;
+    }
+
+    /* { speaker, id } for a scene beat, or null. A choice prompt is the
+       player's turn, not a line; an unknown speaker is nobody's voice. */
+    function sceneLine(beat) {
+        if (!beat || typeof beat !== 'object' || beat.type === 'choice_prompt') return null;
+        const code = beat.speaker;
+        if (typeof code !== 'string' || !Object.prototype.hasOwnProperty.call(SCENE_SPEAKERS, code)) return null;
+        if (typeof beat.id !== 'string' || !SCENE_ID.test(beat.id)) return null;
+        // {REBOOTS}, {BAND}: words that change per save. A recording would
+        // say something the caption does not, so these stay caption-only.
+        if (/\{[A-Z]+\}/.test(String(beat.text || ''))) return null;
+        return { speaker: SCENE_SPEAKERS[code], id: beat.id };
+    }
+
+    /* One line plays at a time. A speaker's new line replaces its own last
+       one (Fate's strip replaces her line), but never someone else's: a
+       tape or a scene is not talked over by the dealer. */
+    function mayInterrupt(currentStem, slug) {
+        if (!currentStem) return true;
+        return typeof slug === 'string' && String(currentStem).startsWith(`vo__${slug}__`);
+    }
+
+    /* ── Foley (§4) ──────────────────────────────────────────────────────
+       sfx__<cue> layers a recorded one-shot on the synth cue of the same
+       name, through that cue's own voice (so its bus, its reverb send and
+       its polyphony), at FOLEY_GAIN: about 6 dB under unity, so the synth
+       stays the cue and the recording is texture. It is rate-limited per
+       cue at the synth's own repeat gap, and never tighter than
+       FOLEY_MIN_GAP_MS: a 25 ms click tick does not get a relay sample at
+       forty a second. */
+    const FOLEY_GAIN = 0.5;
+    const FOLEY_MIN_GAP_MS = 120;
+    const CUE = /^[A-Za-z][A-Za-z0-9]{0,40}$/;
+
+    function foleyStem(cue) {
+        return typeof cue === 'string' && CUE.test(cue) ? `sfx__${cue}` : null;
+    }
+
+    function foleyGap(synthGapMs) {
+        const g = Number(synthGapMs);
+        return Math.max(FOLEY_MIN_GAP_MS, Number.isFinite(g) ? g : 0);
+    }
+
+    /* allow(key, nowMs, gapMs): true at most once per gap per key. */
+    function createRateLimit() {
+        const last = Object.create(null);
+        return (key, nowMs, gapMs) => {
+            const prev = last[key];
+            if (prev !== undefined && nowMs - prev < gapMs) return false;
+            last[key] = nowMs;
+            return true;
+        };
+    }
+
     /* The files to try for a stem, in order. Nothing that could leave
-       assets/audio/: a stem is only ever built by the two functions above. */
+       assets/audio/: a stem is only ever built by the functions above. */
     function urls(stem, canOgg = true) {
-        if (typeof stem !== 'string' || !/^(music|vo)__[A-Za-z0-9_-]+$/.test(stem)) return [];
+        if (typeof stem !== 'string' || !/^(music|vo|sfx)__[A-Za-z0-9_-]+$/.test(stem)) return [];
         return canOgg ? [`${DIR}${stem}.ogg`, `${DIR}${stem}.mp3`] : [`${DIR}${stem}.mp3`];
     }
 
@@ -193,8 +278,9 @@ const AudioFiles = (() => {
     }
 
     return {
-        DIR, SPEAKERS, MUSIC, STINGER_ON_CUE, DUCK_DB,
+        DIR, SPEAKERS, SCENE_SPEAKERS, MUSIC, STINGER_ON_CUE, DUCK_DB, FOLEY_GAIN, FOLEY_MIN_GAP_MS,
         musicStem, speakerSlug, voiceStem, urls, responseIsAudio, duckGain,
+        fateLine, sceneLine, mayInterrupt, foleyStem, foleyGap, createRateLimit,
         bedCandidates, chooseBed, layerFor,
         lineId, tapeLines, crossedLine,
     };
@@ -216,7 +302,15 @@ const AudioFiles = (() => {
      env.say(line, { onPresent })  Promise<outcome>, always resolves
      env.stop()                    cut the line that is playing
      env.known(line)               true | false | undefined (unprobed)
-     env.prefetch(lines)           warm the probes for a tape          */
+     env.prefetch(lines)           warm the probes for a tape
+
+   Pause and resume. pause() cuts the line like stop(), but remembers it;
+   the first tick after play resumes says it again FROM ITS START, as long
+   as the clock is still on that caption. A seek, a shot skip, a new tape
+   or the end of the tape forgets it. A line cut from outside (a hidden
+   tab, a scene speaking over the tape) is remembered the same way while
+   its caption is up, because the tab-hidden path cuts the line a moment
+   before the Media Player pauses the deck.                              */
 function createTapeVoice(env) {
     const EPS = 1e-3;
     const LOOKBACK = 0.25;   // a clock positioned on a caption's start speaks it
@@ -224,12 +318,16 @@ function createTapeVoice(env) {
     let lines = [];
     let prevT = null;        // null: just positioned (load, seek, pause)
     let cur = null;          // { line, held }
+    let resumeLine = null;   // paused mid-line: say it again on resume
+    let cutLine = null;      // cut from outside while its caption is up
 
     function linesFor(tape) {
         if (tape !== tapeRef) {
             tapeRef = tape;
             lines = AudioFiles.tapeLines(tape);
             prevT = null;
+            resumeLine = null;
+            cutLine = null;
             cut();
         }
         return lines;
@@ -243,6 +341,7 @@ function createTapeVoice(env) {
 
     function start(line) {
         cut();
+        cutLine = null;
         let known;
         try { known = env.known(line); } catch (err) { known = false; }
         if (known === false) return;
@@ -255,26 +354,55 @@ function createTapeVoice(env) {
             cur = null;
             return;
         }
-        const release = () => { if (cur === token) cur = null; };
-        Promise.resolve(p).then(release, release);
+        // Our own cut() clears `cur` first, so only an outside cut lands here
+        // as 'stopped' with the token still current.
+        const release = (outcome) => {
+            if (cur !== token) return;
+            cur = null;
+            if (outcome === 'stopped') cutLine = line;
+        };
+        Promise.resolve(p).then(release, () => release('error'));
     }
+
+    const onCaption = (line, t) => !!line && t >= line.at - EPS && t < line.limit;
 
     return {
         load(tape) {
             const ls = linesFor(tape);
             cut();
             prevT = null;
+            resumeLine = null;
+            cutLine = null;
             try { env.prefetch(ls); } catch (err) { /* */ }
         },
         stop() {
             cut();
             prevT = null;
+            resumeLine = null;
+            cutLine = null;
+        },
+        pause() {
+            const line = cur ? cur.line : cutLine;
+            cut();
+            prevT = null;
+            cutLine = null;
+            resumeLine = line || null;
         },
         tick(tape, t, playing) {
             if (!tape || !playing || !Number.isFinite(t)) return t;
             const ls = linesFor(tape);
             let out = t;
             if (cur && cur.held && out > cur.line.limit - EPS) out = Math.max(cur.line.at, cur.line.limit - EPS);
+            if (resumeLine) {
+                const again = resumeLine;
+                resumeLine = null;
+                if (onCaption(again, out)) {
+                    prevT = out;
+                    start(again);
+                    return out;
+                }
+            }
+            if (cutLine && !onCaption(cutLine, out)) cutLine = null;
             const from = prevT === null ? out - LOOKBACK : prevT;
             const next = AudioFiles.crossedLine(ls, from, out);
             prevT = out;
@@ -283,6 +411,7 @@ function createTapeVoice(env) {
         },
         speaking: () => !!(cur && cur.held),
         current: () => (cur ? cur.line.id : null),
+        resuming: () => (resumeLine ? resumeLine.id : null),
     };
 }
 
@@ -301,5 +430,165 @@ const tapeVoice = createTapeVoice({
     prefetch(lines) {
         if (typeof audio === 'undefined' || !audio || !audio.voice) return;
         audio.voice.prefetch(lines.map((l) => [l.speaker, l.id]));
+    },
+});
+
+/* ── Narration for the Adversary scenes ─────────────────────────────────
+
+   SCN-ADV-001 (the Mirror Login) and SCN-ADV-002 (End of Shift) draw one
+   beat at a time and move on by a dwell timer. When a beat is drawn, ui.js
+   calls speak(beat); when its dwell timer fires, it asks hold(next) first.
+   While the beat's line is KNOWN to be playing, hold() keeps `next` and
+   returns true, and `next` runs GAP_MS after the line ends: the beat waits
+   for its line, as a tape caption does. A missing file, or a probe still
+   out, never holds anything.
+
+   Only the timer waits. A click still moves the scene on (the next beat's
+   own line cuts this one), an act beat still waits on its button alone,
+   and skip() — Escape — cuts the line and forgets the waiting timer, so
+   Escape goes on to do exactly what it did before there were voices.
+
+     env.say(line, { onPresent })  Promise<outcome>, always resolves
+     env.stop(line)                cut this line, if it is the one playing
+     env.known(line)               true | false | undefined (unprobed)
+     env.prefetch(lines)           warm the probes for a scene
+     env.later(fn, ms)             a timer                               */
+function createSceneVoice(env) {
+    const GAP_MS = 350;
+    let cur = null;          // { line, held, waiter }
+    let gen = 0;             // bumped by every beat and every cut
+
+    function cut() {
+        gen += 1;
+        if (!cur) return;
+        const token = cur;
+        cur = null;
+        token.waiter = null;
+        try { env.stop(token.line); } catch (err) { /* narration is presentation */ }
+    }
+
+    return {
+        prefetch(beats) {
+            const lines = (Array.isArray(beats) ? beats : []).map(AudioFiles.sceneLine).filter(Boolean);
+            try { env.prefetch(lines); } catch (err) { /* */ }
+            return lines.length;
+        },
+        /* A beat was drawn. true when its line was asked for. */
+        speak(beat) {
+            cut();
+            const line = AudioFiles.sceneLine(beat);
+            if (!line) return false;
+            let known;
+            try { known = env.known(line); } catch (err) { known = false; }
+            if (known === false) return false;
+            const token = { line, held: false, waiter: null };
+            cur = token;
+            let p;
+            try {
+                p = env.say(line, { onPresent: () => { if (cur === token) token.held = true; } });
+            } catch (err) {
+                cur = null;
+                return false;
+            }
+            const release = () => {
+                if (cur !== token) return;
+                cur = null;
+                const next = token.waiter;
+                token.waiter = null;
+                if (!next) return;
+                const mine = gen;
+                try { env.later(() => { if (gen === mine) next(); }, GAP_MS); } catch (err) { /* */ }
+            };
+            Promise.resolve(p).then(release, release);
+            return true;
+        },
+        /* The dwell timer asks before it advances. */
+        hold(next) {
+            if (!cur || !cur.held || typeof next !== 'function') return false;
+            cur.waiter = next;
+            return true;
+        },
+        skip() { cut(); },
+        stop() { cut(); },
+        speaking: () => !!(cur && cur.held),
+        waiting: () => !!(cur && cur.waiter),
+        current: () => (cur ? cur.line.id : null),
+    };
+}
+
+const sceneVoice = createSceneVoice({
+    say(line, opts) {
+        if (typeof audio === 'undefined' || !audio || !audio.voice) return Promise.resolve('off');
+        return audio.voice.say(line.speaker, line.id, opts);
+    },
+    stop(line) {
+        if (typeof audio === 'undefined' || !audio || !audio.voice) return;
+        // Only our own line: a scene closing must not cut someone else's.
+        if (audio.voice.current() === AudioFiles.voiceStem(line.speaker, line.id)) audio.voice.stop();
+    },
+    known(line) {
+        if (typeof audio === 'undefined' || !audio || !audio.voice) return false;
+        return audio.voice.known(line.speaker, line.id);
+    },
+    prefetch(lines) {
+        if (typeof audio === 'undefined' || !audio || !audio.voice || !lines.length) return;
+        const s = typeof audio.settings === 'function' ? audio.settings() : null;
+        if (s && (s.muted || !s.voiceEnabled)) return;   // nothing to hear, nothing to probe
+        audio.voice.prefetch(lines.map((l) => [l.speaker, l.id]));
+    },
+    later(fn, ms) { setTimeout(fn, ms); },
+});
+
+/* ── Fate's voice at Patience.exe ───────────────────────────────────────
+
+   PatienceView.speak shows a line in the dealer's strip; this says it, if
+   vo__fate__<CAS-HOST-id> is installed. The line has already passed the
+   router — Dealer Chatter, the two-second floor between any two of her
+   lines, each line's own cooldown — so the voice is never heard more often
+   than the strip changes. Chatter off is checked again here, and the
+   Voices setting is audio.voice's own. Her new line replaces her last
+   one, as the strip does; she never talks over a tape or a scene.
+
+     env.say(speaker, id)   Promise<outcome>
+     env.stop()             cut the line playing
+     env.current()          the stem playing (or loading), or null
+     env.chatterOn()        Dealer Chatter                               */
+function createFateVoice(env) {
+    return {
+        speak(bark) {
+            const line = AudioFiles.fateLine(bark);
+            if (!line) return Promise.resolve('none');
+            try {
+                if (!env.chatterOn()) return Promise.resolve('off');
+                if (!AudioFiles.mayInterrupt(env.current(), line.speaker)) return Promise.resolve('busy');
+                return Promise.resolve(env.say(line.speaker, line.id)).catch(() => 'error');
+            } catch (err) {
+                return Promise.resolve('error');
+            }
+        },
+        /* The table closed, or chatter went off: her line stops with it,
+           and nobody else's does. */
+        stop() {
+            try {
+                const current = env.current();
+                if (current && AudioFiles.mayInterrupt(current, 'fate')) env.stop();
+            } catch (err) { /* */ }
+        },
+    };
+}
+
+const fateVoice = createFateVoice({
+    say(speaker, id) {
+        if (typeof audio === 'undefined' || !audio || !audio.voice) return Promise.resolve('off');
+        return audio.voice.say(speaker, id);
+    },
+    stop() {
+        if (typeof audio !== 'undefined' && audio && audio.voice) audio.voice.stop();
+    },
+    current() {
+        return (typeof audio !== 'undefined' && audio && audio.voice) ? audio.voice.current() : null;
+    },
+    chatterOn() {
+        return typeof game !== 'undefined' && game && typeof game.dealerChatterOn === 'function' ? game.dealerChatterOn() : false;
     },
 });

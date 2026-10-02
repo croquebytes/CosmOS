@@ -258,6 +258,7 @@ const ui = {
            own `s` and clears the timer before calling this, so it is safe. */
         if (this.advScene) {
             clearTimeout(this.advScene.timer);
+            this.sceneVo('stop');   // the scene's line goes with it
             this.disarmAdversaryListeners();
             this.advScene.open = false;
             this.advScene = null;
@@ -794,6 +795,16 @@ const ui = {
         return !!(this.advScene && this.advScene.open);
     },
 
+    /* Narration hook for both scenes (js/audiofiles.js, sceneVoice). A beat
+       with an installed vo__<speaker>__<id> file is spoken when it is drawn,
+       and the dwell timer waits for it; Escape skips it. Inert where
+       sceneVoice is not loaded, and with no file installed: then every
+       call here is a no-op and the scenes run exactly as before. */
+    sceneVo(fn, ...args) {
+        if (typeof sceneVoice === 'undefined' || !sceneVoice || typeof sceneVoice[fn] !== 'function') return undefined;
+        try { return sceneVoice[fn](...args); } catch (err) { return undefined; }
+    },
+
     advSpeed() {
         // The e2e harness and the vm tests must not wait on 40 seconds of
         // theatre. Everything scales off this one number.
@@ -904,6 +915,7 @@ const ui = {
         game.sfx('adversary');
 
         this.advBeats = this.buildAdversaryBeats(null);
+        this.sceneVo('prefetch', AdversaryScene.dialogue);   // every branch: the reply is chosen later
         this.advStep();
     },
 
@@ -914,6 +926,7 @@ const ui = {
         if (!s || !s.open) return;
         const beat = this.advBeats[s.index];
         if (!beat) return;
+        this.sceneVo('speak', beat);   // narration hook
 
         const speed = this.advSpeed();
         const id = beat.id;
@@ -990,6 +1003,8 @@ const ui = {
         /* SCN-ADV-002 shares the slot, the guards and this entry point —
            system.js routes every key here while either scene is open. */
         if (s.kind === 'finale') { this.advanceFinale(fromTimer ? 'timer' : 'key'); return; }
+        // Narration hook: the dwell timer waits for a line still speaking.
+        if (fromTimer && this.sceneVo('hold', () => this.advanceAdversaryScene(true))) return;
         const current = this.advBeats[s.index];
         /* Block on the choice ONLY while it is unanswered. Without the
            `!s.choiceId` half, chooseAdversaryResponse — which repoints index
@@ -1172,6 +1187,7 @@ const ui = {
     escapeAdversaryScene() {
         const s = this.advScene;
         if (!s || !s.open) return true;
+        this.sceneVo('skip');   // Escape skips the line, then does what it always did
         if (s.kind === 'finale') return this.escapeFinale();
 
         const current = this.advBeats[s.index];
@@ -1337,6 +1353,7 @@ const ui = {
         `;
         layer.classList.add('active');
         game.sfx('adversary');
+        this.sceneVo('prefetch', this.advBeats);
         this.finStep();
     },
 
@@ -1345,6 +1362,7 @@ const ui = {
         if (!s || !s.open || s.kind !== 'finale') return;
         const beat = this.advBeats[s.index];
         if (!beat) return;
+        this.sceneVo('speak', beat);   // narration hook
         const speed = this.advSpeed();
 
         if (s.phase === 1) {
@@ -1468,6 +1486,8 @@ const ui = {
             if (source === 'key' && button && document.activeElement === button) this.finPerformAct(s.awaitingAct);
             return;
         }
+        // Narration hook: the dwell timer waits for a line still speaking.
+        if (source === 'timer' && this.sceneVo('hold', () => this.advanceFinale('timer'))) return;
         clearTimeout(s.timer);
         if (s.index >= this.advBeats.length - 1) {
             if (source === 'timer') return;
@@ -1519,6 +1539,7 @@ const ui = {
         const s = this.advScene;
         if (!s || !s.open || s.kind !== 'finale' || s.phase === 3) return;
         clearTimeout(s.timer);
+        this.sceneVo('stop');   // the record is read, not spoken
         s.phase = 3;
 
         // Filed before it is shown: the record on screen is already on file.

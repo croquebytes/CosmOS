@@ -19,6 +19,7 @@
      ambient bed ─> ambient bus ────┤
      music files ─> duck ─> music ──┤   (js/audiofiles.js: drop-in files)
      spoken lines ─> voice bus ─────┘
+     (a cue's voice also carries its sfx__<cue> foley, when installed)
 
    The ui and fx buses follow the SFX setting (ui sits a little lower), and
    ambient has its own. Mute zeroes the master gain and suspends the context.
@@ -974,7 +975,8 @@ const audio = (() => {
 
             const t = ctx.currentTime + 0.005;
             const vg = makeVoice(ctx, G, def);
-            const end = def.fn(ctx, G, vg, t, o);
+            // Recorded foley under the synth, when sfx__<name> is installed.
+            const end = Math.max(def.fn(ctx, G, vg, t, o), layerFoley(name, def, vg, t, nowMs));
             const voice = { name, gain: vg, end };
             voices.push(voice);
             setTimeout(() => { try { vg.disconnect(); } catch (_) { /* gone */ } },
@@ -1071,6 +1073,47 @@ const audio = (() => {
         })().catch(() => null);
         decoded.set(stem, p);
         return p;
+    }
+
+    /* ── Foley: sfx__<cue>, layered on the synth cue (AUDIO_PLAN §4) ──────
+       The first play of a cue probes for its file; once the probe says it
+       is there, the file is decoded in the background, and from then on
+       every play of the cue that passes its rate limit layers it, through
+       the cue's own voice at AudioFiles.FOLEY_GAIN. A sample is never
+       started late: a cue whose file is still decoding plays synth only.
+       With no file, a cue costs one HEAD probe per extension, once. */
+    const foleyReady = new Map();   // stem -> AudioBuffer, decoded
+    const foleyAllow = AF ? AF.createRateLimit() : null;
+    let foleyPlayed = 0;
+
+    function warmFoley(stem) {
+        if (foleyReady.has(stem)) return;
+        locate(stem).then((url) => {
+            if (!url) return;
+            loadStem(stem).then((buf) => { if (buf) foleyReady.set(stem, buf); });
+        });
+    }
+
+    /* Returns the end time of the layer it started, or 0. */
+    function layerFoley(name, def, dest, t, nowMs) {
+        try {
+            if (!AF || !filesUsable()) return 0;
+            const stem = AF.foleyStem(name);
+            if (!stem || stemKnown(stem) === false) return 0;
+            const buf = foleyReady.get(stem);
+            if (!buf) { warmFoley(stem); return 0; }
+            if (!foleyAllow(name, nowMs, AF.foleyGap(def.gap))) return 0;
+            const g = amp(ctx, dest, AF.FOLEY_GAIN);
+            const src = ctx.createBufferSource();
+            src.buffer = buf;
+            src.connect(g);
+            src.onended = () => { try { g.disconnect(); } catch (_) { /* gone */ } };
+            src.start(t);
+            foleyPlayed += 1;
+            return t + buf.duration;
+        } catch (_) {
+            return 0;
+        }
     }
 
     /* ── Voice: one line at a time, ducking the music ─────────────────── */
@@ -1530,6 +1573,12 @@ const audio = (() => {
                 if (!AF || !filesUsable()) return;
                 for (const [speaker, lineId] of Array.isArray(list) ? list : []) locate(AF.voiceStem(speaker, lineId));
             },
+        },
+        /* Drop-in foley (§4): sfx__<cue> under the synth cue of that name. */
+        foley: {
+            known: (cue) => stemKnown(AF ? AF.foleyStem(cue) : null),
+            ready: (cue) => !!(AF && foleyReady.has(AF.foleyStem(cue))),
+            played: () => foleyPlayed,
         },
         /* Live bus gains, for the browser check. */
         debug: () => (G ? {

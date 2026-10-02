@@ -46,7 +46,7 @@ function boot({ withAudio = false, settings = undefined } = {}) {
         const src = read(f);
         vm.runInContext(src.code, ctx, { filename: src.name });
     }
-    return vm.runInContext(`({ AudioFiles, createTapeVoice, tapeVoice, MediaCatalog${withAudio ? ', audio' : ''} })`, ctx);
+    return vm.runInContext(`({ AudioFiles, createTapeVoice, tapeVoice, createSceneVoice, sceneVoice, createFateVoice, fateVoice, MediaCatalog${withAudio ? ', audio' : ''} })`, ctx);
 }
 
 const plain = (v) => JSON.parse(JSON.stringify(v));
@@ -56,7 +56,7 @@ async function settle(n = 4) { for (let i = 0; i < n; i++) await tick(); }
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
 
-const { AudioFiles: AF, createTapeVoice, tapeVoice, MediaCatalog } = boot();
+const { AudioFiles: AF, createTapeVoice, tapeVoice, createSceneVoice, createFateVoice, MediaCatalog } = boot();
 const T1 = MediaCatalog.tape('t1');
 
 /* ── Names ──────────────────────────────────────────────────────────── */
@@ -316,7 +316,390 @@ test('the bound tapeVoice is inert where audio is undefined', () => {
     tapeVoice.load(T1);
     for (let t = 0; t < 20; t += 0.25) assert.equal(tapeVoice.tick(T1, t, true), t);
     assert.equal(tapeVoice.speaking(), false);
+    tapeVoice.pause();
+    for (let t = 20; t < 30; t += 0.25) assert.equal(tapeVoice.tick(T1, t, true), t);
     tapeVoice.stop();
+});
+
+/* ── Pause and resume ───────────────────────────────────────────────── */
+/* Start t1-s2-0 and let it hold, as the Media Player's clock would. */
+function speakingT1(state = { 't1-s2-0': true, 't1-s2-1': true }) {
+    const env = fakeEnv(state);
+    const tv = createTapeVoice(env);
+    const l0 = AF.tapeLines(T1).find((l) => l.id === 't1-s2-0');
+    tv.load(T1);
+    tv.tick(T1, l0.at - 0.05, true);
+    tv.tick(T1, l0.at + 0.5, true);
+    assert.equal(tv.current(), 't1-s2-0');
+    return { env, tv, l0 };
+}
+
+test('pausing mid-line and resuming says that line again, from its start', async () => {
+    const { env, tv, l0 } = speakingT1();
+    const t = l0.at + 1.2;
+    tv.tick(T1, t, true);
+    tv.pause();
+    assert.equal(tv.speaking(), false, 'pause cuts the line');
+    assert.ok(env.calls.stop >= 1);
+    assert.equal(tv.resuming(), 't1-s2-0');
+    await settle();
+    assert.equal(tv.tick(T1, t, false), t, 'while paused nothing speaks');
+    assert.deepEqual(env.calls.say, ['t1-s2-0']);
+    // Play: the first tick says the same line again, as a fresh start.
+    assert.equal(tv.tick(T1, t, true), t);
+    assert.deepEqual(env.calls.say, ['t1-s2-0', 't1-s2-0'], 'the line restarts');
+    assert.equal(env.pending.length, 1, 'one fresh say, from the beginning of the file');
+    assert.equal(tv.speaking(), true);
+    const held = tv.tick(T1, l0.limit + 2, true);
+    assert.ok(held < l0.limit, 'and it holds the next caption again until it is done');
+    env.pending.shift().resolve('played');
+    await settle();
+    tv.tick(T1, held + 0.05, true);
+    assert.deepEqual(env.calls.say, ['t1-s2-0', 't1-s2-0', 't1-s2-1'], 'then the tape runs on as before');
+});
+
+test('a held clock paused at the next caption resumes the same line, not the next one', async () => {
+    const { env, tv, l0 } = speakingT1();
+    const held = tv.tick(T1, l0.limit + 3, true);
+    tv.pause();
+    await settle();
+    tv.tick(T1, held, true);
+    assert.deepEqual(env.calls.say, ['t1-s2-0', 't1-s2-0']);
+});
+
+test('a line cut from outside (the tab hid) still resumes when the deck is paused after it', async () => {
+    const { env, tv, l0 } = speakingT1();
+    // audio.js cuts the line on visibilitychange, before the Media Player
+    // pauses the deck: the say resolves 'stopped' with nobody asking.
+    env.pending.shift().resolve('stopped');
+    await settle();
+    assert.equal(tv.current(), null);
+    const t = tv.tick(T1, l0.at + 0.6, true);   // the pause's own advance()
+    tv.pause();
+    assert.equal(tv.resuming(), 't1-s2-0');
+    tv.tick(T1, t, true);
+    assert.deepEqual(env.calls.say, ['t1-s2-0', 't1-s2-0']);
+});
+
+test('a seek, a new tape or the clock leaving the caption forgets the paused line', async () => {
+    let { env, tv, l0 } = speakingT1();
+    tv.pause();
+    tv.stop();                     // seek / prev / next / end of tape
+    tv.tick(T1, l0.at + 1, true);
+    assert.deepEqual(env.calls.say, ['t1-s2-0'], 'a seek while paused is not a resume');
+    ({ env, tv, l0 } = speakingT1());
+    tv.pause();
+    tv.load(MediaCatalog.tape('t2'));
+    assert.equal(tv.resuming(), null);
+    ({ env, tv, l0 } = speakingT1());
+    tv.pause();
+    tv.tick(T1, l0.limit + 0.5, true);
+    assert.ok(!env.calls.say.slice(1).includes('t1-s2-0'), 'off its caption: not said again');
+    // Paused with nothing speaking (a missing file): nothing to resume.
+    const quiet = fakeEnv({});
+    quiet.known = () => false;
+    const tq = createTapeVoice(quiet);
+    tq.load(T1);
+    tq.tick(T1, l0.at - 0.05, true);
+    tq.tick(T1, l0.at + 0.5, true);
+    tq.pause();
+    assert.equal(tq.resuming(), null);
+    tq.tick(T1, l0.at + 0.5, true);
+    assert.deepEqual(quiet.calls.say, []);
+});
+
+/* ── The scenes and Fate: names ─────────────────────────────────────── */
+function loadContent() {
+    const ctx = vm.createContext({
+        console: { log: noop, warn: noop, error: noop },
+        Math, Date, JSON, Number, Object, Array, String, Boolean, Set, Map, Promise, RegExp,
+        setTimeout: noop, clearTimeout: noop, setInterval: noop, clearInterval: noop,
+        localStorage: { getItem: () => null, setItem: noop, removeItem: noop },
+    });
+    vm.runInContext(read('js/state.js').code, ctx, { filename: 'js/state.js' });
+    return vm.runInContext('({ AdversaryScene, AdversaryFinale, CasinoHostBarks })', ctx);
+}
+
+function sceneBeats({ AdversaryScene, AdversaryFinale }) {
+    return [
+        ...AdversaryScene.dialogue,
+        ...AdversaryFinale.opening,
+        ...Object.values(AdversaryFinale.reentry),
+        ...Object.values(AdversaryFinale.endings).flatMap((e) => e.beats),
+    ];
+}
+
+test('each speaker has its slug: fate, null-operator and sys, named by content id', () => {
+    const stem = (l) => (l ? AF.voiceStem(l.speaker, l.id) : null);
+    assert.equal(stem(AF.fateLine({ id: 'CAS-HOST-001', text: 'x' })), 'vo__fate__CAS-HOST-001');
+    assert.equal(stem(AF.sceneLine({ id: 'ADV-010', speaker: 'ADV', type: 'voice' })), 'vo__null-operator__ADV-010');
+    assert.equal(stem(AF.sceneLine({ id: 'ADV-001', speaker: 'SYS', type: 'system' })), 'vo__sys__ADV-001');
+    assert.equal(stem(AF.sceneLine({ id: 'ADV-011B', speaker: 'SYS', type: 'system' })), 'vo__sys__ADV-011B');
+    assert.equal(stem(AF.sceneLine({ id: 'ADV-027', speaker: 'HOST', type: 'whisper' })), 'vo__fate__ADV-027', 'the house, from far away, is Fate');
+    assert.equal(stem(AF.sceneLine({ id: 'FIN-H-03', speaker: 'SYS', type: 'system' })), 'vo__sys__FIN-H-03');
+    assert.equal(stem(AF.sceneLine({ id: 'FIN-R-X', speaker: 'ADV', type: 'voice' })), 'vo__null-operator__FIN-R-X');
+    assert.equal(AF.sceneLine({ id: 'ADV-022', speaker: 'ADV', type: 'choice_prompt' }), null, 'the choice is the player\'s turn');
+    assert.equal(AF.sceneLine({ id: 'ADV-010', speaker: 'YOU', type: 'voice' }), null, 'nobody\'s voice');
+    assert.equal(AF.sceneLine({ id: 'ADV-010', speaker: '__proto__' }), null);
+    assert.equal(AF.sceneLine({ id: '../ADV-010', speaker: 'ADV' }), null);
+    assert.equal(AF.sceneLine({ id: 'CAS-HOST-001', speaker: 'HOST' }), null, 'scene ids only');
+    assert.equal(AF.sceneLine(null), null);
+    assert.equal(AF.fateLine({ id: 'ADV-010' }), null);
+    assert.equal(AF.fateLine({ id: 'CAS-HOST-001/../x' }), null);
+    assert.equal(AF.fateLine(null), null);
+    assert.equal(AF.SPEAKERS.S, 'sys', 'the tape SYS and the scene SYS are one voice');
+    assert.equal(AF.SCENE_SPEAKERS.ADV, AF.SPEAKERS.N, 'and so are the two NULL.OPERATORs');
+});
+
+test('every authored scene beat and every Fate line has a stem, and none collide', () => {
+    const content = loadContent();
+    const seen = new Set();
+    let spoken = 0;
+    const placeholders = [];
+    for (const beat of sceneBeats(content)) {
+        const line = AF.sceneLine(beat);
+        if (beat.type === 'choice_prompt') { assert.equal(line, null); continue; }
+        if (/\{[A-Z]+\}/.test(beat.text)) { assert.equal(line, null, `${beat.id} changes per save`); placeholders.push(beat.id); continue; }
+        assert.ok(line, `${beat.id} (${beat.speaker}) has no line`);
+        const stem = AF.voiceStem(line.speaker, line.id);
+        assert.ok(stem && AF.urls(stem).length === 2, `${beat.id} names a file`);
+        assert.ok(!seen.has(stem), `duplicate ${stem}`);
+        seen.add(stem);
+        spoken += 1;
+    }
+    assert.ok(spoken >= 60, `${spoken} scene lines`);
+    assert.deepEqual(placeholders.sort(), ['ADV-011B', 'FIN-011', 'FIN-012'], 'caption-only: the words change per save');
+    for (const bark of content.CasinoHostBarks) {
+        const line = AF.fateLine(bark);
+        assert.ok(line, bark.id);
+        const stem = AF.voiceStem(line.speaker, line.id);
+        assert.ok(!seen.has(stem), `duplicate ${stem}`);
+        seen.add(stem);
+    }
+    assert.equal(content.CasinoHostBarks.length, 84);
+});
+
+/* ── The scenes: a beat waits for its line ──────────────────────────── */
+function fakeSceneEnv(state) {
+    const calls = { say: [], stop: [], prefetch: [] };
+    const pending = [];
+    const timers = [];
+    const env = {
+        calls, pending, timers,
+        known: (line) => state[line.id],
+        say(line, opts) {
+            calls.say.push(`${line.speaker}/${line.id}`);
+            return new Promise((resolve) => {
+                pending.push({ line, resolve });
+                if (state[line.id] === true) opts.onPresent();
+            });
+        },
+        stop(line) {
+            calls.stop.push(line.id);
+            const i = pending.findIndex((p) => p.line.id === line.id);
+            if (i >= 0) pending.splice(i, 1)[0].resolve('stopped');
+        },
+        prefetch(lines) { calls.prefetch.push(...lines.map((l) => l.id)); },
+        later(fn, ms) { timers.push({ fn, ms }); },
+    };
+    return env;
+}
+const beat = (id, speaker = 'ADV', type = 'voice') => ({ id, speaker, type, text: id });
+
+test('a scene beat waits for its line, then moves on a beat after it ends', async () => {
+    const env = fakeSceneEnv({ 'ADV-010': true });
+    const sv = createSceneVoice(env);
+    assert.equal(sv.speak(beat('ADV-010')), true);
+    assert.deepEqual(env.calls.say, ['null-operator/ADV-010']);
+    assert.equal(sv.speaking(), true);
+    let advanced = 0;
+    const next = () => { advanced += 1; };
+    assert.equal(sv.hold(next), true, 'the dwell timer is told to wait');
+    assert.equal(sv.waiting(), true);
+    assert.equal(advanced, 0);
+    env.pending.shift().resolve('played');
+    await settle();
+    assert.equal(sv.speaking(), false);
+    assert.equal(env.timers.length, 1, 'the scene moves on after a short gap');
+    assert.ok(env.timers[0].ms > 0 && env.timers[0].ms <= 600, `gap ${env.timers[0].ms} ms`);
+    env.timers.shift().fn();
+    assert.equal(advanced, 1, 'and exactly once');
+    assert.equal(sv.hold(next), false, 'nothing speaking: the next timer is not held');
+});
+
+test('a line that ends before the dwell runs out holds nothing', async () => {
+    const env = fakeSceneEnv({ 'ADV-014': true });
+    const sv = createSceneVoice(env);
+    sv.speak(beat('ADV-014'));
+    env.pending.shift().resolve('played');
+    await settle();
+    assert.equal(sv.hold(() => { throw new Error('held'); }), false);
+    assert.equal(env.timers.length, 0);
+});
+
+test('a missing file is inert in the scenes: never asked, never held', () => {
+    const env = fakeSceneEnv({ 'ADV-010': false });
+    const sv = createSceneVoice(env);
+    assert.equal(sv.speak(beat('ADV-010')), false);
+    assert.deepEqual(env.calls.say, []);
+    assert.equal(sv.hold(() => {}), false, 'the dwell timer runs as before');
+    assert.equal(sv.speak(beat('ADV-022', 'ADV', 'choice_prompt')), false, 'a choice is never spoken');
+    assert.equal(sv.speak(beat('ADV-099', 'YOU')), false);
+    assert.deepEqual(env.calls.say, []);
+});
+
+test('a probe still out is not a hold in the scenes either', async () => {
+    const env = fakeSceneEnv({ 'ADV-012': undefined });
+    const sv = createSceneVoice(env);
+    assert.equal(sv.speak(beat('ADV-012')), true, 'asked, since it might exist');
+    assert.equal(sv.hold(() => {}), false, 'unconfirmed: the timer moves the scene on');
+    env.pending.shift().resolve('missing');
+    await settle();
+    assert.equal(sv.current(), null);
+});
+
+test('Escape skips the line: it is cut, and the waiting timer is forgotten', async () => {
+    const env = fakeSceneEnv({ 'FIN-H-01': true });
+    const sv = createSceneVoice(env);
+    sv.speak(beat('FIN-H-01'));
+    let advanced = 0;
+    assert.equal(sv.hold(() => { advanced += 1; }), true);
+    sv.skip();
+    assert.deepEqual(env.calls.stop, ['FIN-H-01'], 'the line was cut');
+    assert.equal(sv.speaking(), false);
+    assert.equal(sv.waiting(), false);
+    await settle();
+    assert.equal(env.timers.length, 0, 'Escape does the moving, not the old timer');
+    assert.equal(advanced, 0);
+});
+
+test('a new beat cuts the last line, and that line\'s late timer cannot move the scene twice', async () => {
+    const env = fakeSceneEnv({ 'ADV-015': true, 'ADV-016': true });
+    const sv = createSceneVoice(env);
+    sv.speak(beat('ADV-015'));
+    let advanced = 0;
+    sv.hold(() => { advanced += 1; });
+    env.pending.shift().resolve('played');
+    await settle();
+    assert.equal(env.timers.length, 1);
+    // A click draws the next beat inside the gap.
+    sv.speak(beat('ADV-016'));
+    env.timers.shift().fn();
+    assert.equal(advanced, 0, 'the stale timer did nothing');
+    assert.equal(sv.current(), 'ADV-016');
+    sv.speak(beat('ADV-017', 'SYS', 'system'));
+    assert.deepEqual(env.calls.stop, ['ADV-016'], 'drawing a beat cuts the line before it');
+    sv.stop();
+});
+
+test('a scene prefetches every line it might speak, choices and placeholders excepted', () => {
+    const env = fakeSceneEnv({});
+    const sv = createSceneVoice(env);
+    const { AdversaryScene } = loadContent();
+    const n = sv.prefetch(AdversaryScene.dialogue);
+    assert.equal(n, AdversaryScene.dialogue.length - 2, 'all but the choice and the {REBOOTS} notice');
+    assert.ok(env.calls.prefetch.includes('ADV-023B'), 'every branch reply');
+    assert.ok(!env.calls.prefetch.includes('ADV-022'));
+    assert.ok(!env.calls.prefetch.includes('ADV-011B'), 'a line that changes per save is not probed');
+});
+
+test('the bound sceneVoice is inert where audio is undefined', () => {
+    const { sceneVoice } = boot();
+    assert.equal(sceneVoice.speak(beat('ADV-010')), false);
+    assert.equal(sceneVoice.hold(() => {}), false);
+    assert.equal(sceneVoice.prefetch([beat('ADV-010')]), 1);
+    sceneVoice.skip();
+    sceneVoice.stop();
+});
+
+/* ── Fate ───────────────────────────────────────────────────────────── */
+function fakeFateEnv({ chatter = true, current = null } = {}) {
+    const calls = { say: [], stop: 0 };
+    const env = {
+        calls, cur: current,
+        chatterOn: () => chatter,
+        current: () => env.cur,
+        say(speaker, id) { calls.say.push(`${speaker}/${id}`); env.cur = `vo__${speaker}__${id}`; return Promise.resolve('played'); },
+        stop() { calls.stop += 1; env.cur = null; },
+    };
+    return env;
+}
+const bark = (id) => ({ id, text: id, context: 'Casino' });
+
+test('Fate says the line her strip shows, and her next line replaces it', async () => {
+    const env = fakeFateEnv();
+    const fv = createFateVoice(env);
+    assert.equal(await fv.speak(bark('CAS-HOST-001')), 'played');
+    assert.equal(await fv.speak(bark('CAS-HOST-014')), 'played', 'her own line does not block her');
+    assert.deepEqual(env.calls.say, ['fate/CAS-HOST-001', 'fate/CAS-HOST-014']);
+    assert.equal(await fv.speak({ id: 'ADV-BARK-04', text: 'x' }), 'none', 'not her line');
+    fv.stop();
+    assert.equal(env.calls.stop, 1, 'the table closed: her line stops');
+});
+
+test('Dealer Chatter off: Fate says nothing, and never cuts another voice', async () => {
+    const off = fakeFateEnv({ chatter: false });
+    assert.equal(await createFateVoice(off).speak(bark('CAS-HOST-001')), 'off');
+    assert.deepEqual(off.calls.say, []);
+    for (const current of ['vo__instructor__t1-s2-0', 'vo__null-operator__ADV-010', 'vo__sys__FIN-001']) {
+        const busy = fakeFateEnv({ current });
+        const fv = createFateVoice(busy);
+        assert.equal(await fv.speak(bark('CAS-HOST-001')), 'busy', `not over ${current}`);
+        fv.stop();
+        assert.equal(busy.calls.stop, 0, `closing the table does not cut ${current}`);
+        assert.deepEqual(busy.calls.say, []);
+    }
+});
+
+test('the bound fateVoice is inert where audio and game are undefined', async () => {
+    const { fateVoice } = boot();
+    assert.equal(await fateVoice.speak(bark('CAS-HOST-001')), 'off');
+    fateVoice.stop();
+});
+
+/* ── Foley ──────────────────────────────────────────────────────────── */
+test('foley is sfx__<cue>, for every synth cue, and nothing else', () => {
+    const { audio } = boot({ withAudio: true });
+    for (const cue of Object.keys(audio.SOUNDS)) {
+        const stem = AF.foleyStem(cue);
+        assert.equal(stem, `sfx__${cue}`);
+        assert.deepEqual(plain(AF.urls(stem)), [`assets/audio/sfx__${cue}.ogg`, `assets/audio/sfx__${cue}.mp3`]);
+    }
+    assert.equal(AF.foleyStem('windowOpen'), 'sfx__windowOpen', 'the cue name verbatim');
+    for (const bad of ['../x', 'sfx__x', '', null, 'a b', '9lives']) assert.equal(AF.foleyStem(bad), null, String(bad));
+    assert.deepEqual(plain(AF.urls('sfx__../x')), []);
+});
+
+test('foley sits under the synth: a fixed trim below unity, on the cue\'s own voice', () => {
+    assert.ok(AF.FOLEY_GAIN > 0 && AF.FOLEY_GAIN < 1, `${AF.FOLEY_GAIN}`);
+    const db = 20 * Math.log10(AF.FOLEY_GAIN);
+    assert.ok(db <= -5 && db >= -10, `about 6 dB under: ${db.toFixed(1)} dB`);
+    const src = read('js/audio.js').code;
+    assert.match(src, /Math\.max\(def\.fn\(ctx, G, vg, t, o\), layerFoley\(name, def, vg, t, nowMs\)\)/,
+        'layered through the cue\'s voice, after the synth has passed its own gap');
+});
+
+test('foley is rate-limited per cue, never tighter than the synth or FOLEY_MIN_GAP_MS', () => {
+    assert.equal(AF.foleyGap(25), AF.FOLEY_MIN_GAP_MS, 'a 25 ms click does not get a sample at 40/s');
+    assert.equal(AF.foleyGap(400), 400, 'a slower cue keeps its own gap');
+    assert.equal(AF.foleyGap(undefined), AF.FOLEY_MIN_GAP_MS);
+    assert.equal(AF.foleyGap('junk'), AF.FOLEY_MIN_GAP_MS);
+    const allow = AF.createRateLimit();
+    const gap = AF.foleyGap(25);
+    let played = 0;
+    for (let ms = 0; ms < 1000; ms += 25) if (allow('click', ms, gap)) played += 1;
+    const step = Math.ceil(gap / 25) * 25;   // the first click at or past each gap
+    assert.equal(played, Math.ceil(1000 / step), `${played} samples in a second of 40/s clicks`);
+    assert.equal(allow('purchase', 990, gap), true, 'each cue has its own limit');
+    assert.equal(allow('purchase', 990 + gap - 1, gap), false);
+    assert.equal(allow('purchase', 990 + gap, gap), true);
+});
+
+test('headless: a synth cue with no device layers nothing', () => {
+    const { audio } = boot({ withAudio: true });
+    assert.equal(audio.play('purchase'), false);
+    assert.equal(audio.foley.played(), 0);
+    assert.equal(audio.foley.known('purchase'), false, 'not even a probe');
 });
 
 /* ── Settings ───────────────────────────────────────────────────────── */

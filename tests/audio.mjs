@@ -15,16 +15,44 @@
       holds the tape clock until its line is done, caption on screen; the
       music sits about 12 dB under the cues and the voice level with them;
       and with every file answered by the dev server's index.html, nothing
-      changes at all: no music, no hold, no download, no error.
+      changes at all: no music, no hold, no download, no error. Pausing a
+      tape mid-line (or hiding the tab) and resuming says the line again
+      from its start.
+   7. With stand-in tones routed in (ffmpeg, a temp dir, nothing committed):
+      Fate says the line her strip shows, but not with Dealer Chatter off,
+      not with Voices off, not past the router's cooldown and never over
+      another voice; a Mirror Login or End of Shift beat with a line waits
+      for it and one without does not; Escape cuts the line and then does
+      what it always did; an act still gates alone; sfx__<cue> foley layers
+      on its synth cue, rate-limited, and a missing one is a HEAD probe.
 
    Needs a running server:  COSMOS_TEST_URL=http://127.0.0.1:5192 npm run test:audio */
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { chromium } from 'playwright';
 
 const baseUrl = process.env.COSMOS_TEST_URL || 'http://localhost:5173';
 const OUT = 'output/audio';
 mkdirSync(OUT, { recursive: true });
+
+/* Stand-in files for the lines and foley nothing has generated yet: a
+   1.6 s tone for a spoken line, a 0.25 s blip for a foley one-shot. */
+const tmp = mkdtempSync(join(tmpdir(), 'cosmos-audio-'));
+let tones = null;
+try {
+    const tone = (name, freq, dur) => {
+        const file = join(tmp, name);
+        execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', `sine=frequency=${freq}:duration=${dur}:sample_rate=48000`,
+            '-af', 'volume=0.25', '-c:a', 'libopus', '-b:a', '32k', file]);
+        return readFileSync(file);
+    };
+    tones = { line: tone('line.ogg', 330, 1.6), foley: tone('foley.ogg', 880, 0.25) };
+} catch (err) {
+    tones = null;
+}
 
 const browser = await chromium.launch({ headless: true, args: ['--use-gl=angle', '--use-angle=swiftshader'] });
 const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
@@ -277,6 +305,64 @@ try {
         assert.equal(await page.evaluate(() => audio.debug().speaking), false);
     });
 
+    await check('pausing a tape mid-line and resuming says that line again, from its start', async () => {
+        const duration = await page.evaluate(() => audio.voice.duration('instructor', 't1-s3-0'));
+        await page.evaluate(() => {
+            const line = AudioFiles.tapeLines(MediaCatalog.tape('t1')).find((l) => l.id === 't1-s3-0');
+            MediaPlayerView.loadTape('t1', false);
+            MediaPlayerView.seek(line.at - 0.2);
+            MediaPlayerView.play();
+        });
+        await waitFor(() => tapeVoice.current() === 't1-s3-0' && audio.debug().speaking, 'the line to start', 5000);
+        await page.waitForTimeout(2000);
+        const paused = await page.evaluate(() => {
+            MediaPlayerView.pause();
+            return { resuming: tapeVoice.resuming(), speaking: audio.debug().speaking, t: MediaPlayerView.state().t };
+        });
+        assert.equal(paused.resuming, 't1-s3-0', 'the paused line is remembered');
+        assert.equal(paused.speaking, false, 'pause cuts it');
+        await page.waitForTimeout(800);
+        assert.equal(await page.evaluate(() => audio.debug().speaking), false, 'and it stays cut while paused');
+        const run = await page.evaluate(async () => {
+            MediaPlayerView.play();
+            const t0 = performance.now();
+            let began = null;
+            let ended = null;
+            while (performance.now() - t0 < 15000) {
+                const on = audio.debug().speaking && audio.voice.current() === 'vo__instructor__t1-s3-0';
+                if (on && began === null) began = performance.now() - t0;
+                if (began !== null && !on) { ended = performance.now() - t0; break; }
+                await new Promise((r) => setTimeout(r, 50));
+            }
+            return { began, ended, t: MediaPlayerView.state().t };
+        });
+        assert.ok(run.began !== null && run.began < 1500, `the line restarted on play (${run.began} ms)`);
+        const heard = (run.ended - run.began) / 1000;
+        assert.ok(heard > duration - 0.5, `heard ${heard.toFixed(2)} s of a ${duration.toFixed(2)} s line after resume, so it restarted from the top`);
+        console.log(`      paused 2.0 s into the line; on resume it played ${heard.toFixed(2)} s of ${duration.toFixed(2)} s`);
+        // A hidden tab: audio.js cuts the line a moment BEFORE the deck pauses.
+        await page.evaluate(() => {
+            const line = AudioFiles.tapeLines(MediaCatalog.tape('t1')).find((l) => l.id === 't1-s3-0');
+            MediaPlayerView.seek(line.at - 0.2);
+            MediaPlayerView.play();
+        });
+        await waitFor(() => tapeVoice.current() === 't1-s3-0' && audio.debug().speaking, 'the line again', 5000);
+        await page.waitForTimeout(1000);
+        const hidden = await page.evaluate(() => {
+            Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+            document.dispatchEvent(new Event('visibilitychange'));
+            return { playing: MediaPlayerView.state().playing, resuming: tapeVoice.resuming() };
+        });
+        assert.equal(hidden.playing, false, 'the hidden tab paused the deck');
+        assert.equal(hidden.resuming, 't1-s3-0', 'and remembered the line it cut');
+        await page.evaluate(() => {
+            Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+            document.dispatchEvent(new Event('visibilitychange'));
+        });
+        await waitFor(() => audio.debug().speaking && audio.voice.current() === 'vo__instructor__t1-s3-0', 'the line on return', 5000);
+        await page.evaluate(() => MediaPlayerView.pause(true));
+    });
+
     await check('settings panel drives the buses', async () => {
         await page.evaluate(() => system.openApp('settings'));
         const win = page.locator('#win-settings');
@@ -503,6 +589,224 @@ try {
         assert.deepEqual(errors, [], 'and no errors');
     });
 
+    /* ── Fate, the Adversary scenes and foley, by routed stand-in files ──
+       Tones generated with ffmpeg into a temp dir; nothing is committed.
+       Every other assets/audio/ request gets the dev server's index.html. */
+    if (tones) {
+        const ctx2 = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+        const p3 = await ctx2.newPage();
+        const errors = [];
+        const seen = [];
+        p3.on('pageerror', (e) => errors.push(String(e)));
+        p3.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+        await ctx2.route('**/assets/audio/**', (route) => {
+            seen.push(`${route.request().method()} ${route.request().url().split('/assets/audio/')[1]}`);
+            return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>CosmOS</title>' });
+        });
+        const serve = (glob, body) => ctx2.route(`**/assets/audio/${glob}`, (route) => {
+            seen.push(`${route.request().method()} ${route.request().url().split('/assets/audio/')[1]}`);
+            return route.fulfill({ status: 200, contentType: 'audio/ogg', body: route.request().method() === 'HEAD' ? '' : body });
+        });
+        await serve('vo__fate__CAS-HOST-*.ogg', tones.line);
+        for (const stem of ['vo__sys__ADV-001', 'vo__null-operator__ADV-010', 'vo__null-operator__ADV-012', 'vo__null-operator__ADV-024',
+            'vo__null-operator__FIN-010', 'vo__sys__FIN-H-03', 'vo__fate__FIN-H-08', 'vo__sys__FIN-H-09']) await serve(`${stem}.ogg`, tones.line);
+        await serve('sfx__purchase.ogg', tones.foley);
+        await p3.goto(`${baseUrl}/?testMode=1`, { waitUntil: 'domcontentloaded' });
+        for (let i = 0; i < 3; i += 1) await p3.getByRole('button', { name: 'Perform Miracle' }).click();
+        await p3.waitForFunction(() => audio.state() === 'running' && !document.getElementById('boot-overlay'));
+        const wait = (fn, label, timeout = 4000, arg) => p3.waitForFunction(fn, arg, { timeout, polling: 50 })
+            .catch(() => { throw new Error(`timed out waiting for ${label}`); });
+        const toneSec = await p3.evaluate(() => audio.voice.duration('null-operator', 'ADV-010'));
+        assert.ok(toneSec > 1.4 && toneSec < 2, `stand-in line ${toneSec}`);
+
+        await check('Fate says the line her strip shows, under Chatter, the Voices setting and the cooldowns', async () => {
+            await p3.evaluate(() => system.openApp(PatienceApp.APP_ID));
+            await wait(() => String(audio.voice.current()).startsWith('vo__fate__CAS-HOST-') && audio.debug().speaking, 'her opening line', 5000);
+            let r = await p3.evaluate(() => ({ cur: audio.voice.current(), shown: document.getElementById('pt-dealer').dataset.bark }));
+            assert.equal(r.cur, `vo__fate__${r.shown}`, 'the voice is the line in the strip');
+            // The router's two-second floor: a line asked for now is refused, and nothing new is said.
+            r = await p3.evaluate(() => ({ again: PatienceDealer.say(['casino_enter', 'casino_bet_prompt']), cur: audio.voice.current() }));
+            assert.equal(r.again, null, 'the router refused it');
+            assert.equal(r.cur.startsWith('vo__fate__'), true);
+            // Chatter off cuts her line and keeps her quiet.
+            await p3.evaluate(() => PatienceDealer.setChatter(false));
+            assert.equal(await p3.evaluate(() => audio.voice.current()), null, 'Dealer Chatter off cuts her line');
+            const shown = await p3.evaluate(async () => {
+                game.playHostBark(CasinoHostBarks[5], true, Date.now());
+                await new Promise((res) => setTimeout(res, 300));
+                return audio.voice.current();
+            });
+            assert.equal(shown, null, 'chatter off: no voice, even for a line that reaches the strip');
+            await p3.evaluate(() => PatienceDealer.setChatter(true));
+            // Voices off: the strip changes, nobody speaks.
+            const quiet = await p3.evaluate(async () => {
+                audio.setEnabled('voice', false);
+                game.playHostBark(CasinoHostBarks[6], true, Date.now());
+                await new Promise((res) => setTimeout(res, 300));
+                const cur = audio.voice.current();
+                audio.setEnabled('voice', true);
+                return cur;
+            });
+            assert.equal(quiet, null, 'Voices off: silent');
+            // She never talks over another voice.
+            const over = await p3.evaluate(async () => {
+                const other = audio.voice.say('null-operator', 'ADV-010');
+                await new Promise((res) => setTimeout(res, 300));
+                game.playHostBark(CasinoHostBarks[7], true, Date.now());
+                await new Promise((res) => setTimeout(res, 200));
+                const cur = audio.voice.current();
+                audio.voice.stop();
+                await other;
+                return cur;
+            });
+            assert.equal(over, 'vo__null-operator__ADV-010', 'not over his line');
+            // Closing the table stops her line.
+            await p3.evaluate(() => game.playHostBark(CasinoHostBarks[8], true, Date.now()));
+            await wait(() => String(audio.voice.current()).startsWith('vo__fate__') && audio.debug().speaking, 'a line to close on');
+            await p3.evaluate(() => system.closeApp(PatienceApp.APP_ID));
+            assert.equal(await p3.evaluate(() => audio.voice.current()), null, 'the table closed; so did her line');
+        });
+
+        await check('the Mirror Login: a beat with a line waits for it; a beat without one does not; Escape skips', async () => {
+            // Warm the probes the scene would, so a fast testMode dwell meets answered probes.
+            await p3.evaluate(async () => {
+                await Promise.all(AdversaryScene.dialogue.map((b) => AudioFiles.sceneLine(b)).filter(Boolean)
+                    .map((l) => audio.voice.has(l.speaker, l.id)));
+            });
+            const run = await p3.evaluate(async () => {
+                ui.mirrorReelClaimed = true;
+                ui.playAdversaryScene();
+                const out = [];
+                const t0 = performance.now();
+                while (performance.now() - t0 < 12000) {
+                    const s = ui.advScene;
+                    const id = s && ui.advBeats[s.index] ? ui.advBeats[s.index].id : null;
+                    out.push({ ms: performance.now() - t0, id, cur: audio.voice.current(), speaking: audio.debug().speaking });
+                    if (id === 'ADV-012' && audio.debug().speaking) break;
+                    await new Promise((r) => setTimeout(r, 40));
+                }
+                return out;
+            });
+            const on = (id) => run.filter((x) => x.id === id);
+            const span = (id) => { const xs = on(id); return xs.length ? (xs[xs.length - 1].ms - xs[0].ms) / 1000 : 0; };
+            assert.ok(on('ADV-001').some((x) => x.cur === 'vo__sys__ADV-001' && x.speaking), 'SYS speaks ADV-001');
+            assert.ok(span('ADV-001') >= toneSec - 0.3, `ADV-001 waited ${span('ADV-001').toFixed(2)} s for its ${toneSec.toFixed(2)} s line`);
+            assert.ok(on('ADV-010').some((x) => x.cur === 'vo__null-operator__ADV-010' && x.speaking), 'NULL.OPERATOR speaks ADV-010');
+            assert.ok(span('ADV-010') >= toneSec - 0.3, `ADV-010 waited ${span('ADV-010').toFixed(2)} s`);
+            assert.ok(span('ADV-011') < 0.6, `ADV-011 has no file and did not wait (${span('ADV-011').toFixed(2)} s)`);
+            assert.equal(run[run.length - 1].id, 'ADV-012', 'reached ADV-012 speaking');
+            console.log(`      ADV-001 held ${span('ADV-001').toFixed(2)} s, ADV-010 ${span('ADV-010').toFixed(2)} s, ADV-011 (no file) ${span('ADV-011').toFixed(2)} s`);
+            await p3.keyboard.press('Escape');
+            const after = await p3.evaluate(() => ({
+                cur: audio.voice.current(), speaking: sceneVoice.speaking(),
+                atChoice: ui.advBeats[ui.advScene.index].type === 'choice_prompt',
+                transcript: document.getElementById('adv-transcript').innerText,
+            }));
+            assert.equal(after.cur, null, 'Escape cut the line');
+            assert.equal(after.speaking, false);
+            assert.equal(after.atChoice, true, 'and did what Escape always did: straight to the choice');
+            assert.match(after.transcript, /Listen to it beg/);
+            await p3.evaluate(() => ui.chooseAdversaryResponse('OP-B'));
+            await wait(() => audio.voice.current() === 'vo__null-operator__ADV-024' && audio.debug().speaking, 'ADV-024 after the choice', 4000);
+            await p3.evaluate(() => ui.finishAdversaryScene());
+            assert.equal(await p3.evaluate(() => ui.isAdversarySceneOpen()), false);
+            assert.equal(await p3.evaluate(() => audio.voice.current()), null, 'the scene closed mid-line: the line went with it');
+        });
+
+        await check('End of Shift: a line holds the timer, the act still gates alone', async () => {
+            await p3.evaluate(async () => {
+                ui.dismissSystemModal();
+                State.endings.pending = 'hostile';
+                const beats = game.finaleBeats('hostile');
+                await Promise.all(beats.map((b) => AudioFiles.sceneLine(b)).filter(Boolean).map((l) => audio.voice.has(l.speaker, l.id)));
+                ui.playFinale();
+            });
+            const run = await p3.evaluate(async () => {
+                const out = [];
+                const t0 = performance.now();
+                while (performance.now() - t0 < 9000) {
+                    const s = ui.advScene;
+                    const id = s && ui.advBeats[s.index] ? ui.advBeats[s.index].id : null;
+                    out.push({ ms: performance.now() - t0, id, cur: audio.voice.current(), speaking: audio.debug().speaking, act: s && s.awaitingAct });
+                    if (id === 'FIN-H-03' && out.filter((x) => x.id === 'FIN-H-03' && !x.speaking).length > 25) break;
+                    await new Promise((r) => setTimeout(r, 40));
+                }
+                return out;
+            });
+            const fin10 = run.filter((x) => x.id === 'FIN-010');
+            const held = fin10.length ? (fin10[fin10.length - 1].ms - fin10[0].ms) / 1000 : 0;
+            assert.ok(fin10.some((x) => x.cur === 'vo__null-operator__FIN-010'), 'FIN-010 spoken');
+            assert.ok(held >= toneSec - 0.3, `FIN-010 waited ${held.toFixed(2)} s`);
+            const act = run.filter((x) => x.id === 'FIN-H-03');
+            assert.ok(act.some((x) => x.cur === 'vo__sys__FIN-H-03' && x.speaking), 'the act beat speaks');
+            assert.ok(act.length && act.every((x) => x.act === 'FIN-H-03'), 'and waits on its act');
+            assert.ok(act.filter((x) => !x.speaking).length > 20, 'still waiting after its line ended: the act gates, not the line');
+            await p3.locator('.fin-act:not(.is-done)').click();
+            await wait(() => ui.advScene && ui.advScene.index > ui.advBeats.findIndex((b) => b.id === 'FIN-H-03'), 'the act to move it on');
+            // The house speaks from far away in the scene too (HOST is Fate).
+            await wait(() => audio.voice.current() === 'vo__fate__FIN-H-08' && audio.debug().speaking, 'FIN-H-08 in her voice', 4000);
+            await wait(() => audio.voice.current() === 'vo__sys__FIN-H-09' && audio.debug().speaking
+                && ui.advScene.index === ui.advBeats.length - 1, 'the last line, speaking', 5000);
+            await p3.locator('.fin-scene').click({ position: { x: 300, y: 60 } });
+            await p3.locator('.fin-phase-credits').waitFor({ timeout: 3000 });
+            assert.equal(await p3.evaluate(() => audio.voice.current()), null, 'the record is read, not spoken over');
+            await p3.evaluate(() => ui.finishFinale());
+        });
+
+        await check('foley layers on its synth cue, rate-limited per cue; a missing one is a HEAD probe', async () => {
+            const r = await p3.evaluate(async () => {
+                await new Promise((res) => setTimeout(res, 300));
+                audio.play('purchase');                          // first play: the probe goes out
+                const t0 = performance.now();
+                while (!audio.foley.ready('purchase') && performance.now() - t0 < 3000) await new Promise((res) => setTimeout(res, 50));
+                const ready = audio.foley.ready('purchase');
+                await new Promise((res) => setTimeout(res, 200));
+                const before = audio.foley.played();
+                const one = audio.play('purchase');
+                const afterOne = audio.foley.played();
+                // A hammer at 50/s for 1 s: the synth's 60 ms gap and foley's 120 ms floor.
+                await new Promise((res) => setTimeout(res, 200));
+                let synth = 0;
+                const f0 = audio.foley.played();
+                for (let i = 0; i < 50; i += 1) {
+                    if (audio.play('purchase')) synth += 1;
+                    await new Promise((res) => setTimeout(res, 20));
+                }
+                const layered = audio.foley.played() - f0;
+                // A cue with no file layers nothing, ever.
+                audio.play('error');
+                await new Promise((res) => setTimeout(res, 400));
+                audio.play('error');
+                // Sound off: no synth, so no foley.
+                audio.setEnabled('sfx', false);
+                await new Promise((res) => setTimeout(res, 200));
+                const f1 = audio.foley.played();
+                const off = audio.play('purchase');
+                const offLayered = audio.foley.played() - f1;
+                audio.setEnabled('sfx', true);
+                return { ready, one, layeredOne: afterOne - before, synth, layered, errorKnown: audio.foley.known('error'), off, offLayered };
+            });
+            assert.equal(r.ready, true, 'the sample decoded after the first play');
+            assert.equal(r.one, true);
+            assert.equal(r.layeredOne, 1, 'the next play layered it');
+            assert.ok(r.synth >= 10, `the synth played ${r.synth} of 50`);
+            assert.ok(r.layered >= 5 && r.layered <= 10 && r.layered < r.synth, `foley ${r.layered} of ${r.synth} synth plays in a second (120 ms floor)`);
+            assert.equal(r.errorKnown, false, 'no sfx__error installed');
+            assert.equal(r.off, false);
+            assert.equal(r.offLayered, 0, 'SFX off: no foley either');
+            const err = seen.filter((x) => x.includes('sfx__error'));
+            assert.ok(err.length >= 1 && err.length <= 2 && err.every((x) => x.startsWith('HEAD ')), `only HEAD probes: ${err.join(', ')}`);
+            console.log(`      foley layered on ${r.layered} of ${r.synth} hammered purchase cues`);
+        });
+
+        await check('the stand-in run raised no errors', async () => {
+            assert.deepEqual(errors, []);
+        });
+        await ctx2.close();
+    } else {
+        console.log('  note  ffmpeg with libopus not found; the Fate, scene and foley checks are skipped');
+    }
+
     await check('no console errors and no autoplay warnings', async () => {
         assert.deepEqual(problems, []);
     });
@@ -513,4 +817,5 @@ try {
     throw error;
 } finally {
     await browser.close();
+    rmSync(tmp, { recursive: true, force: true });
 }
