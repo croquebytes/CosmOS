@@ -3563,9 +3563,49 @@ const game = {
        they are already once-per-run or once-ever. */
     ADVERSARY_NUDGE_COOLDOWN_MS: 600000,
 
+    /* Lifetime caps, per reason: [lowest, highest] net a kind of act may add
+       to `standing` over the whole save. The cooldown stops a click being
+       spammed; it does not stop it being repeated, and over the ~14.5 h the
+       finale gate needs, ten minutes per reason is dozens of nudges.
+
+       Measured with tools/standing_sim.mjs (docs/STANDING_DRIFT.md), on the
+       real climb to the gate, with only the cooldown: a player who touched
+       nothing ended at -12 whatever they had answered; one who opened Notepad
+       and bought a single Void upgrade an hour was +11 complicit by reboot 3-8,
+       again whatever they had answered; and curious was unreachable. The
+       reboot's own -1 (fourteen ships is -13) outweighed the whole opening
+       spread of +/-4, and two repeatable acts outweighed the reboot.
+
+       With these, what you DID counts and how often you did it does not: each
+       band is a way of playing (resist; read and build; feed him), and the
+       answer at the Mirror Login still shows at the gate.
+
+       Not here, on purpose: the patch (+5) and the archived replay (+1), which
+       are exempt once-per-run acts, and Mail, which is once per message. */
+    ADVERSARY_NUDGE_CAPS: {
+        'read the paperwork': [0, 3],
+        'fed the reflection': [0, 3],
+        'posted a status': [-4, 4],
+        'tried to end the mirror': [-4, 0],
+        'rebooted': [-6, 0]
+    },
+
     nudgeAdversaryStanding(delta, reason, options = {}) {
         const adv = State.adversary;
         if (!adv?.sceneCompleted) return; // no relationship yet
+
+        // How much of this delta may this KIND of act still add? Read
+        // defensively: a save is pasted text, and mergeInto does no type checks.
+        let applied = delta;
+        let totalAfter = null;
+        const cap = reason ? this.ADVERSARY_NUDGE_CAPS[reason] : null;
+        if (cap) {
+            if (!adv.nudgeTotals || typeof adv.nudgeTotals !== 'object' || Array.isArray(adv.nudgeTotals)) adv.nudgeTotals = {};
+            const used = Math.max(cap[0], Math.min(cap[1], Number(adv.nudgeTotals[reason]) || 0));
+            applied = Math.max(cap[0], Math.min(cap[1], used + delta)) - used;
+            if (!applied) return; // spent: nothing moves, and no cooldown is burned
+            totalAfter = used + applied;
+        }
 
         if (reason && !options.exempt) {
             adv.nudgeCooldowns = adv.nudgeCooldowns || {};
@@ -3573,9 +3613,10 @@ const game = {
             if (now - (adv.nudgeCooldowns[reason] || 0) < this.ADVERSARY_NUDGE_COOLDOWN_MS) return;
             adv.nudgeCooldowns[reason] = now;
         }
+        if (totalAfter !== null) adv.nudgeTotals[reason] = totalAfter;
 
         const before = this.adversaryRelationship();
-        adv.standing = Math.max(-12, Math.min(12, (adv.standing || 0) + delta));
+        adv.standing = Math.max(-12, Math.min(12, (adv.standing || 0) + applied));
         const after = this.adversaryRelationship();
         if (after !== before) {
             ui.log(`[void_mirror] Relationship reclassified: ${before} → ${after}.`);

@@ -456,6 +456,13 @@ const State = {
            setting. */
         standing: 0,
 
+        /* What each KIND of act has already added to `standing`, net, for the
+           whole save: { reason: delta }. game.ADVERSARY_NUDGE_CAPS bounds it
+           per reason, so what you did counts and how often does not. A schema
+           default: mergeInto deep-merges it, and nudgeAdversaryStanding reads
+           it defensively (a save is pasted text), so no SAVE_VERSION bump. */
+        nudgeTotals: {},
+
         barks: {
             lastBarkId: null,
             lastBarkTime: 0,
