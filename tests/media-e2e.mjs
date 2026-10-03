@@ -245,6 +245,16 @@ try {
     await page.evaluate(() => system.closeApp('settings'));
     step('Settings → Cinematics offers First time only / Always / Off and persists it');
 
+    // "N of M reels seen" comes from the catalog, in the window's own HTML as well as after
+    // the sync (the HTML once said "0 of 4" with five cinematics in the catalog).
+    {
+        const scenes = await page.evaluate(() => Object.keys(MediaCatalog.scenes).length);
+        const html = await page.evaluate(() => system.getAppConfig('settings').initialHTML);
+        assert.match(html, new RegExp(`id="media-seen">\\d+ of ${scenes} reels seen<`), 'the initial HTML counts the catalog');
+        assert.match(await page.evaluate(() => media.seenSummary()), new RegExp(`^\\d+ of ${scenes} reels seen$`));
+        step(`the reel count is read from the catalog (${scenes}), not typed into the window`);
+    }
+
     /* ── 4. A reel requested while a dialog is open waits for it ───────── */
     if (reel) {
         await page.route('**/assets/video/cine__void-breach__720.webm', (route) =>

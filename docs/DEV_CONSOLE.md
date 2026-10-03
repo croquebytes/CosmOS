@@ -106,9 +106,9 @@ apply them twice. The link builder in group 9 writes one for you.
 - **Beds cannot be started from here.** Music beds follow the game's context (the
   Void, Patience.exe, the Media Player, the Mirror Login, an ending); only stingers
   can be fired.
-- A letter typed on a focused `<select>` inside the panel is not a desktop
-  shortcut; Space presses the focused control and is never also a Miracle; Escape
-  closes the window the keyboard is in.
+- Space presses the focused control and is never also a Miracle; Escape closes the
+  window the keyboard is in; a letter typed on a focused `<select>` is not a desktop
+  shortcut (the game's keyboard handler ignores it everywhere, not only here).
 
 ## Keeping it out of a release
 

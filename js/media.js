@@ -1030,6 +1030,14 @@ const media = (() => {
         if (typeof MediaPlayerView !== 'undefined' && MediaPlayerView && typeof MediaPlayerView.syncVhs === 'function') MediaPlayerView.syncVhs();
     }
 
+    /* "2 of 5 reels seen". One place, used by the sync below and by the
+       Settings window's initial HTML, so the count of cinematics cannot go
+       stale in a hard-coded string again (it said "0 of 4" after a fifth
+       scene was added). */
+    function seenSummary() {
+        return `${settings().seen.length} of ${Object.keys(MediaCatalog.scenes).length} reels seen`;
+    }
+
     function syncSettingsUI() {
         if (!hasDOM) return;
         const s = settings();
@@ -1038,7 +1046,7 @@ const media = (() => {
         const vhs = document.getElementById('media-vhs');
         if (vhs) vhs.checked = s.vhs;
         const seen = document.getElementById('media-seen');
-        if (seen) seen.textContent = `${s.seen.length} of ${Object.keys(MediaCatalog.scenes).length} reels seen`;
+        if (seen) seen.textContent = seenSummary();
     }
 
     /* ── Wiring ───────────────────────────────────────────────────────── */
@@ -1084,6 +1092,7 @@ const media = (() => {
         checkTapes,
         setCinematics,
         setVhs,
+        seenSummary,
         syncSettingsUI,
     };
 })();

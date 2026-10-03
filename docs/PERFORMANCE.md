@@ -118,15 +118,28 @@ wakeup, an idle desktop wakes about 11 times a second instead of about 66.
 - Production accrues at the full rate.
 - Mail held in a hidden tab lands as a backlog on return.
 - Tickets go on hold when nobody is there, with every window shut.
+- With the audio context running (a click has started it), its own timer wakes
+  about twice a second while the tab is visible, never while it is hidden, and
+  again on return.
 
 Five of these guards were mutation-checked: reverting the shared clock for
 Mail, the rest while hidden, the hide-edge beat, the panel-interval wait, or
 the change-only operator panel each fails the test.
 
-### Not covered
+### Sound adds two wakeups a second, and rests when hidden
 
-`js/audio.js` (worked on in parallel) updates the ambient bed on its own 500 ms
-interval once a gesture has started the AudioContext. It does no work while the
-context is suspended, and the context is suspended in a hidden tab, but the
-interval still wakes. Moving it onto Heartbeat, or clearing it on
-`visibilitychange`, is a small change for whoever owns that file.
+Every figure above was measured before any gesture, so the `AudioContext` did not
+exist. A click creates it, and `js/audio.js` then updates the ambient bed and the
+music on its own 500 ms interval. Measured on a closed desktop (`tests/idle-probe.mjs`):
+
+| | intervals/s | of which |
+|---|---|---|
+| before the first gesture | 1.0 | `heartbeat.js` |
+| after a click, visible | 3.0 | `heartbeat.js` 1.0, `audio.js` 2.0 |
+| after a click, tab hidden | about 0.2 | the autosave, and one timer the probe cannot attribute; `audio.js` none |
+
+So an idle page with sound running legitimately shows about three interval wakeups a
+second, not one. The audio timer starts and stops with `visibilitychange` (the context is
+suspended in a hidden tab, so there is nothing to update), which an earlier version of
+this note listed as unfinished. The one-shot timers that free a finished sound's voice
+are not polling and are not counted. `tests/idle-e2e.mjs` step 6 guards all of it.
