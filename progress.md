@@ -1542,3 +1542,25 @@ three further runs — watch for it.
   shows `nudgeTotals`.
 - The existing standing suites (`adversary-scene`, `mail`, `choir`, `endings`) were not
   changed and stay green. Nothing in the economy reads standing; golden is unaffected.
+
+### Session 9, part 5 (2026-10-03): Import Save and Hard Reset no longer let the dying page save
+- **The bug:** `game.importSave()` writes the imported run to `cosmos_save` and calls
+  `location.reload()`; `game.hardReset()` deletes the key and reloads after a full second.
+  Both set `State.suppressUnloadSave`, which stops only the `beforeunload` save in
+  `system.js`. Any other save while the page was still alive (an achievement, a filed
+  document, a delivered mail, the 30 s autosave) wrote the OLD in-memory run over the imported
+  one, or recreated the run Hard Reset had just deleted. The flag is also serialised by
+  `State.save()`, so a save that landed after it was set carried a `true` into the next page.
+- **The fix** (`js/state.js`, `js/game.js`): `State.abandonPage()` clears the autosave interval,
+  sets `suppressUnloadSave` and replaces `State.save` with a no-op for the rest of the page's
+  life. `importSave` calls it AFTER the `setItem` (a write that throws used to leave the flag
+  set on a page that was not going anywhere), `hardReset` after the `removeItem`. `State.save`
+  itself still ignores the flag: it is serialised, so honouring it would let a persisted `true`
+  stop saving for good. `State.load()` now resets the flag, so a stale `true` already sitting in
+  a player's save cannot survive.
+- **Tests:** `tests/save-export.mjs` (6 new; the harness now records timers and intervals) and
+  `tests/save-migration.mjs` (2 new). Against the unfixed code 5 + 2 fail; each line of the fix
+  was reverted on its own and each revert fails at least one test.
+- **Not touched:** `js/devtools.js` still has its own `clearInterval` + flag in three places on
+  this branch; the `State.save` no-op for it is `abandonPage()` on `fix/stale-items`, which can
+  delegate to `State.abandonPage()` once both are merged.
