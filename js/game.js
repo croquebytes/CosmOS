@@ -4304,11 +4304,11 @@ const game = {
                 throw new Error('Invalid save format');
             }
 
-            // Clear localStorage and load the imported save
-            // Same hazard as hardReset: without this the unload autosave
-            // overwrites the imported payload with the current run.
-            State.suppressUnloadSave = true;
+            // Same hazard as hardReset: until the reload commits, any save
+            // (the unload one, an event-driven one, the autosave timer)
+            // writes the current run over the imported payload.
             localStorage.setItem('cosmos_save', saveData);
+            State.abandonPage();
             location.reload(); // Reload to apply the imported save
         } catch (error) {
             this.saveStatus('Error importing save: Invalid or corrupted save data.', true);
@@ -4327,9 +4327,10 @@ const game = {
         // The beforeunload handler would otherwise write the live in-memory
         // State straight back over the key we just cleared, making Hard Reset
         // — the player's only escape from a build they cannot live with — do
-        // nothing at all.
-        State.suppressUnloadSave = true;
+        // nothing at all. So would any other save in the second before the
+        // reload: abandonPage stops the page saving for the rest of its life.
         localStorage.removeItem('cosmos_save');
+        State.abandonPage();
         ui.log('Hard reset complete. Reloading...');
         ui.screenPulse('rgba(255, 0, 0, 0.6)');
 

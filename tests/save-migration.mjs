@@ -293,4 +293,40 @@ check('save() keeps the previous write as a backup', () => {
     assert.equal(JSON.parse(store.get('cosmos_save_backup')).resources.praise, 5);
 });
 
+check('a persisted suppressUnloadSave does not outlive the page that set it', () => {
+    /* The flag describes a dying page, but save() serialises it: a save that
+       landed after Hard Reset or Import Save set it (the window before the
+       reload commits) carried a true into the next page, which then never
+       saved on unload. Nothing reset it. */
+    const current = bootWith({}).State.SAVE_VERSION;
+    const { State } = bootWith({
+        cosmos_save: JSON.stringify({
+            saveVersion: current, suppressUnloadSave: true,
+            resources: { praise: 5 },
+        }),
+    });
+    assert.equal(State.resources.praise, 5, 'fixture check: the rest of the save loaded');
+    assert.equal(State.suppressUnloadSave, false);
+
+    const unreadable = bootWith({ cosmos_save: '{"suppressUnloadSave":true,' }).State;
+    assert.equal(unreadable.suppressUnloadSave, false, 'and a save that fails to load cannot leave it set');
+});
+
+check('abandonPage stops the page saving, without the flag being what does it', () => {
+    const { State, store } = bootWith({});
+    State.suppressUnloadSave = true;
+    State.resources.praise = 11;
+    State.save();
+    assert.equal(JSON.parse(store.get('cosmos_save')).resources.praise, 11, 'the flag alone must not stop save()');
+    State.suppressUnloadSave = false;
+    State.abandonPage();
+    const written = store.get('cosmos_save');
+    State.resources.praise = 12;
+    State.save();
+    assert.equal(store.get('cosmos_save'), written);
+    assert.equal(State.suppressUnloadSave, true);
+    assert.equal(typeof State.abandonPage, 'function', 'and it is a method, not save data');
+    assert.ok(!('abandonPage' in JSON.parse(written)), 'never serialised');
+});
+
 console.log(`\n${passed} passed${process.exitCode ? ' — with failures' : ''}\n`);

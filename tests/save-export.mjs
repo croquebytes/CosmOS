@@ -25,6 +25,12 @@
  *   4. A failed export says so there too, and clears the box instead of
  *      leaving the last good text sitting under an error.
  *   5. A save of any realistic size encodes (it is chunked).
+ *   6. After Import Save or Hard Reset the page lives on until the navigation
+ *      commits (a full second, for Hard Reset), and a save in that window —
+ *      an achievement, a filed document, the autosave timer — would write the
+ *      OLD run over the imported one, or recreate the run just deleted.
+ *      suppressUnloadSave only stops the beforeunload save, so the dying page
+ *      stops saving altogether (State.abandonPage).
  */
 
 import assert from 'node:assert/strict';
@@ -53,7 +59,10 @@ async function runAll() {
    false` leaves the status element out, as a Settings window that has not
    been opened would. */
 function boot(store = {}, { withStatus = true, clipboard = true, reload = false } = {}) {
-    const calls = { log: [], reload: 0, copied: [], confirms: 0 };
+    const calls = { log: [], reload: 0, copied: [], confirms: 0, timers: [] };
+    /* Timers are recorded, never run: a test fires the one it cares about by hand. */
+    const intervals = new Map();
+    let nextInterval = 0;
     const el = (extra = {}) => ({ value: '', dataset: {}, textContent: '', select: noop, ...extra });
     const dom = {
         'export-save-text': el(),
@@ -66,7 +75,10 @@ function boot(store = {}, { withStatus = true, clipboard = true, reload = false 
         Math, Date, JSON, Number, Object, Array, String, Boolean, Set, Map, Promise, Error,
         TextEncoder, TextDecoder, Uint8Array, btoa, atob,
         isNaN, parseInt, parseFloat,
-        setTimeout: noop, clearTimeout: noop, setInterval: noop, clearInterval: noop,
+        setTimeout: (fn, ms) => { calls.timers.push({ fn, ms }); return calls.timers.length; },
+        clearTimeout: noop,
+        setInterval: (fn) => { intervals.set(++nextInterval, fn); return nextInterval; },
+        clearInterval: (id) => { intervals.delete(id); },
         confirm: () => { calls.confirms++; return confirmAnswer; },
         alert: noop,
         localStorage: {
@@ -94,7 +106,7 @@ function boot(store = {}, { withStatus = true, clipboard = true, reload = false 
             instability: 0, cascadeTier: 0, alertedTier: 0, scars: [] };
         env.game.bootstrapModifiers(Date.now());
     }
-    Object.assign(env, { store, calls, dom, ctx, setConfirm: (v) => { confirmAnswer = v; } });
+    Object.assign(env, { store, calls, dom, ctx, intervals, setConfirm: (v) => { confirmAnswer = v; } });
     return env;
 }
 
@@ -284,6 +296,104 @@ test('export does not touch the run: State is byte-identical before and after', 
     env.game.exportSave();
     assert.equal(JSON.stringify(env.State), before);
     assert.deepEqual(plain(env.State.dev), { tainted: false, actions: 0, since: 0 });
+});
+
+/* ── the dying page ───────────────────────────────────────────────────── */
+
+/* The autosave timer: the one interval whose callback is State.save. */
+const liveAutosaves = (env) => [...env.intervals.values()].filter((fn) => /State\.save/.test(String(fn)));
+
+/* The exported save of a cascading run, ready to paste into a fresh page. */
+function pasted() {
+    const src = boot();
+    const json = cascading(src);
+    src.game.exportSave();
+    return { json, text: src.dom['export-save-text'].value };
+}
+
+test('after Import Save, a late State.save() in the dying page leaves the imported text in storage', () => {
+    const { json, text } = pasted();
+    const env = boot();
+    env.dom['import-save-text'].value = text;
+    env.game.importSave();
+    assert.equal(env.calls.reload, 1, 'fixture check: it asked for the reload');
+    assert.equal(env.store.cosmos_save, json, 'fixture check: the import landed');
+
+    const written = { ...env.store };
+    env.State.resources.praise += 1234;                    // the old run keeps moving until the navigation commits
+    env.State.save();                                      // an achievement, a filed document, a delivered mail
+    assert.deepEqual({ ...env.store }, written, 'a late save wrote something');
+    assert.equal(env.store.cosmos_save, json, 'the imported text, not the run that was on screen');
+});
+
+test('after Import Save, the autosave timer is stopped, and the page is marked as dying', () => {
+    const { text } = pasted();
+    const env = boot();
+    assert.equal(liveAutosaves(env).length, 1, 'fixture check: the page starts with its autosave timer');
+    env.dom['import-save-text'].value = text;
+    env.game.importSave();
+    assert.equal(liveAutosaves(env).length, 0, 'the timer is still running');
+    assert.equal(env.State.suppressUnloadSave, true, 'the unload save is suppressed too');
+});
+
+test('after Hard Reset, a late State.save() in the one-second window does not recreate the run', () => {
+    const env = boot();
+    assert.ok('cosmos_save' in env.store, 'fixture check: there is a run to delete');
+    env.game.hardReset();
+    assert.equal(env.calls.confirms, 2, 'it asked twice');
+    assert.ok(!('cosmos_save' in env.store), 'the run is gone');
+    const timer = env.calls.timers.find((t) => t.ms === 1000);
+    assert.ok(timer, 'fixture check: the reload waits a second');
+    assert.equal(env.calls.reload, 0, 'fixture check: still inside the window');
+
+    env.State.save();                                      // the window: the old page is still running
+    assert.ok(!('cosmos_save' in env.store), 'a save in the window recreated the run Hard Reset deleted');
+
+    timer.fn();                                            // the stored callback: the second is up
+    assert.equal(env.calls.reload, 1);
+    env.State.save();                                      // and the navigation has still not committed
+    assert.ok(!('cosmos_save' in env.store), 'a save after the reload was requested recreated it');
+});
+
+test('after Hard Reset, the autosave timer is stopped, and the page is marked as dying', () => {
+    const env = boot();
+    assert.equal(liveAutosaves(env).length, 1, 'fixture check: the page starts with its autosave timer');
+    env.game.hardReset();
+    assert.equal(liveAutosaves(env).length, 0, 'the timer is still running');
+    assert.equal(env.State.suppressUnloadSave, true, 'the unload save is suppressed too');
+});
+
+test('a declined Hard Reset (either confirm) leaves the page saving', () => {
+    for (const declineAt of [1, 2]) {
+        const env = boot();
+        let asked = 0;
+        env.ctx.confirm = () => ++asked !== declineAt;
+        env.game.hardReset();
+        assert.equal(asked, declineAt, `declined at confirm ${declineAt}`);
+        assert.ok('cosmos_save' in env.store, 'the run stands');
+        assert.equal(liveAutosaves(env).length, 1, 'the timer runs');
+        assert.equal(env.State.suppressUnloadSave, false);
+        env.State.resources.praise += 7;
+        env.State.save();
+        assert.equal(JSON.parse(env.store.cosmos_save).resources.praise, env.State.resources.praise, 'and it still saves');
+    }
+});
+
+test('an import whose storage write throws leaves a page that can still save', () => {
+    const { text } = pasted();
+    const env = boot();
+    const setItem = env.ctx.localStorage.setItem;
+    env.ctx.localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+    env.dom['import-save-text'].value = text;
+    env.game.importSave();
+    env.ctx.localStorage.setItem = setItem;
+    assert.equal(env.calls.reload, 0, 'no reload');
+    assert.equal(status(env).dataset.tone, 'error', 'and the player is told');
+    assert.equal(env.State.suppressUnloadSave, false, 'the unload save still stands');
+    assert.equal(liveAutosaves(env).length, 1, 'the autosave timer still runs');
+    env.State.resources.praise += 7;
+    env.State.save();
+    assert.equal(JSON.parse(env.store.cosmos_save).resources.praise, env.State.resources.praise, 'and the run still saves');
 });
 
 await runAll();
