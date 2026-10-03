@@ -302,6 +302,24 @@ try {
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'icon-choir', 'focus went back to its plaque');
     step('Escape closes the window the keyboard is in, and focus returns to its plaque');
 
+    // A focused <select> types to choose an option: a letter there is not a desktop shortcut
+    // (M, C, N, S, D and F each opened a window from the Notation dropdown).
+    await closeEverything(page);
+    await page.evaluate(() => { ui.dismissSystemModal?.(); system.openApp('settings'); });
+    await page.locator('#notation-mode').focus();
+    for (const key of ['m', 'c', 'n', 'd', 's']) await page.keyboard.press(key);
+    assert.deepEqual(await page.evaluate(() => Object.keys(system.windows)), ['settings'],
+        'a letter typed on a focused select opened a window');
+    // Escape still closes the layer the keyboard is in, from the select too.
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#win-settings').count(), 0, 'Escape closed the window from the select');
+    // The shortcuts themselves are untouched: the same letter with focus on nothing opens Mandates.
+    await page.evaluate(() => { document.activeElement?.blur?.(); });
+    await page.keyboard.press('m');
+    assert.equal(await page.locator('#win-mandates').count(), 1, 'M still opens Divine Mandates from the desktop');
+    await closeEverything(page);
+    step('a letter on a focused select is not a desktop shortcut; Escape still closes from it; the shortcuts still work');
+
     /* ── 4. ARIA ──────────────────────────────────────────────────────── */
     await openOnly(page, 'etherscape');
     const aria = await page.evaluate(() => {
