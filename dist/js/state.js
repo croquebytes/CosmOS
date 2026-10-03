@@ -752,6 +752,23 @@ const State = {
         }
     },
 
+    /* For a page that has just rewritten or deleted the stored run and is
+       about to reload (Import Save, Hard Reset). The page lives on until the
+       navigation commits — a full second after Hard Reset — and anything that
+       saves in that window (an achievement, a filed document, a delivered
+       mail, the autosave timer) would write the OLD in-memory run over the
+       imported one, or back in place of the one just deleted.
+       suppressUnloadSave only stops the beforeunload save. It cannot stop
+       save() itself, and save() cannot honour it: the flag is serialised, so
+       a persisted true would stop saving for good. So the dying page stops
+       saving altogether. Call it AFTER the storage write, so a write that
+       throws leaves a page that can still save. */
+    abandonPage() {
+        clearInterval(autosaveIntervalId);
+        this.suppressUnloadSave = true;
+        this.save = () => {};
+    },
+
     /* Ordered, cumulative. A save records the version it was written at; every
        migration above that number runs, in order. Version 0 means "written
        before versioning existed". */
@@ -967,6 +984,12 @@ const State = {
                 localStorage.setItem(`${State.BACKUP_KEY}_unreadable`, raw);
             } catch (_) { /* quota — nothing useful to do */ }
             return false;
+        } finally {
+            /* suppressUnloadSave describes the page that is dying, not the run.
+               It is serialised, so a save that landed after it was set (Hard
+               Reset's second, before abandonPage existed) carries a true into
+               the next page, which would then never save on unload. */
+            this.suppressUnloadSave = false;
         }
     }
 };
