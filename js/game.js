@@ -3565,8 +3565,8 @@ const game = {
 
     /* Lifetime caps, per reason: [lowest, highest] net a kind of act may add
        to `standing` over the whole save. The cooldown stops a click being
-       spammed; it does not stop it being repeated, and over the ~14.5 h the
-       finale gate needs, ten minutes per reason is dozens of nudges.
+       spammed; it does not stop it being repeated, and over the fourteen-plus
+       hours the finale gate needs, ten minutes per reason is dozens of nudges.
 
        Measured with tools/standing_sim.mjs (docs/STANDING_DRIFT.md), on the
        real climb to the gate, with only the cooldown: a player who touched

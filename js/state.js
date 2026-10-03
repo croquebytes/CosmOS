@@ -2892,7 +2892,9 @@ const AdversaryHookedTriggers = [
         inside a build he had a hand in, and came back out. That is the
         earliest point where every thread the ending pulls on — his
         receipts, the archive, "forgotten mid-sentence" — has been read.
-        Earliest possible: reboot 13, ~14.5h of steady attended play;
+        Earliest possible: reboot 14. The 13th reboot (~14.5h of steady
+        attended play, measured above) ships INTO the replay; shipping the
+        replay is the 14th, and that is the first archived ship;
      3. a save at least a day old (runtime.startTime, validated on load), so
         the ending cannot land on day one however hard someone binges.
    The simulator can never reach it: the Mirror Login never completes
@@ -2916,7 +2918,9 @@ const AdversaryFinale = {
     title: 'End of Shift',
     BANDS: ['hostile', 'curious', 'complicit'],
     gate: {
-        minReboots: 13,           // Archived opens at 12; a replay shipped puts you at 13+
+        // Archived opens at 12, shipping into a replay is 13 and shipping the replay is
+        // 14, so this floor is implied by minArchivedShips; it is kept as a plain guard.
+        minReboots: 13,
         minArchivedShips: 1,
         minSaveAgeMs: 24 * 60 * 60 * 1000,
     },
