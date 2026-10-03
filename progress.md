@@ -1543,7 +1543,43 @@ three further runs — watch for it.
 - The existing standing suites (`adversary-scene`, `mail`, `choir`, `endings`) were not
   changed and stay green. Nothing in the economy reads standing; golden is unaffected.
 
-### Session 9, part 5 (2026-10-03): Import Save and Hard Reset no longer let the dying page save
+### Session 9, part 5 (2026-10-02): four stale items
+- **A letter on a focused `<select>` was a desktop shortcut** (`js/system.js`). Reproduced
+  first: `m`, `c` and `n` typed on the Notation dropdown opened Mandates, the Engine and
+  Notepad. The keyboard handler ignored INPUT, TEXTAREA and contentEditable but not
+  SELECT. It now returns for a SELECT except Escape (still closes the layer the keyboard
+  is in) and Alt+Arrow (still snaps the window). The Dev Console's own guard for its
+  dropdowns is gone as redundant. `tests/a11y-e2e.mjs` pins it, with a control that the
+  shortcuts still work from the desktop.
+- **"0 of 4 reels seen"** (`js/system.js`) was a hard-coded string in the Settings
+  window's HTML with five cinematics in the catalog. It was never visible: opening
+  Settings runs `media.syncSettingsUI()`, which rewrote it. It now comes from
+  `media.seenSummary()`, the one place that builds the text; `tests/media-e2e.mjs` checks
+  the window's initial HTML against the catalog.
+- **The finale gate's reboot count** (`js/state.js`, my own `docs/STANDING_DRIFT.md` and
+  `tools/standing_lib.mjs`, a comment in `js/game.js`): earliest possible is reboot 14, not
+  13. The 13th reboot (~14.5 h) ships into the replay; shipping the replay is the 14th, the
+  first archived ship. Comments and docs only; `minReboots: 13` is kept, implied by
+  `minArchivedShips`.
+- **`docs/PERFORMANCE.md` "Not covered"** said `js/audio.js`'s 500 ms timer keeps waking in
+  a hidden tab. It does not: it starts and stops with `visibilitychange`. Measured on a
+  closed desktop: 1.0 interval/s before a gesture, 3.0 after a click (`heartbeat.js` 1.0,
+  `audio.js` 2.0), about 0.2 hidden with none from `audio.js`. The note is now a section with
+  that table, and `tests/idle-e2e.mjs` step 6 guards it (the old steps never click, so they
+  never started the audio context; its filter also leaves `audio` out).
+- All three new guards were mutation-checked: each fails with its fix reverted.
+- **A Dev Console e2e timed out once in a full run and then passed 3 of 3 standalone** (the
+  step where a second browser takes an imported run). The cause is not proven (that run was
+  also visibly slower), but it exposed a real hazard: after `writeAndReload`, `freshSave` or
+  `?fresh=1` the old page lives until the navigation commits, and an event-driven
+  `State.save()` in that window would write the OLD run over the new one (`suppressUnloadSave`
+  only stops the beforeunload save, and is itself serialised). `abandonPage()` in
+  `js/devtools.js` now stops the dying page saving at all; a vm test shows a late save
+  overwriting the written run without it. The e2e waits now report what the page looked like
+  when they give up. The game's own Import Save and Hard Reset have the same shape (Hard Reset
+  waits a full second); that is a separate task chip, not changed here.
+
+### Session 9, part 6 (2026-10-03): Import Save and Hard Reset no longer let the dying page save
 - **The bug:** `game.importSave()` writes the imported run to `cosmos_save` and calls
   `location.reload()`; `game.hardReset()` deletes the key and reloads after a full second.
   Both set `State.suppressUnloadSave`, which stops only the `beforeunload` save in
@@ -1561,6 +1597,6 @@ three further runs — watch for it.
 - **Tests:** `tests/save-export.mjs` (6 new; the harness now records timers and intervals) and
   `tests/save-migration.mjs` (2 new). Against the unfixed code 5 + 2 fail; each line of the fix
   was reverted on its own and each revert fails at least one test.
-- **Not touched:** `js/devtools.js` still has its own `clearInterval` + flag in three places on
-  this branch; the `State.save` no-op for it is `abandonPage()` on `fix/stale-items`, which can
-  delegate to `State.abandonPage()` once both are merged.
+- **Not touched:** `js/devtools.js` keeps its own local `abandonPage()` (part 5, above), the same
+  three lines as `State.abandonPage()`. It can delegate to the State method; left alone here so
+  this change stays on the game's own Import Save and Hard Reset, which part 5 flagged.

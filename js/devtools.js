@@ -442,10 +442,19 @@ const DevTools = (() => {
     /* Offline: State.save() stamps lastUpdateTime itself, so an absence has
        to be written into the stored save and the page reloaded. testMode is
        dropped from the URL — it hides the report. */
-    function writeAndReload(rawText, options = {}) {
+    /* The page lives on until the navigation commits, and anything that saves in that window
+       (an achievement, a delivered mail) would write the OLD run over the one just written, or
+       back in place of the one just deleted. suppressUnloadSave only stops the beforeunload
+       save, and is itself serialised; so the dying page stops saving at all. */
+    function abandonPage() {
         safely(() => clearInterval(autosaveIntervalId));
-        localStorage.setItem(State.SAVE_KEY, rawText);
         State.suppressUnloadSave = true;
+        State.save = () => {};
+    }
+
+    function writeAndReload(rawText, options = {}) {
+        localStorage.setItem(State.SAVE_KEY, rawText);
+        abandonPage();
         hooks.reload(options);
     }
 
@@ -708,9 +717,8 @@ const DevTools = (() => {
        key); the old run is kept in slot Z first. */
     actions.freshSave = () => act('Fresh save', () => {
         stashUndo();
-        safely(() => clearInterval(autosaveIntervalId));
         localStorage.removeItem(State.SAVE_KEY);
-        State.suppressUnloadSave = true;
+        abandonPage();
         hooks.reload();
         return 'reloading into a new run (the old one is in slot Z).';
     }, { taint: false, save: false });
@@ -897,9 +905,8 @@ const DevTools = (() => {
         const url = new URL(location.href);
         if (url.searchParams.get('fresh') !== '1') return false;
         url.searchParams.delete('fresh');
-        safely(() => clearInterval(autosaveIntervalId));
         localStorage.removeItem(State.SAVE_KEY);
-        State.suppressUnloadSave = true;
+        abandonPage();
         location.replace(url.toString());
         return true;
     }
@@ -1370,11 +1377,6 @@ ${row('Breakdown', ['praise', 'offerings', 'souls', 'darkness', 'shadows', 'echo
         section.addEventListener('click', onClick);
         section.addEventListener('toggle', onToggle, true);
         section.addEventListener('change', (e) => { if (e.target.id && e.target.id.startsWith('dev-link-')) updateLink(); });
-        // A letter typed on a focused select must not become a desktop shortcut;
-        // Escape and Tab still pass, so the layer still closes.
-        section.addEventListener('keydown', (e) => {
-            if (e.target && e.target.tagName === 'SELECT' && e.key !== 'Escape' && e.key !== 'Tab') e.stopPropagation();
-        });
         panel.appendChild(section);
         renderTaint();
         renderPresence();

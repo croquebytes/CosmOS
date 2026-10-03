@@ -10,7 +10,8 @@ game **before** the fix.
 `tools/standing_sim.mjs` drives the real game code (`performPrestige`, the archived replay,
 `nudgeAdversaryStanding` with its per-reason cooldown, `Mail.reply`) through a full climb to
 the End of Shift gate (reboot 14: Archived opens at 12, the replay ships at 14) on a fake
-clock, one reboot per attended hour (the gate's own floor is about 14.5 h), under scripted
+clock, one reboot per attended hour (the gate's floor is a little over 14.5 h: the 13th reboot
+lands at about 14.5 h and the 14th, shipping the replay, one run later), under scripted
 play styles, from each answer to the Mirror Login. `tests/endings.mjs` sets `standing`
 directly, so nothing tested this before.
 

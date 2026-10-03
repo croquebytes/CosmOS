@@ -3,7 +3,8 @@
  * clock — shared by tools/standing_sim.mjs (the report) and tests/standing.mjs
  * (the regression test). Background and findings: docs/STANDING_DRIFT.md.
  *
- * One reboot per attended hour (the gate's own floor is ~14.5 h) to reboot 12,
+ * One reboot per attended hour (the gate's floor is a little over 14.5 h: the 13th
+ * reboot lands at ~14.5 h and the 14th, shipping the replay, one run later) to reboot 12,
  * then Archived opens: ship into a replay (13), ship the replay (14), the
  * first archived ship. Play styles script what a player does in each ten
  * minutes. Callers that need a DOM (Notepad, the Void shop, the patch, the

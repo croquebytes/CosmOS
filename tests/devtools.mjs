@@ -616,6 +616,30 @@ await test('fresh save clears the run, keeps the slots, and stashes the run in Z
     assert.ok(fresh.DevTools.readSlots().Z, 'the old run is in Z');
 });
 
+await test('after a restore, import, offline jump or fresh save, the dying page cannot save over what was written', () => {
+    /* The page lives until the navigation commits, and anything that saves in that window (an
+       achievement, a delivered mail) would write the OLD run over the new one. suppressUnloadSave
+       only stops the beforeunload save, and is serialised itself. */
+    const donor = boot();
+    donor.DevTools.actions.shipBuilds(2);
+    const text = donor.DevTools.encodeSnapshot(donor.store.cosmos_save);
+    const cases = {
+        restore: (env) => { env.DevTools.actions.snapshot('A'); env.DevTools.actions.shipBuilds(1); return env.DevTools.actions.restore('A'); },
+        import: (env) => env.DevTools.actions.importSnapshot(text),
+        offline: (env) => env.DevTools.actions.advanceOffline(2),
+        fresh: (env) => env.DevTools.actions.freshSave(),
+    };
+    for (const [name, run] of Object.entries(cases)) {
+        const env = boot();
+        const r = run(env);
+        assert.ok(r.ok, `${name}: ${r.error}`);
+        const written = env.store.cosmos_save;
+        env.State.save();                                   // a late event-driven save in the dying page
+        assert.equal(env.store.cosmos_save, written, `${name}: a late save changed what the action wrote`);
+        assert.equal(env.State.suppressUnloadSave, true, `${name}: the unload save is suppressed too`);
+    }
+});
+
 /* ── 9. URL parameters ───────────────────────────────────────────────── */
 
 await test('?dev=1&unlockAll=1&reboot=12&cinematics=always reproduces the state it names', () => {

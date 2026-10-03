@@ -72,6 +72,20 @@ const status = (page) => page.locator('#dev-status').innerText();
 const waitStatus = (page, rx, timeout = 8000) =>
     page.waitForFunction((src) => new RegExp(src).test(document.getElementById('dev-status')?.textContent || ''), rx.source, { timeout });
 const evalIn = (page, fn, arg) => page.evaluate(fn, arg);
+/* waitForFunction that says what the page looked like when it gave up, so an intermittent
+   failure explains itself (one full run timed out here once and has not since). */
+async function waitState(page, fn, label, timeout = 20000) {
+    try { await page.waitForFunction(fn, null, { timeout }); }
+    catch (err) {
+        const seen = await page.evaluate(() => {
+            let stored = 'unreadable';
+            try { stored = JSON.parse(localStorage.getItem('cosmos_save')).prestigeLevel; } catch (e) { /* none */ }
+            return { href: location.href, level: typeof State === 'undefined' ? 'no State yet' : State.prestigeLevel, storedLevel: stored,
+                tainted: typeof State === 'undefined' ? null : State.dev && State.dev.tainted };
+        }).catch(() => 'the page was gone');
+        throw new Error(`${label}: ${String(err.message).split('\n')[0]}; page: ${JSON.stringify(seen)}`);
+    }
+}
 const withReload = async (page, action) => {
     await Promise.all([page.waitForEvent('load', { timeout: 15000 }), action()]);
     await page.getByRole('button', { name: 'Perform Miracle' }).waitFor().catch(() => {});
@@ -465,7 +479,7 @@ try {
         await click(page, 'ship-n');
         await waitStatus(page, /now reboot 5/);
         await withReload(page, () => click(page, 'restore', 'A'));
-        await page.waitForFunction(() => State.prestigeLevel === 2, null, { timeout: 8000 });
+        await waitState(page, () => State.prestigeLevel === 2, 'Restore A');
         assert.equal(await evalIn(page, () => State.dev.tainted), true);
         await openSettings(page);
         await openGroup(page, 'saves');
@@ -483,7 +497,7 @@ try {
         await openGroup(other, 'saves');
         await other.locator('#dev-export-text').fill(text);
         await withReload(other, () => click(other, 'import'));
-        await other.waitForFunction(() => State.prestigeLevel === 2, null, { timeout: 8000 });
+        await waitState(other, () => State.prestigeLevel === 2, 'Import into the second browser');
         assert.equal(await evalIn(other, () => State.dev.tainted), true);
         step('Export fills the box, and pasting it into another browser takes the run');
 
@@ -499,7 +513,7 @@ try {
         await openSettings(other);
         await openGroup(other, 'saves');
         await withReload(other, () => click(other, 'fresh'));
-        await other.waitForFunction(() => State.prestigeLevel === 0 && State.dev.tainted === false, null, { timeout: 8000 });
+        await waitState(other, () => State.prestigeLevel === 0 && State.dev.tainted === false, 'Fresh save');
         assert.ok(await evalIn(other, () => JSON.parse(localStorage.getItem('cosmos_dev_slots')).Z), 'the old run is in Z');
         step('Fresh save starts a clean run and keeps the old one in Z');
 
@@ -537,7 +551,7 @@ try {
         step('a built link reproduces the state in a new browser, applies once, and is stripped from the address');
 
         const clean = await newPage({ url: '/?testMode=1&dev=1&fresh=1&reboot=1' });
-        await clean.waitForFunction(() => State.prestigeLevel === 1 && State.dev.tainted, null, { timeout: 15000 });
+        await waitState(clean, () => State.prestigeLevel === 1 && State.dev.tainted, 'fresh=1 then reboot=1');
         step('fresh=1 starts a new run before applying the rest');
     }
 

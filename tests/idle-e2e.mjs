@@ -202,6 +202,33 @@ try {
     await p2.waitForFunction(() => Incidents.summary().onHold === false, null, { timeout: 2000 });
     step('tickets hold while nobody is there and resume on return, every window shut');
 
+    /* ── 6. Audio running: the ambient bed's own timer ────────────────── */
+    /* The AudioContext is only made by a gesture, so every step above ran without one and
+       could not see js/audio.js's 500 ms bed and music timer (and APP_FILES leaves audio
+       out). Visible, it is a legitimate 2 wakeups/s on top of the shared clock; hidden, it
+       must rest — the context is suspended then (docs/PERFORMANCE.md). */
+    await closeEverything(page);
+    await page.mouse.click(720, 450);
+    await page.waitForFunction(() => audio.state() !== 'none', null, { timeout: 4000 });
+    await page.waitForTimeout(500);
+    const audible = await sample(page, 3000);
+    const bed = Object.entries(audible.bySrc).filter(([k]) => /^interval audio\.js:/.test(k));
+    assert.equal(bed.length, 1, `one ambient timer: ${JSON.stringify(bed)}`);
+    const bedRate = bed[0][1] / 3;
+    assert.ok(bedRate >= 1.5 && bedRate <= 2.5, `the ambient timer ran ${bedRate.toFixed(2)}/s, expected about 2`);
+    await page.evaluate(() => window.__setHidden(true));
+    await page.waitForTimeout(300);
+    const quiet = await sample(page, 3500);
+    // Repeating timers only, as in step 3: the one-shot that frees a finished sound's voice (my own
+    // click's UI tick scheduled one) is not polling.
+    const strays = Object.entries(quiet.hiddenBySrc).filter(([k]) => /^interval audio\.js:/.test(k));
+    assert.deepEqual(strays, [], `audio.js polled in a hidden tab: ${JSON.stringify(strays)}`);
+    await page.evaluate(() => window.__setHidden(false));
+    await page.waitForTimeout(1000);
+    const back = await sample(page, 2000);
+    assert.ok(Object.keys(back.bySrc).some((k) => /^interval audio\.js:/.test(k)), 'the ambient timer wakes again on return');
+    step(`audio running: its timer wakes ${bedRate.toFixed(1)}/s visible, never hidden, and again on return`);
+
     assert.deepEqual(errors, [], `console errors: ${errors.join(' | ')}`);
     step('no console errors');
     console.log(`\n${passed} passed\n`);
