@@ -138,6 +138,15 @@ const system = {
                 return;
             }
 
+            /* A focused <select> types to choose an option, so a letter there
+               is not a desktop shortcut: M, C, N, S, D and F all opened a
+               window (or went fullscreen) from the Notation or Cinematics
+               dropdowns. Escape still closes the layer the keyboard is in,
+               and Alt+Arrow still snaps the window. */
+            if (e.target.tagName === 'SELECT' && e.code !== 'Escape' && !e.altKey) {
+                return;
+            }
+
             // Never claim a browser or OS combo. Without this, Cmd/Ctrl+S opens
             // Settings instead of saving, Cmd+C opens the Engine instead of
             // copying, and Cmd+F goes fullscreen instead of opening find.
@@ -1028,7 +1037,7 @@ const system = {
                                     <option value="always">Always</option>
                                     <option value="off">Off</option>
                                 </select>
-                                <span class="setting-desc" id="media-seen">0 of 4 reels seen</span>
+                                <span class="setting-desc" id="media-seen">${typeof media !== 'undefined' ? media.seenSummary() : '0 reels seen'}</span>
                             </div>
                             <div class="setting-row">
                                 <label for="media-vhs">VHS Treatment:</label>
