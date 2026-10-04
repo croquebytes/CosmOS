@@ -1098,8 +1098,7 @@ const game = {
             State.adoration = Math.min(State.adoration, State.adorationCaps.cosmetics);
 
             if (State.divineEvent && now >= State.divineEvent.expiresAt) {
-                ui.hideDivineEvent();
-                State.divineEvent = null;
+                this.expireDivineEvent();
             }
 
             this.systemCheckAccumulator = (this.systemCheckAccumulator || 0) + deltaSeconds;
@@ -2606,34 +2605,90 @@ const game = {
         // "Attention is cheap. Consequence is not." (ADV-L-07)
         this.triggerAdversaryBark('praise_spike_event');
 
-        /* Keep the token inside the desktop even on a narrow or not-yet-laid-out
-           viewport. The old maths subtracted a fixed 200px margin, so anything
-           under 200px wide spawned it at a negative offset — off-screen, and
-           therefore uncollectable. */
+        /* The seal asks the desktop for open wallpaper first. Without a laid-out
+           desktop (or with no room left) it falls back to a random spot kept
+           inside the viewport; the old fixed 200px margin spawned it off-screen
+           on anything narrower than that. */
         const MARGIN = 90;
         const width = Math.max(320, window.innerWidth || 0);
         const height = Math.max(320, window.innerHeight || 0);
-        const spanX = Math.max(40, width - MARGIN * 2);
-        const spanY = Math.max(40, height - MARGIN - 150);
-        const x = MARGIN + Math.random() * spanX;
-        const y = MARGIN + Math.random() * spanY;
+        const spot = ui.pickDivineEventSpot?.();
+        const x = spot?.x ?? MARGIN + Math.random() * Math.max(40, width - MARGIN * 2);
+        const y = spot?.y ?? MARGIN + Math.random() * Math.max(40, height - MARGIN - 150);
 
-        // Reward scales off real production, bonuses included, so late-game
-        // events stay worth crossing the desktop for.
-        const baseReward = Math.max(0, this.getProductionRates(Date.now(), false).praiseGross || 0) * 60;
+        /* A prayer is worth some seconds of real production, bonuses included,
+           so late-game prayers stay worth answering. The Offerings and Souls
+           equivalents are priced at spawn so a full Praise vault can pay out
+           in whichever resource still has room (see divineEventPayout). */
+        const rates = this.getProductionRates(Date.now(), false);
         const chainRewardBonus = 1 + Math.min(1.5, loops.divineEventChain * 0.12);
         const overclockRewardBonus = loops.overclock.active ? 1.15 : 1;
-        const value = Math.floor(baseReward * (0.15 + Math.random() * 0.95) * chainRewardBonus * overclockRewardBonus);
+        const seconds = 60 * (0.15 + Math.random() * 0.95) * chainRewardBonus * overclockRewardBonus;
 
         State.divineEvent = {
             x: x,
             y: y,
-            value: Math.max(value, 10), // Minimum reward of 10
+            value: Math.max(Math.floor(Math.max(0, rates.praiseGross || 0) * seconds), 10), // Minimum reward of 10
+            offerings: State.unlockedOfferings ? Math.floor(Math.max(0, rates.offerings || 0) * seconds) : 0,
+            souls: Math.floor(Math.max(0, rates.souls || 0) * seconds),
+            dock: !!spot?.dock,
             chainPreview: loops.divineEventChain,
-            expiresAt: Date.now() + 10000 // 10 seconds to click
+            expiresAt: Date.now() + this.DIVINE_EVENT_LIFETIME
         };
 
         ui.showDivineEvent(State.divineEvent);
+    },
+
+    /* Thirty seconds: long enough to finish what you were doing first. */
+    DIVINE_EVENT_LIFETIME: 30000,
+
+    /* What answering the prayer pays right now. Praise when the vault has room
+       for at least a quarter of it; otherwise the same seconds of production
+       in Offerings or Souls; otherwise Overclock charge. The seal shows this
+       live, so it never promises an amount the vault would clip to nothing. */
+    divineEventPayout(event) {
+        const room = (resource) => Math.max(0, (State.resourceCaps[resource] || 0) - (State.resources[resource] || 0));
+        for (const [resource, offered] of [['praise', event.value], ['offerings', event.offerings || 0], ['souls', event.souls || 0]]) {
+            const amount = Math.floor(Math.min(offered, room(resource)));
+            if (amount >= 1 && amount >= offered * 0.25) return { resource, amount };
+        }
+        this.ensureLoopState();
+        const charge = Math.floor(Math.min(25, 100 - State.loopSystems.overclock.charge));
+        return charge >= 1 ? { resource: 'charge', amount: charge } : { resource: null, amount: 0 };
+    },
+
+    applyDivineEventPayout(payout) {
+        const { resource, amount } = payout;
+        if (!resource || amount <= 0) return;
+        if (resource === 'charge') {
+            this.gainOverclockCharge(amount);
+            return;
+        }
+        State.resources[resource] = Math.min(State.resources[resource] + amount, State.resourceCaps[resource]);
+        if (resource === 'praise') {
+            State.totalPraiseEarned += amount;
+            State.totalStats.praiseGained = (State.totalStats.praiseGained || 0) + amount;
+        } else if (resource === 'offerings') {
+            State.totalOfferingsEarned += amount;
+            State.totalStats.offeringsGained = (State.totalStats.offeringsGained || 0) + amount;
+        } else {
+            State.totalStats.soulsGained = (State.totalStats.soulsGained || 0) + amount;
+        }
+    },
+
+    /* A prayer nobody answered. With Intercession it is filed at half value;
+       it never advances the chain, which belongs to the attentive operator. */
+    expireDivineEvent() {
+        const event = State.divineEvent;
+        State.divineEvent = null;
+        ui.hideDivineEvent();
+        if (!event || !State.upgrades.prayer_intercession) return;
+        const payout = this.divineEventPayout(event);
+        payout.amount = Math.floor(payout.amount / 2);
+        if (payout.amount < 1) return;
+        this.applyDivineEventPayout(payout);
+        ui.log(`Intercession filed an unanswered prayer: ${ui.describeDivinePayout(payout)}.`);
+        ui.showFloatingNumber(ui.describeDivinePayout(payout), event.x, event.y, '#c9b27a');
     },
 
     clickDivineEvent() {
@@ -2644,11 +2699,11 @@ const game = {
         const loops = State.loopSystems;
         const now = Date.now();
         if (now >= event.expiresAt) {
-            State.divineEvent = null;
-            ui.hideDivineEvent();
+            this.expireDivineEvent();
             return;
         }
-        const banked = Math.min(event.value, Math.max(0, State.resourceCaps.praise - State.resources.praise));
+        // Priced before the claim's own Overclock charge lands.
+        const payout = this.divineEventPayout(event);
 
         if (now - loops.lastDivineEventClaimAt <= 15000) {
             loops.divineEventChain += 1;
@@ -2659,16 +2714,14 @@ const game = {
         loops.bestDivineEventChain = Math.max(loops.bestDivineEventChain, loops.divineEventChain);
         loops.totalDivineEventsClaimed += 1;
 
-        State.resources.praise = Math.min(State.resources.praise + event.value, State.resourceCaps.praise);
-        State.totalPraiseEarned += event.value;
-        State.totalStats.praiseGained = (State.totalStats.praiseGained || 0) + event.value;
-
+        this.applyDivineEventPayout(payout);
         this.gainOverclockCharge(18 + (loops.divineEventChain * 2));
         this.updateDirectiveProgress();
 
-        ui.log(`Divine Event claimed! +${event.value} Praise. Chain x${loops.divineEventChain}.`);
+        const paid = ui.describeDivinePayout(payout);
+        ui.log(`Prayer answered: ${paid}. Chain x${loops.divineEventChain}.`);
         this.sfx('eventClaim', { chain: loops.divineEventChain });
-        ui.showFloatingNumber(`+${ui.formatNumber(banked)} Praise • x${loops.divineEventChain}`, event.x, event.y, '#ffd700');
+        ui.showFloatingNumber(`${paid} • x${loops.divineEventChain}`, event.x, event.y, '#ffd700');
         ui.spawnParticles(event.x, event.y, 12, '#ffd700');
 
         if (loops.divineEventChain > 0 && loops.divineEventChain % 3 === 0) {

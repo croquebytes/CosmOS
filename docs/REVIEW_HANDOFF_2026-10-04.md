@@ -41,3 +41,7 @@ Full analysis, tuning proposals, limitations and evidence: [UI/gameplay plan](UI
 - [ ] Refine Globe art into an etched brass atlas/armillary and develop distinct resource reward stamps after interactions settle.
 
 Preserve the user’s existing `docs/PLAYTEST_REVIEW_2026-10-03.md` and pre-existing Vite metadata change. Don’t bundle those into implementation edits. Any new balance values in the House proposal remain untested until a prototype and playtest exist.
+
+## Feedback received (2026-10-04)
+
+The user found the praise seal clunky and unexplained, and asked that it scale into late game. Claude replaced it with a small "stray prayer" seal (ring deadline, one payout chip, first-three explanation, open-wallpaper placement), a full-vault reroute to Offerings/Souls/Overclock charge, a 30s lifetime and the Intercession upgrade. Details in `../progress.md`. The Codex pass was committed to `codex/ui-gameplay-improvements` and goes to `main` by PR with the seal change. The to-do list above stands.

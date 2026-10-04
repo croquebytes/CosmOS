@@ -80,19 +80,22 @@ try {
  const mobile=await fresh({viewport:{width:390,height:844},reducedMotion:'reduce'});
  await mobile.clock.pauseAt(new Date(await mobile.evaluate(()=>Date.now())+1000));
  await mobile.evaluate(()=>{State.resources.praise=590;State.divineEvent={x:380,y:830,value:100,expiresAt:Date.now()+10000};ui.showDivineEvent(State.divineEvent);});
- const token=mobile.getByRole('button',{name:/Claim 10 Praise/});
+ const token=mobile.getByRole('button',{name:/^Answer stray prayer: \+25 Overclock charge\..*Praise vault full/});
  const box=await token.boundingBox(); assert.ok(box.x>=0&&box.x+box.width<=390&&box.y+box.height<=804);
  assert.ok(box.width>=48&&box.height>=48);
  await mobile.clock.runFor(1500);
- assert.equal(await mobile.locator('.divine-event-time').textContent(),'9s remaining');
+ assert.match(await token.getAttribute('aria-label'),/ 9 seconds left\./);
  assert.equal(await token.evaluate(e=>getComputedStyle(e).animationName),'none');
+ // A first prayer explains itself; a full vault says why it pays something else.
+ assert.match(await token.innerText(),/Stray prayer \+25 Overclock charge\s+Praise vault full/);
  await mobile.clock.resume();
  const contrast=await measureContrast(mobile,'.divine-event');
  assert.ok(contrast.length>=3); assert.deepEqual(contrast.filter(r=>r.ratio<r.need),[]);
  await token.focus();await mobile.keyboard.press('Enter');
- assert.equal(await mobile.evaluate(()=>State.resources.praise),600);
+ assert.equal(await mobile.evaluate(()=>State.resources.praise),590);
+ assert.equal(await mobile.evaluate(()=>State.loopSystems.overclock.charge),45);
  assert.equal(await mobile.evaluate(()=>State.loopSystems.totalDivineEventsClaimed),1);
- step('Praise seal stays inside a narrow screen, shows actual vault space/countdown, meets contrast, and supports reduced motion + Enter');
+ step('Prayer seal stays inside a narrow screen, reroutes a full Praise vault to Overclock charge and says so, meets contrast, and supports reduced motion + Enter');
  await mobile.context().close();
  const cursor=await fresh();await cursor.evaluate(()=>{ui.toggleCustomCursors(true);State.save();});await cursor.reload();await cursor.getByRole('button',{name:'Perform Miracle',exact:true}).waitFor();
  assert.equal(await cursor.evaluate(()=>document.body.classList.contains('custom-cursors')),true);

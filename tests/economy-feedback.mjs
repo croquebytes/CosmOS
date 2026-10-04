@@ -51,4 +51,43 @@ test('an expired praise event cannot be collected between simulation ticks', () 
     game.clickDivineEvent(); assert.equal(State.resources.praise,0); assert.equal(State.divineEvent,null);
     assert.equal(State.loopSystems.totalDivineEventsClaimed,0);
 });
+test('a prayer pays Praise while the vault can hold a quarter of it, clipped to the room', () => {
+    const {State,game}=boot(); State.resourceCaps.praise=1000;
+    const event={value:400,offerings:80,souls:8,x:0,y:0,expiresAt:2_000_000};
+    State.resources.praise=0; assert.deepEqual({...game.divineEventPayout(event)},{resource:'praise',amount:400});
+    State.resources.praise=850; assert.deepEqual({...game.divineEventPayout(event)},{resource:'praise',amount:150});
+    State.divineEvent=event; game.clickDivineEvent();
+    assert.equal(State.resources.praise,1000); assert.equal(State.loopSystems.totalDivineEventsClaimed,1);
+});
+test('a full Praise vault reroutes the same seconds to Offerings, then Souls, then Overclock charge', () => {
+    const {State,game}=boot(); game.ensureLoopState();
+    State.resourceCaps.praise=1000; State.resources.praise=1000;
+    State.resourceCaps.offerings=100; State.resources.offerings=0;
+    State.resourceCaps.souls=100; State.resources.souls=0;
+    const event={value:400,offerings:80,souls:8,x:0,y:0,expiresAt:2_000_000};
+    assert.deepEqual({...game.divineEventPayout(event)},{resource:'offerings',amount:80});
+    State.resources.offerings=100; assert.deepEqual({...game.divineEventPayout(event)},{resource:'souls',amount:8});
+    State.resources.souls=100; State.loopSystems.overclock.charge=90;
+    assert.deepEqual({...game.divineEventPayout(event)},{resource:'charge',amount:10});
+    State.loopSystems.overclock.charge=100; assert.deepEqual({...game.divineEventPayout(event)},{resource:null,amount:0});
+    State.loopSystems.overclock.charge=0; State.divineEvent=event; game.clickDivineEvent();
+    // 25 rerouted, then the claim's own 18 + 2 × chain.
+    assert.equal(State.loopSystems.overclock.charge,45); assert.equal(State.resources.praise,1000);
+});
+test('a new prayer lasts thirty seconds and carries its Offerings and Souls equivalents', () => {
+    const {State,game}=boot();
+    for (let i=0; i<500 && !State.divineEvent; i++) game.spawnDivineEvent(); // spawn chance is capped at 35%
+    assert.equal(State.divineEvent.expiresAt,1_000_000+30_000);
+    assert.ok(State.divineEvent.value>=10 && Number.isFinite(State.divineEvent.offerings) && Number.isFinite(State.divineEvent.souls));
+});
+test('Intercession files a missed prayer at half value without touching the chain', () => {
+    const {State,game}=boot(); game.ensureLoopState(); State.resourceCaps.praise=1000; State.resources.praise=0;
+    State.loopSystems.divineEventChain=2;
+    State.divineEvent={value:400,x:0,y:0,expiresAt:1_000_000}; game.expireDivineEvent();
+    assert.equal(State.resources.praise,0);
+    State.upgrades.prayer_intercession=true;
+    State.divineEvent={value:400,x:0,y:0,expiresAt:1_000_000}; game.clickDivineEvent();
+    assert.equal(State.resources.praise,200); assert.equal(State.divineEvent,null);
+    assert.equal(State.loopSystems.divineEventChain,2); assert.equal(State.loopSystems.totalDivineEventsClaimed,0);
+});
 console.log(`\n${passed} passed\n`);

@@ -1621,3 +1621,27 @@ three further runs — watch for it.
 - Plan, ordered to-do list, current checkout/branch, verification and resume notes saved in `docs/REVIEW_HANDOFF_2026-10-04.md`; detailed design remains in `docs/UI_GAMEPLAY_PLAN_2026-10-04.md`.
 - Recommended next slice: compact Engine resources/objective/action layout, subject to the review. Then display/touch controls, Prophet dispatch, one Fate House prototype, and Globe/reward art.
 - Current implementation remains local/uncommitted on `codex/ui-gameplay-improvements`; release and evidence preserved. Local review preview left running.
+
+
+### Stray prayers — the praise seal, refined (2026-10-04, Claude)
+- **Why:** the user found Codex's 128px seal clunky and unexplained, and it did not scale: idle
+  players sit at the Praise cap, so late-game seals read "+0 Praise". It also spawned over windows.
+- **Seal:** a 40px brass seal whose ring is the deadline, plus one chip with what answering pays.
+  The first three prayers carry a line saying what they are; after that the name and the rule
+  ("Three in a row pays Souls") wait for hover/focus. Chain pips show only while a chain is live.
+  Arrival is a 0.4s fade/rise; no rotation, bobbing or pulse.
+- **Placement:** `ui.pickDivineEventSpot()` tries 40 spots on open wallpaper clear of windows,
+  desktop icons and the operator panel; with none (always on a phone) it docks above the tray.
+- **Payout (`game.divineEventPayout`):** a prayer is worth 9–66 seconds of production, priced at
+  spawn in Praise, Offerings and Souls. It pays Praise if the vault holds at least a quarter of it
+  (clipped to room), otherwise the same seconds of Offerings, then Souls, then up to 25 Overclock
+  charge. The seal shows the live payout, so it never promises a clipped-to-nothing amount.
+  Lifetime totals now count what was paid, not the nominal offer.
+- **Lifetime:** 10s → 30s (`game.DIVINE_EVENT_LIFETIME`).
+- **Intercession** (`prayer_intercession`, 3,000 Praise; visible after Divine Vault II and five
+  answered prayers): a missed prayer is filed at half value. It never advances the chain or the
+  answered count. No mods — `expireDivineEvent` reads the purchase; the balance sim never answers
+  a prayer, so it never sees the upgrade and the golden horizons are untouched.
+- Fixed Codex's cursor rule, which targeted a `.desktop-icon` class that does not exist.
+- **Tests:** `tests/economy-feedback.mjs` +4 (payout order, clipping, 30s lifetime, Intercession);
+  the e2e seal step now checks the full-vault reroute, its explanation and the aria countdown.

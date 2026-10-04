@@ -343,13 +343,6 @@ html {
     filter: grayscale(0.35);
 }
 
-/* The flare plate is painted on black, so it is screened rather than keyed. */
-.divine-event-icon img {
-    width: 42px;
-    height: 42px;
-    mix-blend-mode: screen;
-    filter: saturate(1.1);
-}
 
 .doc-notif-icon {
     display: flex;
@@ -1341,78 +1334,70 @@ body.resizing-window {
     margin-top: 0;
 }
 
-/* A praise seal: one quiet arrival, an explicit claim, and a visible deadline. */
+/* A stray prayer: a small brass seal on open wallpaper. The ring is the
+   deadline; the chip says what answering pays. The first three explain
+   themselves, later ones keep the explanation for hover and focus. */
 .divine-event {
     position: fixed;
-    width: 128px;
-    min-height: 128px;
-    padding: 8px 10px;
+    z-index: 10500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+    max-width: 260px;
+    padding: 4px 6px 4px 4px;
+    color: var(--cos-ink-inv);
+    background: none;
+    border: 0;
+    font: 12px/1.35 var(--cos-font-machine);
+    text-align: left;
+    cursor: pointer;
+    animation: divineEventAppear 0.4s ease-out;
+}
+.divine-event:focus-visible { outline: 2px solid var(--cos-halo); outline-offset: 2px; }
+.divine-event.fade-out { animation: divineEventFadeOut 0.3s ease-out forwards; }
+.divine-event.is-docked { flex-direction: row-reverse; }
+
+.pe-seal { flex: none; width: 40px; height: 40px; filter: drop-shadow(0 0 6px rgba(222, 196, 131, 0.35)); }
+.pe-track { fill: none; stroke: var(--cos-brass-900); stroke-width: 2; }
+.pe-ring { fill: none; stroke: var(--cos-brass-300); stroke-width: 2; stroke-dasharray: 100; stroke-linecap: round; }
+.pe-face { fill: var(--cos-iron-900); stroke: var(--cos-brass-700); stroke-width: 1; transition: stroke 0.15s; }
+.pe-star { fill: var(--cos-brass-100); }
+.divine-event:hover .pe-face, .divine-event:focus-visible .pe-face { stroke: var(--cos-brass-300); }
+
+.pe-chip {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 3px;
-    color: var(--cos-halo);
+    gap: 2px;
+    padding: 4px 8px;
     background: var(--cos-iron-900);
-    border: 2px solid var(--cos-brass-500);
+    border: 1px solid var(--cos-brass-700);
     border-radius: var(--cos-radius);
-    box-shadow: 0 3px 12px var(--cos-void), inset 0 0 14px var(--cos-brass-900);
-    font: 11px/1.25 var(--cos-font-machine);
-    cursor: pointer;
-    z-index: 10500;
-    animation: divineEventAppear 0.3s ease-out;
+    box-shadow: 0 2px 8px var(--cos-void);
 }
-.divine-event:hover { border-color: var(--cos-brass-100); }
-.divine-event:focus-visible { outline: 3px solid var(--cos-halo); outline-offset: 3px; }
-.divine-event.fade-out { animation: divineEventFadeOut 0.3s ease-out forwards; }
-.divine-event-glow { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at 50% 20%, rgba(222,196,131,0.2), transparent 65%); }
-.divine-event-icon { width: 48px; height: 48px; display: grid; place-items: center; position: relative; border: 1px solid var(--cos-brass-300); border-radius: 50%; box-shadow: inset 0 0 0 3px var(--cos-iron-900), inset 0 0 0 4px var(--cos-brass-700); }
-.divine-event-icon img { width: 42px; height: 42px; }
-.divine-event-label { color: var(--cos-brass-300); font-size: 10px; letter-spacing: 0.06em; }
-.divine-event-value { font-weight: bold; }
-.divine-event-time { color: var(--cos-ink-inv); font-size: 10px; }
-.divine-event-meter { width: 100%; height: 3px; margin-top: 3px; background: var(--cos-iron-600); }
-.divine-event-meter span { display: block; height: 100%; background: var(--cos-brass-300); }
+.divine-event:hover .pe-chip, .divine-event:focus-visible .pe-chip { border-color: var(--cos-brass-500); }
+.pe-line { white-space: nowrap; }
+.pe-name { color: var(--cos-brass-300); }
+.pe-amount { color: var(--cos-brass-100); font-weight: bold; }
+.pe-note { max-width: 190px; color: var(--cos-ink-inv-dim); font-size: 11px; }
+.pe-chain { display: none; gap: 4px; padding-top: 2px; }
+.pe-chain i { width: 5px; height: 5px; border: 1px solid var(--cos-brass-500); border-radius: 50%; }
+.pe-chain i.on { background: var(--cos-brass-300); }
+
+/* Quiet by default: name and rule appear for newcomers, on hover/focus, and
+   whenever the payout has moved off Praise. */
+.divine-event:not(.is-novice):not(:hover):not(:focus-visible) .pe-name,
+.divine-event:not(.is-novice):not(.is-rerouted):not(:hover):not(:focus-visible) .pe-note { display: none; }
+.divine-event.is-rerouted .pe-note { color: var(--cos-brass-300); }
+.divine-event.has-chain .pe-chain { display: flex; }
 
 @keyframes divineEventAppear {
-    0% {
-        opacity: 0;
-        transform: scale(0.3) rotate(-180deg);
-    }
-    100% {
-        opacity: 1;
-        transform: scale(1) rotate(0deg);
-    }
-}
-
-@keyframes divineEventFloat {
-    0%, 100% {
-        transform: translateY(0px);
-    }
-    50% {
-        transform: translateY(-15px);
-    }
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
 }
 
 @keyframes divineEventFadeOut {
-    0% {
-        opacity: 1;
-        transform: scale(1);
-    }
-    100% {
-        opacity: 0;
-        transform: scale(0.3) rotate(180deg);
-    }
-}
-
-@keyframes pulseGlow {
-    0%, 100% {
-        opacity: 0.5;
-        transform: translate(-50%, -50%) scale(1);
-    }
-    50% {
-        opacity: 1;
-        transform: translate(-50%, -50%) scale(1.2);
-    }
+    to { opacity: 0; transform: scale(0.94); }
 }
 
 /* Skills Section */
@@ -2768,7 +2753,7 @@ body.resizing-window {
 }
 
 /* Performance Mode Optimizations */
-body.performance-mode .divine-event-icon {
+body.performance-mode .divine-event {
     animation: none !important;
 }
 
@@ -9421,7 +9406,7 @@ button.ml-attach:hover:not(:disabled) { border-color: var(--cos-brass-700); back
 /* Cursor preferences never replace text, resize, drag or disabled cursors. */
 @media (pointer: fine) {
     body.custom-cursors { cursor: url('assets/cursors/brass-arrow.svg') 2 2, default; }
-    body.custom-cursors :is(button, a, [role="button"], .desktop-icon):not(:disabled):not([aria-disabled="true"]) { cursor: url('assets/cursors/brass-hand.svg') 10 2, pointer; }
+    body.custom-cursors :is(button, a, [role="button"], .desktop-icons .icon):not(:disabled):not([aria-disabled="true"]) { cursor: url('assets/cursors/brass-hand.svg') 10 2, pointer; }
 }
 @media (prefers-reduced-motion: reduce) {
     .divine-event { animation: none; }

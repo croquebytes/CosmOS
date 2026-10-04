@@ -1571,6 +1571,18 @@ const UpgradeList = [
         visible: () => State.upgrades.storage_praise_1
     },
     {
+        /* No mods: game.expireDivineEvent reads the purchase itself, and the
+           reboot that clears State.upgrades clears this with it. Gated on
+           answered prayers, so the balance sim (which never answers one)
+           never sees it. */
+        id: 'prayer_intercession',
+        name: 'Intercession',
+        description: 'A Seraph answers the prayers you miss, at half value. Your chain is still yours to keep.',
+        cost: { praise: 3000 },
+        effect: () => {},
+        visible: () => State.upgrades.storage_praise_2 && (State.loopSystems?.totalDivineEventsClaimed || 0) >= 5
+    },
+    {
         id: 'storage_offerings_1',
         name: 'Sacred Repository',
         description: 'Increase Offerings storage capacity by 100.',

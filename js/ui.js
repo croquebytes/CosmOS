@@ -2860,6 +2860,33 @@ const ui = {
         }
     },
 
+    /* Open wallpaper for a prayer seal: clear of windows, desktop icons and
+       the operator panel. With none (a phone, or a crowded desk) it docks
+       above the system tray, where it is always in the same place. */
+    pickDivineEventSpot() {
+        const w = 260, h = 76, pad = 12;
+        const floor = (document.getElementById('taskbar')?.getBoundingClientRect().top || window.innerHeight) - pad;
+        const obstacles = [...document.querySelectorAll('.window, .desktop-icons .icon, #operator-status')]
+            .map((el) => el.getBoundingClientRect())
+            .filter((r) => r.width > 0 && r.height > 0);
+        const clear = (x, y) => obstacles.every((r) =>
+            x + w + pad < r.left || x - pad > r.right || y + h + pad < r.top || y - pad > r.bottom);
+        const spanX = window.innerWidth - w - pad * 2;
+        const spanY = floor - h - pad;
+        for (let attempt = 0; spanX > 0 && spanY > 0 && attempt < 40; attempt++) {
+            const x = pad + Math.random() * spanX;
+            const y = pad + Math.random() * spanY;
+            if (clear(x, y)) return { x, y };
+        }
+        return { x: window.innerWidth - 120, y: floor - 40, dock: true };
+    },
+
+    describeDivinePayout(payout) {
+        if (!payout?.resource) return 'Chain kept';
+        const name = { praise: 'Praise', offerings: 'Offerings', souls: 'Souls', charge: 'Overclock charge' }[payout.resource];
+        return `+${this.formatNumber(payout.amount)} ${name}`;
+    },
+
     showDivineEvent(event) {
         document.querySelectorAll('.divine-event').forEach((stale) => stale.remove());
         const element = document.createElement('button');
@@ -2867,19 +2894,30 @@ const ui = {
         element.id = 'divine-event';
         element.className = 'divine-event';
         element.innerHTML = `
-            <span class="divine-event-glow" aria-hidden="true"></span>
-            <span class="divine-event-icon" aria-hidden="true"><img src="assets/vfx/flare_256.png" alt=""></span>
-            <span class="divine-event-label">CLAIM PRAISE</span>
-            <span class="divine-event-value"></span>
-            <span class="divine-event-time"></span>
-            <span class="divine-event-meter" aria-hidden="true"><span></span></span>
+            <svg class="pe-seal" viewBox="0 0 40 40" aria-hidden="true">
+                <circle class="pe-track" cx="20" cy="20" r="18"/>
+                <circle class="pe-ring" cx="20" cy="20" r="18" pathLength="100" transform="rotate(-90 20 20)"/>
+                <circle class="pe-face" cx="20" cy="20" r="13"/>
+                <path class="pe-star" d="M20 11 L22 18 L29 20 L22 22 L20 29 L18 22 L11 20 L18 18Z"/>
+            </svg>
+            <span class="pe-chip">
+                <span class="pe-line"><span class="pe-name">Stray prayer</span> <span class="pe-amount"></span></span>
+                <span class="pe-note"></span>
+                <span class="pe-chain" aria-hidden="true"><i></i><i></i><i></i></span>
+            </span>
         `;
         element.onclick = () => game.clickDivineEvent();
-        // Keep a generous target and its entire label away from the taskbar.
-        element.style.left = Math.max(8, Math.min(event.x, window.innerWidth - 136)) + 'px';
-        element.style.top = Math.max(8, Math.min(event.y, window.innerHeight - 176)) + 'px';
+        if (event.dock) element.classList.add('is-docked');
         document.body.appendChild(element);
         this.updateDivineEventDisplay();
+        /* Placed after the first render, so the clamp uses the seal's real size. */
+        const floor = (document.getElementById('taskbar')?.getBoundingClientRect().top || window.innerHeight) - 8;
+        const left = Math.max(8, Math.min(event.dock ? window.innerWidth : event.x, window.innerWidth - element.offsetWidth - 8));
+        const top = Math.max(8, Math.min(event.y, floor - element.offsetHeight));
+        element.style.left = left + 'px';
+        element.style.top = top + 'px';
+        event.x = left + 20;
+        event.y = top + element.offsetHeight / 2;
         let announcement = document.getElementById('divine-event-announcement');
         if (!announcement) {
             announcement = document.createElement('span');
@@ -2888,7 +2926,7 @@ const ui = {
             announcement.setAttribute('role', 'status');
             document.body.appendChild(announcement);
         }
-        announcement.textContent = `Praise available: ${this.formatNumber(event.value)}. Claim before it expires.`;
+        announcement.textContent = `A stray prayer arrived: ${this.describeDivinePayout(game.divineEventPayout(event))}. Answer it before it fades.`;
         game.sfx('eventAppear');
     },
 
@@ -2896,13 +2934,28 @@ const ui = {
         const element = document.getElementById('divine-event');
         const event = State.divineEvent;
         if (!element || !event) return;
+        const loops = State.loopSystems || {};
+        const payout = game.divineEventPayout(event);
+        const paid = this.describeDivinePayout(payout);
         const seconds = Math.max(0, Math.ceil((event.expiresAt - now) / 1000));
-        const banked = Math.min(event.value, Math.max(0, State.resourceCaps.praise - State.resources.praise));
-        this.setText(element.querySelector('.divine-event-value'), `+${this.formatNumber(banked)} Praise`);
-        this.setText(element.querySelector('.divine-event-time'), `${seconds}s remaining`);
-        element.setAttribute('aria-label', `Claim ${this.formatNumber(banked)} Praise${banked < event.value ? ' (vault limited; chain still counts)' : ''}`);
-        element.title = banked < event.value ? `${this.formatNumber(event.value)} offered. Vault has room for ${this.formatNumber(banked)}; the event still advances your chain.` : 'Claim Praise and build your event chain.';
-        element.querySelector('.divine-event-meter span').style.width = `${Math.min(100, seconds * 10)}%`;
+        const left = Math.max(0, Math.min(1, (event.expiresAt - now) / game.DIVINE_EVENT_LIFETIME));
+        /* The first three prayers explain themselves; after that the name and
+           the rule wait for hover or focus. A full vault always says so. */
+        const novice = (loops.totalDivineEventsClaimed || 0) < 3;
+        const rerouted = payout.resource !== 'praise';
+        const note = rerouted ? 'Praise vault full'
+            : novice ? 'Prayers drift through the OS. Answer one before it fades.'
+            : 'Answer before it fades. Three in a row pays Souls.';
+        const live = (loops.divineEventChain || 0) > 0 && now - (loops.lastDivineEventClaimAt || 0) <= 15000;
+        const caught = live ? loops.divineEventChain % 3 : 0;
+        element.classList.toggle('is-novice', novice);
+        element.classList.toggle('is-rerouted', rerouted);
+        element.classList.toggle('has-chain', caught > 0);
+        this.setText(element.querySelector('.pe-amount'), paid);
+        this.setText(element.querySelector('.pe-note'), note);
+        element.querySelectorAll('.pe-chain i').forEach((pip, i) => pip.classList.toggle('on', i < caught));
+        element.querySelector('.pe-ring').style.strokeDashoffset = String(100 - left * 100);
+        element.setAttribute('aria-label', `Answer stray prayer: ${paid}. ${seconds} seconds left.${rerouted ? ' Praise vault full.' : ''}`);
     },
 
     hideDivineEvent() {
