@@ -695,7 +695,7 @@ const game = {
             const followerData = State.followers[dimKey];
             const assignedProphets = State.prophets.assignments[dimKey] || 0;
             rates.followerGrowth[dimKey] = assignedProphets * followerData.baseGrowthRate *
-                State.prophets.feedingBonus * (timeline.followerBonus || 1) * globalGainBonus;
+                (includeTransient ? State.prophetFeedingBonus(now) : 1) * (timeline.followerBonus || 1) * globalGainBonus;
             rates.adoration += followerData.count * followerData.adorationRate;
         }
         rates.adoration *= (timeline.adorationBonus || 1) * globalGainBonus;
@@ -1027,6 +1027,7 @@ const game = {
                 ui.log(`Divine Intervention expired.`);
             }
 
+            State.reconcileProphetFeeds(now);
             this.processLoopDecay(now);
             this.ensureDirective();
 
@@ -2374,6 +2375,7 @@ const game = {
     },
 
     purchaseUpgrade(upgradeId, event) {
+        const purchaseRect = event?.currentTarget?.getBoundingClientRect();
         const upgrade = UpgradeList.find(u => u.id === upgradeId);
         if (!upgrade) return;
 
@@ -2412,8 +2414,8 @@ const game = {
         this.checkAchievements(); // Check for achievements
 
         // Visual feedback
-        if (event) {
-            const rect = event.currentTarget.getBoundingClientRect();
+        if (purchaseRect) {
+            const rect = purchaseRect;
             const x = rect.left + rect.width / 2;
             const y = rect.top + rect.height / 2;
             ui.spawnParticles(x, y, 12, '#4caf50');
@@ -2641,6 +2643,12 @@ const game = {
         const event = State.divineEvent;
         const loops = State.loopSystems;
         const now = Date.now();
+        if (now >= event.expiresAt) {
+            State.divineEvent = null;
+            ui.hideDivineEvent();
+            return;
+        }
+        const banked = Math.min(event.value, Math.max(0, State.resourceCaps.praise - State.resources.praise));
 
         if (now - loops.lastDivineEventClaimAt <= 15000) {
             loops.divineEventChain += 1;
@@ -2660,7 +2668,7 @@ const game = {
 
         ui.log(`Divine Event claimed! +${event.value} Praise. Chain x${loops.divineEventChain}.`);
         this.sfx('eventClaim', { chain: loops.divineEventChain });
-        ui.showFloatingNumber(`+${event.value} • x${loops.divineEventChain}`, event.x, event.y, '#ffd700');
+        ui.showFloatingNumber(`+${ui.formatNumber(banked)} Praise • x${loops.divineEventChain}`, event.x, event.y, '#ffd700');
         ui.spawnParticles(event.x, event.y, 12, '#ffd700');
 
         if (loops.divineEventChain > 0 && loops.divineEventChain % 3 === 0) {
@@ -4127,29 +4135,25 @@ const game = {
     },
 
     feedProphets(resourceType, amount) {
-        if (State.resources[resourceType] < amount) {
-            ui.log(`Insufficient ${resourceType} to feed Prophets.`);
-            return;
-        }
-
-        State.resources[resourceType] -= amount;
-
         const bonuses = {
             praise: { multiplier: 1.1, duration: 300000 },
             offerings: { multiplier: 1.2, duration: 300000 },
             souls: { multiplier: 1.5, duration: 600000 }
         };
-
         const bonus = bonuses[resourceType];
-        State.prophets.feedingBonus *= bonus.multiplier;
-
-        ui.log(`Fed ${amount} ${resourceType} to Prophets. Growth boosted by ${(bonus.multiplier - 1) * 100}%!`);
+        if (!Object.hasOwn(bonuses, resourceType) || !Number.isFinite(amount) || amount <= 0) return;
+        if (State.resources[resourceType] < amount) {
+            ui.log(`Insufficient ${resourceType} to feed Prophets.`);
+            return;
+        }
+        const now = Date.now();
+        State.reconcileProphetFeeds(now);
+        State.resources[resourceType] -= amount;
+        State.prophets.feeds.push({ resource: resourceType, expiresAt: now + bonus.duration });
+        State.reconcileProphetFeeds(now);
+        ui.log(`Fed ${amount} ${resourceType} to Prophets. Growth boosted by ${Math.round((bonus.multiplier - 1) * 100)}% for ${bonus.duration / 60000} minutes.`);
         ui.screenPulse('rgba(138, 43, 226, 0.3)');
-
-        setTimeout(() => {
-            State.prophets.feedingBonus /= bonus.multiplier;
-            ui.log('Prophet feeding bonus expired.');
-        }, bonus.duration);
+        State.save();
     },
 
     // === DIVINE CALLS ===
@@ -4170,8 +4174,14 @@ const game = {
             return;
         }
 
+        // Do not charge for a conversion the vault cannot hold in full.
+        if (State.adorationCaps.cosmetics - State.adoration < conversion.adorationGain) {
+            ui.log('Adoration vault full. Spend Adoration before answering another call.');
+            ui.updateDivineCallsDisplay();
+            return;
+        }
         State.resources[resourceType] -= conversion.cost;
-        State.adoration += conversion.adorationGain;
+        State.adoration = Math.min(State.adorationCaps.cosmetics, State.adoration + conversion.adorationGain);
         State.divineCalls.lastAnswered = now;
 
         ui.log(`Answered Divine Call: +${conversion.adorationGain} Adoration`);

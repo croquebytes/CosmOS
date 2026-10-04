@@ -1600,3 +1600,24 @@ three further runs — watch for it.
 - **Not touched:** `js/devtools.js` keeps its own local `abandonPage()` (part 5, above), the same
   three lines as `State.abandonPage()`. It can delegate to the State method; left alone here so
   this change stays on the game's own Import Save and Hard Reset, which part 5 flagged.
+
+
+### Codex improvement pass (2026-10-04)
+- Current checkout confirmed at `Machine Dreams/projects/CosmOS`, fast-forwarded to `e97fdf8` (PR #10 / Claude’s dying-page fix). Work is on local branch `codex/ui-gameplay-improvements`.
+- Dev Console now calls `State.abandonPage()` rather than owning a second copy. Added actual browser reload races with late achievements/documents/mail and shortened autosave; both fresh pages save normally.
+- Prophet meals persist absolute expiry records; old deadline-free feeding multipliers are retired. Overlapping meals expire independently. Offline rates omit these transient boosts. The Globe shows their deadline.
+- Calls cooldown, Adoration balance, Globe followers/rates and shop balance/affordability refresh live. Full/nearly full Adoration cannot charge for a reward that will not fit.
+- Upgrade/Mandate/shop rows support keyboard purchase and preserve focus on redraw. Mandates and their locked descriptions are readable; finale act buttons fit in the transcript’s text column.
+- Praise events now have a readable brass seal, claim label, actual bankable reward and deadline; native button/keyboard semantics, a polite availability announcement, bounded narrow-screen placement and reduced motion. Expired clicks cannot grant rewards.
+- Optional brass arrow/hand SVG cursors live in Divine Settings; native cursor meanings are retained for text/drag/resize/disabled states.
+- `tests/economy-feedback.mjs` (5) and `tests/economy-feedback-e2e.mjs` (14) are wired into npm test. Contrast probe can explicitly include disabled explanatory text. Endings assert act width/overflow.
+- 17 relevant suites/check groups passed, including save/export, Dev Console, modifier/breakdown, Fate, browser a11y/layout/endings/save/smoke/idle and release packaging. Golden economy results unchanged. Release dist rebuilt without clearing existing output; Dev Console excluded.
+- `docs/UI_GAMEPLAY_PLAN_2026-10-04.md` contains the deeper design review, evidence and prioritized next work: compact Engine objectives/resources, CRT/text controls, Prophet dispatch, and a small Fate/Patience casino prototype (Providence Audit). The casino remains a proposal, not shipped gameplay.
+- Existing user review `docs/PLAYTEST_REVIEW_2026-10-03.md` and the pre-existing Vite metadata modification were preserved.
+
+
+### Review pause (2026-10-04)
+- User requested a pause to review the completed work and return with feedback. No further implementation until that feedback is received.
+- Plan, ordered to-do list, current checkout/branch, verification and resume notes saved in `docs/REVIEW_HANDOFF_2026-10-04.md`; detailed design remains in `docs/UI_GAMEPLAY_PLAN_2026-10-04.md`.
+- Recommended next slice: compact Engine resources/objective/action layout, subject to the review. Then display/touch controls, Prophet dispatch, one Fate House prototype, and Globe/reward art.
+- Current implementation remains local/uncommitted on `codex/ui-gameplay-improvements`; release and evidence preserved. Local review preview left running.

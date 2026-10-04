@@ -288,6 +288,7 @@ const State = {
         notationMode: 'suffix',       // 'suffix' or 'scientific'
         autosaveInterval: 30000,      // milliseconds (default 30s)
         performanceMode: false,       // reduce animations if true
+        customCursors: false,          // optional brass pointer set
         briefingSeen: false,
         /* Fate, the dealer at Patience.exe, speaks from a strip inside that
            window. Off silences every one of her lines. Read through
@@ -341,7 +342,8 @@ const State = {
         available: 0,
         total: 0,
         assignments: {},      // { dimensionId: prophetCount }
-        feedingBonus: 1,
+        feedingBonus: 1,              // derived compatibility readout, never a saved authority
+        feeds: [],                   // {resource, expiresAt}; time survives reload
         level: 1,
     },
 
@@ -769,6 +771,25 @@ const State = {
         this.save = () => {};
     },
 
+    prophetFeedingBonus(now = Date.now()) {
+        const bonuses = { praise: 1.1, offerings: 1.2, souls: 1.5 };
+        const feeds = Array.isArray(this.prophets?.feeds) ? this.prophets.feeds : [];
+        return feeds.reduce((value, feed) => feed && Object.hasOwn(bonuses, feed.resource) &&
+            Number.isFinite(feed.expiresAt) && feed.expiresAt > now
+            ? value * bonuses[feed.resource] : value, 1);
+    },
+
+    reconcileProphetFeeds(now = Date.now()) {
+        if (!this.prophets || typeof this.prophets !== 'object') this.prophets = {};
+        const feeds = Array.isArray(this.prophets.feeds) ? this.prophets.feeds : [];
+        this.prophets.feeds = feeds.filter((feed) => feed &&
+            ['praise', 'offerings', 'souls'].includes(feed.resource) &&
+            Number.isFinite(feed.expiresAt) && feed.expiresAt > now);
+        // Old saves hold only a multiplier, with no recoverable deadline.
+        // Retiring that unbounded boost prevents a permanent reload exploit.
+        this.prophets.feedingBonus = this.prophetFeedingBonus(now);
+    },
+
     /* Ordered, cumulative. A save records the version it was written at; every
        migration above that number runs, in order. Version 0 means "written
        before versioning existed". */
@@ -975,6 +996,7 @@ const State = {
             }
 
             State.mergeInto(this, parsed);
+            this.reconcileProphetFeeds();
             return true;
         } catch (error) {
             /* Preserve, never destroy. The player's run is the one thing here

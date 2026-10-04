@@ -447,9 +447,7 @@ const DevTools = (() => {
        back in place of the one just deleted. suppressUnloadSave only stops the beforeunload
        save, and is itself serialised; so the dying page stops saving at all. */
     function abandonPage() {
-        safely(() => clearInterval(autosaveIntervalId));
-        State.suppressUnloadSave = true;
-        State.save = () => {};
+        State.abandonPage();
     }
 
     function writeAndReload(rawText, options = {}) {

@@ -27,6 +27,7 @@ const system = {
     init() {
         console.log("CosmOS Initializing...");
         this.trackPresence();
+        ui.applyCursorPreference();
         const offlineReport = game.initializeSession();
         const testMode = new URLSearchParams(window.location.search).has('testMode');
         const bootDelay = testMode ? 0 : 3000;
@@ -989,6 +990,12 @@ const system = {
                             </div>
                         </div>
 
+                        <div class="setting-row">
+                            <label for="custom-cursors">Brass Cursors:</label>
+                            <input type="checkbox" id="custom-cursors" class="setting-checkbox" onchange="ui.toggleCustomCursors(this.checked)">
+                            <span class="setting-desc">A brass arrow and seal hand. Turn off for system cursors.</span>
+                        </div>
+
                         <h3>Sound Settings</h3>
                         <div class="audio-settings">
                             <div class="setting-row">
@@ -1266,6 +1273,7 @@ const system = {
                                 <button class="win-btn" onclick="game.feedProphets('offerings', 50)">Feed 50 Offerings (+20% growth, 5m)</button>
                                 <button class="win-btn" onclick="game.feedProphets('souls', 10)">Feed 10 Souls (+50% growth, 10m)</button>
                             </div>
+                            <p id="prophet-feed-status" class="prophet-feed-status"></p>
                         </div>
                     </div>
                 `,
