@@ -74,10 +74,10 @@ test('a full Praise vault reroutes the same seconds to Offerings, then Souls, th
     // 25 rerouted, then the claim's own 18 + 2 × chain.
     assert.equal(State.loopSystems.overclock.charge,45); assert.equal(State.resources.praise,1000);
 });
-test('a new prayer lasts thirty seconds and carries its Offerings and Souls equivalents', () => {
+test('a new prayer lasts twenty seconds and carries its Offerings and Souls equivalents', () => {
     const {State,game}=boot();
     for (let i=0; i<500 && !State.divineEvent; i++) game.spawnDivineEvent(); // spawn chance is capped at 35%
-    assert.equal(State.divineEvent.expiresAt,1_000_000+30_000);
+    assert.equal(State.divineEvent.expiresAt,1_000_000+20_000);
     assert.ok(State.divineEvent.value>=10 && Number.isFinite(State.divineEvent.offerings) && Number.isFinite(State.divineEvent.souls));
 });
 test('Intercession files a missed prayer at half value without touching the chain', () => {

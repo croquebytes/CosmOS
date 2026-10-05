@@ -1637,7 +1637,7 @@ three further runs — watch for it.
   (clipped to room), otherwise the same seconds of Offerings, then Souls, then up to 25 Overclock
   charge. The seal shows the live payout, so it never promises a clipped-to-nothing amount.
   Lifetime totals now count what was paid, not the nominal offer.
-- **Lifetime:** 10s → 30s (`game.DIVINE_EVENT_LIFETIME`).
+- **Lifetime:** 10s → 30s (`game.DIVINE_EVENT_LIFETIME`); 20s in the follow-up below.
 - **Intercession** (`prayer_intercession`, 3,000 Praise; visible after Divine Vault II and five
   answered prayers): a missed prayer is filed at half value. It never advances the chain or the
   answered count. No mods — `expireDivineEvent` reads the purchase; the balance sim never answers
@@ -1645,3 +1645,5 @@ three further runs — watch for it.
 - Fixed Codex's cursor rule, which targeted a `.desktop-icon` class that does not exist.
 - **Tests:** `tests/economy-feedback.mjs` +4 (payout order, clipping, 30s lifetime, Intercession);
   the e2e seal step now checks the full-vault reroute, its explanation and the aria countdown.
+- **Follow-up (2026-10-05):** lifetime set to 20s at the user's call (15–20s early game). Late-game
+  clutter goes to a collector instead; see `docs/PRAYER_COLLECTOR_PLAN_2026-10-05.md`.

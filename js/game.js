@@ -2639,8 +2639,9 @@ const game = {
         ui.showDivineEvent(State.divineEvent);
     },
 
-    /* Thirty seconds: long enough to finish what you were doing first. */
-    DIVINE_EVENT_LIFETIME: 30000,
+    /* Twenty seconds: long enough to finish a click first, short enough to
+       stay a moment. Late game, a collector takes over (PRAYER_COLLECTOR_PLAN). */
+    DIVINE_EVENT_LIFETIME: 20000,
 
     /* What answering the prayer pays right now. Praise when the vault has room
        for at least a quarter of it; otherwise the same seconds of production
