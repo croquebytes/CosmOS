@@ -343,13 +343,6 @@ html {
     filter: grayscale(0.35);
 }
 
-/* The flare plate is painted on black, so it is screened rather than keyed. */
-.divine-event-icon img {
-    width: 42px;
-    height: 42px;
-    mix-blend-mode: screen;
-    filter: saturate(1.1);
-}
 
 .doc-notif-icon {
     display: flex;
@@ -1341,98 +1334,70 @@ body.resizing-window {
     margin-top: 0;
 }
 
-/* Divine Event (Golden Cookie Style) */
+/* A stray prayer: a small brass seal on open wallpaper. The ring is the
+   deadline; the chip says what answering pays. The first three explain
+   themselves, later ones keep the explanation for hover and focus. */
 .divine-event {
     position: fixed;
-    width: 80px;
-    height: 80px;
-    cursor: pointer;
     z-index: 10500;
-    animation: divineEventAppear 0.5s ease-out, divineEventFloat 3s ease-in-out infinite;
-    transition: transform 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+    max-width: 260px;
+    padding: 4px 6px 4px 4px;
+    color: var(--cos-ink-inv);
+    background: none;
+    border: 0;
+    font: 12px/1.35 var(--cos-font-machine);
+    text-align: left;
+    cursor: pointer;
+    animation: divineEventAppear 0.4s ease-out;
 }
+.divine-event:focus-visible { outline: 2px solid var(--cos-halo); outline-offset: 2px; }
+.divine-event.fade-out { animation: divineEventFadeOut 0.3s ease-out forwards; }
+.divine-event.is-docked { flex-direction: row-reverse; }
 
-.divine-event:hover {
-    transform: scale(1.2) rotate(15deg);
-}
+.pe-seal { flex: none; width: 40px; height: 40px; filter: drop-shadow(0 0 6px rgba(222, 196, 131, 0.35)); }
+.pe-track { fill: none; stroke: var(--cos-brass-900); stroke-width: 2; }
+.pe-ring { fill: none; stroke: var(--cos-brass-300); stroke-width: 2; stroke-dasharray: 100; stroke-linecap: round; }
+.pe-face { fill: var(--cos-iron-900); stroke: var(--cos-brass-700); stroke-width: 1; transition: stroke 0.15s; }
+.pe-star { fill: var(--cos-brass-100); }
+.divine-event:hover .pe-face, .divine-event:focus-visible .pe-face { stroke: var(--cos-brass-300); }
 
-.divine-event.fade-out {
-    animation: divineEventFadeOut 0.3s ease-out forwards;
+.pe-chip {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 8px;
+    background: var(--cos-iron-900);
+    border: 1px solid var(--cos-brass-700);
+    border-radius: var(--cos-radius);
+    box-shadow: 0 2px 8px var(--cos-void);
 }
+.divine-event:hover .pe-chip, .divine-event:focus-visible .pe-chip { border-color: var(--cos-brass-500); }
+.pe-line { white-space: nowrap; }
+.pe-name { color: var(--cos-brass-300); }
+.pe-amount { color: var(--cos-brass-100); font-weight: bold; }
+.pe-note { max-width: 190px; color: var(--cos-ink-inv-dim); font-size: 11px; }
+.pe-chain { display: none; gap: 4px; padding-top: 2px; }
+.pe-chain i { width: 5px; height: 5px; border: 1px solid var(--cos-brass-500); border-radius: 50%; }
+.pe-chain i.on { background: var(--cos-brass-300); }
 
-.divine-event-glow {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 100px;
-    height: 100px;
-    transform: translate(-50%, -50%);
-    background: radial-gradient(circle, rgba(255, 215, 0, 0.6) 0%, rgba(255, 215, 0, 0) 70%);
-    animation: pulseGlow 1.5s ease-in-out infinite;
-}
-
-.divine-event-icon {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 48px;
-    filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.8));
-}
-
-.divine-event-value {
-    position: absolute;
-    bottom: -20px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-family: Georgia, 'Times New Roman', serif;
-    font-size: 14px;
-    font-weight: bold;
-    color: #ffd700;
-    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
-    white-space: nowrap;
-}
+/* Quiet by default: name and rule appear for newcomers, on hover/focus, and
+   whenever the payout has moved off Praise. */
+.divine-event:not(.is-novice):not(:hover):not(:focus-visible) .pe-name,
+.divine-event:not(.is-novice):not(.is-rerouted):not(:hover):not(:focus-visible) .pe-note { display: none; }
+.divine-event.is-rerouted .pe-note { color: var(--cos-brass-300); }
+.divine-event.has-chain .pe-chain { display: flex; }
 
 @keyframes divineEventAppear {
-    0% {
-        opacity: 0;
-        transform: scale(0.3) rotate(-180deg);
-    }
-    100% {
-        opacity: 1;
-        transform: scale(1) rotate(0deg);
-    }
-}
-
-@keyframes divineEventFloat {
-    0%, 100% {
-        transform: translateY(0px);
-    }
-    50% {
-        transform: translateY(-15px);
-    }
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
 }
 
 @keyframes divineEventFadeOut {
-    0% {
-        opacity: 1;
-        transform: scale(1);
-    }
-    100% {
-        opacity: 0;
-        transform: scale(0.3) rotate(180deg);
-    }
-}
-
-@keyframes pulseGlow {
-    0%, 100% {
-        opacity: 0.5;
-        transform: translate(-50%, -50%) scale(1);
-    }
-    50% {
-        opacity: 1;
-        transform: translate(-50%, -50%) scale(1.2);
-    }
+    to { opacity: 0; transform: scale(0.94); }
 }
 
 /* Skills Section */
@@ -1651,19 +1616,19 @@ body.resizing-window {
 }
 
 .mandate-node.purchased {
-    background: linear-gradient(135deg, #e8e4f3, #d4c5f9);
-    border-color: #8a2be2 #4b0082 #4b0082 #8a2be2;
-    opacity: 0.8;
+    background: var(--cos-vellum-200);
+    border-color: var(--cos-verd-500);
+    opacity: 1;
 }
 
 .mandate-node.locked {
-    background: #888;
-    opacity: 0.4;
+    background: var(--cos-vellum-200);
+    opacity: 1;
     cursor: not-allowed !important;
 }
 
 .mandate-node.unaffordable {
-    opacity: 0.6;
+    opacity: 1;
     cursor: not-allowed !important;
 }
 
@@ -2788,7 +2753,7 @@ body.resizing-window {
 }
 
 /* Performance Mode Optimizations */
-body.performance-mode .divine-event-icon {
+body.performance-mode .divine-event {
     animation: none !important;
 }
 
@@ -4639,7 +4604,7 @@ body.start-menu-open .adversary-bark-layer { z-index: 9000; }
     padding: 10px 12px;
     border: 1px solid var(--cos-iron-600);
     border-radius: 2px;
-    background: rgba(18, 24, 35, 0.5);
+    background: var(--cos-iron-900);
 }
 
 .cert-head {
@@ -4685,8 +4650,8 @@ body.start-menu-open .adversary-bark-layer { z-index: 9000; }
 /* A dormant branch is legible but visibly switched off. Opacity rather than
    a colour override so the purchased/locked/unaffordable states underneath
    keep reading as themselves. */
-.mandate-branch.is-lapsed { opacity: 0.78; }
-.mandate-branch.is-dormant { opacity: 0.55; }
+.mandate-branch.is-lapsed,
+.mandate-branch.is-dormant { border-left: 2px dashed var(--cos-vellum-500); padding-left: 8px; }
 
 .mandate-branch.is-certified {
     border-left: 2px solid var(--cos-brass-500);
@@ -7009,7 +6974,10 @@ body:has(#system-modal-layer .cine-stage:not(.is-hosted)) :is(.document-notifica
    thing in the ending the player does rather than reads. */
 .fin-act {
     display: inline-block;
-    margin: 6px 0 2px 26px;
+    grid-column: 2;
+    justify-self: start;
+    max-width: 100%;
+    margin: 6px 0 2px;
     padding: 5px 14px;
     font: 12px/1.4 var(--cos-font-machine);
     letter-spacing: 0.06em;
@@ -9428,3 +9396,30 @@ button.ml-attach:hover:not(:disabled) { border-color: var(--cos-brass-700); back
         animation: none !important;
     }
 }
+
+/* Purchase rows use the same keyboard contract as native buttons. */
+:is(.upgrade-item, .mandate-node, .shop-item)[role="button"] { cursor: pointer; }
+:is(.upgrade-item, .mandate-node, .shop-item)[aria-disabled="true"] { cursor: default; }
+:is(.upgrade-item, .mandate-node, .shop-item):focus-visible { outline: 2px solid var(--cos-brass-ink); outline-offset: 2px; }
+.shop-item.unaffordable .shop-item-cost { color: var(--cos-alarm-ink); }
+
+/* Cursor preferences never replace text, resize, drag or disabled cursors. */
+@media (pointer: fine) {
+    body.custom-cursors { cursor: url('assets/cursors/brass-arrow.svg') 2 2, default; }
+    body.custom-cursors :is(button, a, [role="button"], .desktop-icons .icon):not(:disabled):not([aria-disabled="true"]) { cursor: url('assets/cursors/brass-hand.svg') 10 2, pointer; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .divine-event { animation: none; }
+}
+
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+.certification-panel .briefing-eyebrow { color: var(--cos-brass-300); }
+.certification-panel .code-stamp { color: var(--cos-ink-inv); background: var(--cos-iron-800); border-color: var(--cos-iron-500); }
+.certification-panel .code-stamp.is-live { color: var(--cos-verd-300); border-color: var(--cos-verd-500); }
+.prophet-feed-status { margin-top: 8px; color: var(--cos-ink-dim); font: 11px/1.5 var(--cos-font-machine); }
+
+.mandate-name { color: var(--cos-brass-ink); }
+.mandate-desc, .mandate-cost { color: var(--cos-ink-dim); }
+.mandate-node.purchased .mandate-name, .mandate-node.purchased .mandate-cost { color: var(--cos-verd-600); }
+.mandate-node.unaffordable .mandate-cost { color: var(--cos-alarm-ink); }

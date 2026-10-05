@@ -102,6 +102,11 @@ const ui = {
            showing a decision that moves. Cheap: it returns immediately when
            the elements are not in the document. */
         this.updatePrestigeInfo();
+        this.updateGlobeDisplay();
+        this.updateAdorationDisplay();
+        this.updateDivineCallsDisplay();
+        this.updateShopDisplay();
+        this.updateDivineEventDisplay(now);
         // The ship dialog quotes terms that move underneath it. See
         // refreshShipDialog — it returns immediately when the dialog is closed.
         this.refreshShipDialog();
@@ -2550,6 +2555,19 @@ const ui = {
         }
     },
 
+    purchaseControl(element, action, disabled = false) {
+        element.setAttribute('role', 'button');
+        element.tabIndex = disabled ? -1 : 0;
+        element.setAttribute('aria-disabled', String(disabled));
+        element.onclick = (event) => { if (element.getAttribute('aria-disabled') !== 'true') action(event); };
+        element.onkeydown = (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (!event.repeat) element.click();
+        };
+    },
+
     updateUpgrades() {
         const container = document.getElementById('upgrades-list');
         if (!container) return;
@@ -2557,9 +2575,12 @@ const ui = {
         // Check if we need to rebuild (new upgrades became visible)
         const visibleUpgrades = UpgradeList.filter(u => u.visible());
         const currentCount = container.children.length;
-        const shouldRebuild = visibleUpgrades.length !== currentCount;
+        const signature = visibleUpgrades.map((u) => `${u.id}:${!!State.upgrades[u.id]}`).join('|');
+        const shouldRebuild = visibleUpgrades.length !== currentCount || container.dataset.signature !== signature;
+        container.dataset.signature = signature;
 
         if (shouldRebuild) {
+            const focusedId = document.activeElement?.dataset?.upgradeId;
             container.innerHTML = ''; // Clear and rebuild
 
             visibleUpgrades.forEach(upgrade => {
@@ -2595,13 +2616,11 @@ const ui = {
                     <div class="upgrade-cost">${isPurchased ? 'ACQUIRED' : `Cost: ${costStr}`}</div>
                 `;
 
-                if (!isPurchased) {
-                    div.style.cursor = 'pointer';
-                    div.onclick = (e) => game.purchaseUpgrade(upgrade.id, e);
-                }
+                this.purchaseControl(div, (e) => game.purchaseUpgrade(upgrade.id, e), !!isPurchased);
 
                 container.appendChild(div);
             });
+            if (focusedId) container.querySelector(`[data-upgrade-id="${CSS.escape(focusedId)}"]`)?.focus({ preventScroll: true });
         } else {
             // Just update affordability classes without rebuilding DOM
             visibleUpgrades.forEach(upgrade => {
@@ -2841,25 +2860,102 @@ const ui = {
         }
     },
 
-    showDivineEvent(event) {
-        // Duplicate ids meant hideDivineEvent() only ever found the first one,
-        // so expired tokens accumulated in the DOM for the whole session.
-        document.querySelectorAll('.divine-event').forEach((stale) => stale.remove());
+    /* Open wallpaper for a prayer seal: clear of windows, desktop icons and
+       the operator panel. With none (a phone, or a crowded desk) it docks
+       above the system tray, where it is always in the same place. */
+    pickDivineEventSpot() {
+        const w = 260, h = 76, pad = 12;
+        const floor = (document.getElementById('taskbar')?.getBoundingClientRect().top || window.innerHeight) - pad;
+        const obstacles = [...document.querySelectorAll('.window, .desktop-icons .icon, #operator-status')]
+            .map((el) => el.getBoundingClientRect())
+            .filter((r) => r.width > 0 && r.height > 0);
+        const clear = (x, y) => obstacles.every((r) =>
+            x + w + pad < r.left || x - pad > r.right || y + h + pad < r.top || y - pad > r.bottom);
+        const spanX = window.innerWidth - w - pad * 2;
+        const spanY = floor - h - pad;
+        for (let attempt = 0; spanX > 0 && spanY > 0 && attempt < 40; attempt++) {
+            const x = pad + Math.random() * spanX;
+            const y = pad + Math.random() * spanY;
+            if (clear(x, y)) return { x, y };
+        }
+        return { x: window.innerWidth - 120, y: floor - 40, dock: true };
+    },
 
-        const element = document.createElement('div');
+    describeDivinePayout(payout) {
+        if (!payout?.resource) return 'Chain kept';
+        const name = { praise: 'Praise', offerings: 'Offerings', souls: 'Souls', charge: 'Overclock charge' }[payout.resource];
+        return `+${this.formatNumber(payout.amount)} ${name}`;
+    },
+
+    showDivineEvent(event) {
+        document.querySelectorAll('.divine-event').forEach((stale) => stale.remove());
+        const element = document.createElement('button');
+        element.type = 'button';
         element.id = 'divine-event';
         element.className = 'divine-event';
-        element.style.left = event.x + 'px';
-        element.style.top = event.y + 'px';
         element.innerHTML = `
-            <div class="divine-event-glow"></div>
-            <div class="divine-event-icon"><img src="assets/vfx/flare_256.png" alt="" aria-hidden="true"></div>
-            <div class="divine-event-value">+${event.value}</div>
+            <svg class="pe-seal" viewBox="0 0 40 40" aria-hidden="true">
+                <circle class="pe-track" cx="20" cy="20" r="18"/>
+                <circle class="pe-ring" cx="20" cy="20" r="18" pathLength="100" transform="rotate(-90 20 20)"/>
+                <circle class="pe-face" cx="20" cy="20" r="13"/>
+                <path class="pe-star" d="M20 11 L22 18 L29 20 L22 22 L20 29 L18 22 L11 20 L18 18Z"/>
+            </svg>
+            <span class="pe-chip">
+                <span class="pe-line"><span class="pe-name">Stray prayer</span> <span class="pe-amount"></span></span>
+                <span class="pe-note"></span>
+                <span class="pe-chain" aria-hidden="true"><i></i><i></i><i></i></span>
+            </span>
         `;
         element.onclick = () => game.clickDivineEvent();
-
+        if (event.dock) element.classList.add('is-docked');
         document.body.appendChild(element);
+        this.updateDivineEventDisplay();
+        /* Placed after the first render, so the clamp uses the seal's real size. */
+        const floor = (document.getElementById('taskbar')?.getBoundingClientRect().top || window.innerHeight) - 8;
+        const left = Math.max(8, Math.min(event.dock ? window.innerWidth : event.x, window.innerWidth - element.offsetWidth - 8));
+        const top = Math.max(8, Math.min(event.y, floor - element.offsetHeight));
+        element.style.left = left + 'px';
+        element.style.top = top + 'px';
+        event.x = left + 20;
+        event.y = top + element.offsetHeight / 2;
+        let announcement = document.getElementById('divine-event-announcement');
+        if (!announcement) {
+            announcement = document.createElement('span');
+            announcement.id = 'divine-event-announcement';
+            announcement.className = 'sr-only';
+            announcement.setAttribute('role', 'status');
+            document.body.appendChild(announcement);
+        }
+        announcement.textContent = `A stray prayer arrived: ${this.describeDivinePayout(game.divineEventPayout(event))}. Answer it before it fades.`;
         game.sfx('eventAppear');
+    },
+
+    updateDivineEventDisplay(now = Date.now()) {
+        const element = document.getElementById('divine-event');
+        const event = State.divineEvent;
+        if (!element || !event) return;
+        const loops = State.loopSystems || {};
+        const payout = game.divineEventPayout(event);
+        const paid = this.describeDivinePayout(payout);
+        const seconds = Math.max(0, Math.ceil((event.expiresAt - now) / 1000));
+        const left = Math.max(0, Math.min(1, (event.expiresAt - now) / game.DIVINE_EVENT_LIFETIME));
+        /* The first three prayers explain themselves; after that the name and
+           the rule wait for hover or focus. A full vault always says so. */
+        const novice = (loops.totalDivineEventsClaimed || 0) < 3;
+        const rerouted = payout.resource !== 'praise';
+        const note = rerouted ? 'Praise vault full'
+            : novice ? 'Prayers drift through the OS. Answer one before it fades.'
+            : 'Answer before it fades. Three in a row pays Souls.';
+        const live = (loops.divineEventChain || 0) > 0 && now - (loops.lastDivineEventClaimAt || 0) <= 15000;
+        const caught = live ? loops.divineEventChain % 3 : 0;
+        element.classList.toggle('is-novice', novice);
+        element.classList.toggle('is-rerouted', rerouted);
+        element.classList.toggle('has-chain', caught > 0);
+        this.setText(element.querySelector('.pe-amount'), paid);
+        this.setText(element.querySelector('.pe-note'), note);
+        element.querySelectorAll('.pe-chain i').forEach((pip, i) => pip.classList.toggle('on', i < caught));
+        element.querySelector('.pe-ring').style.strokeDashoffset = String(100 - left * 100);
+        element.setAttribute('aria-label', `Answer stray prayer: ${paid}. ${seconds} seconds left.${rerouted ? ' Praise vault full.' : ''}`);
     },
 
     hideDivineEvent() {
@@ -3036,6 +3132,7 @@ const ui = {
         this.renderCertification();
         this.renderDoctrine();
 
+        const focusedId = document.activeElement?.dataset?.mandateId;
         const certPath = game.certification().path;
         const everCertified = game.certification().everCertified;
 
@@ -3082,6 +3179,7 @@ const ui = {
                 // Create mandate node element
                 const node = document.createElement('div');
                 node.className = 'mandate-node';
+                node.dataset.mandateId = mandate.id;
                 if (isPurchased) node.classList.add('purchased');
                 if (!prereqsMet && !isPurchased) node.classList.add('locked');
                 if (!canAfford && !isPurchased && prereqsMet) node.classList.add('unaffordable');
@@ -3100,14 +3198,12 @@ const ui = {
                     <div class="mandate-cost">${isPurchased ? standing : (prereqsMet ? `${effectiveCost} DP${effectiveCost < mandate.cost ? ` (Base ${mandate.cost})` : ''}` : 'Prerequisites not met')}</div>
                 `;
 
-                if (!isPurchased && prereqsMet) {
-                    node.style.cursor = 'pointer';
-                    node.onclick = () => game.purchaseMandate(mandate.id);
-                }
+                this.purchaseControl(node, () => game.purchaseMandate(mandate.id), !!isPurchased || !prereqsMet);
 
                 container.appendChild(node);
             });
         });
+        if (focusedId) document.querySelector(`[data-mandate-id="${CSS.escape(focusedId)}"]`)?.focus({ preventScroll: true });
     },
 
     switchDimension(dimensionId) {
@@ -3901,27 +3997,38 @@ Title on file: ${esc(doc.endTitle)}</pre>
         const followersEl = document.getElementById('globe-followers');
         const adorationRateEl = document.getElementById('globe-adoration-rate');
 
-        if (nameEl) nameEl.innerText = dimId.charAt(0).toUpperCase() + dimId.slice(1) + ' Dimension';
-        if (assignedEl) assignedEl.innerText = State.prophets.assignments[dimId] || 0;
-        if (availableEl) availableEl.innerText = State.prophets.available;
-        if (followersEl) followersEl.innerText = Math.floor(State.followers[dimId]?.count || 0);
+        if (!nameEl) return;
+        this.setText(nameEl, dimId.charAt(0).toUpperCase() + dimId.slice(1) + ' Dimension');
+        this.setText(assignedEl, String(State.prophets.assignments[dimId] || 0));
+        this.setText(availableEl, String(State.prophets.available));
+        this.setText(followersEl, String(Math.floor(State.followers[dimId]?.count || 0)));
 
         const followerData = State.followers[dimId];
         const timelineAdorationBonus = State.timelines.effects[State.timelines.current].adorationBonus || 1;
         const adorationGlobalBonus = State.achievementBonuses?.globalGain || 1;
         const adorationRate = followerData ? followerData.count * followerData.adorationRate * timelineAdorationBonus * adorationGlobalBonus : 0;
-        if (adorationRateEl) adorationRateEl.innerText = this.formatNumber(adorationRate, 2);
+        this.setText(adorationRateEl, this.formatNumber(adorationRate, 2));
+        const feeds = (State.prophets.feeds || []).filter((feed) => feed.expiresAt > Date.now());
+        const remaining = feeds.length ? Math.ceil((Math.min(...feeds.map((feed) => feed.expiresAt)) - Date.now()) / 1000) : 0;
+        this.setText(document.getElementById('prophet-feed-status'), feeds.length
+            ? `Growth ×${State.prophetFeedingBonus().toFixed(2)} · next meal expires in ${remaining}s. Boosts run on wall time; offline accrual uses base growth.`
+            : 'No active meals. Feeding boosts expire even while the OS is closed.');
 
+    },
+
+    updateAdorationDisplay() {
+        const timelineAdorationBonus = State.timelines.effects[State.timelines.current].adorationBonus || 1;
+        const adorationGlobalBonus = State.achievementBonuses?.globalGain || 1;
         const adorationEl = document.getElementById('val-adoration');
         const adorationRateMainEl = document.getElementById('val-adoration-rate');
-        if (adorationEl) adorationEl.innerText = this.formatNumber(Math.floor(State.adoration));
+        this.setText(adorationEl, this.formatNumber(Math.floor(State.adoration)));
         if (adorationRateMainEl) {
             let totalRate = 0;
             for (const dim in State.followers) {
                 totalRate += State.followers[dim].count * State.followers[dim].adorationRate;
             }
             totalRate *= timelineAdorationBonus * adorationGlobalBonus;
-            adorationRateMainEl.innerText = this.formatNumber(totalRate, 2);
+            this.setText(adorationRateMainEl, this.formatNumber(totalRate, 2));
         }
     },
 
@@ -3946,6 +4053,8 @@ Title on file: ${esc(doc.endTitle)}</pre>
         const container = document.getElementById('shop-content');
         if (!container) return;
 
+        this.selectedShopCategory = category;
+        const focusedId = document.activeElement?.dataset?.shopItem;
         container.innerHTML = '';
 
         const items = ShopItemList.filter(i => i.category === category);
@@ -3955,6 +4064,7 @@ Title on file: ${esc(doc.endTitle)}</pre>
 
             const div = document.createElement('div');
             div.className = 'shop-item';
+            div.dataset.shopItem = item.id;
             if (isPurchased && !item.upgradable) div.classList.add('purchased');
 
             div.innerHTML = `
@@ -3964,16 +4074,26 @@ Title on file: ${esc(doc.endTitle)}</pre>
                 ${item.upgradable ? `<div class="shop-item-level">Level: ${level}</div>` : ''}
             `;
 
-            if (!isPurchased || item.upgradable) {
-                div.style.cursor = 'pointer';
-                div.onclick = () => game.purchaseShopItem(category, item.id);
-            }
+            this.purchaseControl(div, () => game.purchaseShopItem(category, item.id), !!isPurchased && !item.upgradable);
 
             container.appendChild(div);
         });
 
         const balanceEl = document.getElementById('shop-adoration');
         if (balanceEl) balanceEl.innerText = this.formatNumber(Math.floor(State.adoration));
+        if (focusedId) container.querySelector(`[data-shop-item="${CSS.escape(focusedId)}"]`)?.focus({ preventScroll: true });
+    },
+
+    updateShopDisplay() {
+        const balance = document.getElementById('shop-adoration');
+        if (!balance) return;
+        this.setText(balance, this.formatNumber(Math.floor(State.adoration)));
+        document.querySelectorAll('[data-shop-item]').forEach((row) => {
+            const item = ShopItemList.find((i) => i.id === row.dataset.shopItem);
+            if (!item) return;
+            const purchased = !item.upgradable && State.adorationShop[item.category][item.id];
+            row.classList.toggle('unaffordable', !purchased && State.adoration < item.cost);
+        });
     },
 
     switchShopTab(category, event) {
@@ -3984,25 +4104,17 @@ Title on file: ${esc(doc.endTitle)}</pre>
 
     // === DIVINE CALLS FUNCTIONS ===
     updateDivineCallsDisplay() {
-        const now = Date.now();
-        const cooldownRemaining = Math.max(0, State.divineCalls.lastAnswered + State.divineCalls.cooldown - now);
-
-        const offeringsBtn = document.getElementById('btn-convert-offerings');
-        const soulsBtn = document.getElementById('btn-convert-souls');
-        const offeringsCooldown = document.getElementById('cooldown-offerings');
-        const soulsCooldown = document.getElementById('cooldown-souls');
-
-        if (cooldownRemaining > 0) {
-            const seconds = Math.ceil(cooldownRemaining / 1000);
-            if (offeringsCooldown) offeringsCooldown.innerText = `${seconds}s`;
-            if (soulsCooldown) soulsCooldown.innerText = `${seconds}s`;
-            if (offeringsBtn) offeringsBtn.disabled = true;
-            if (soulsBtn) soulsBtn.disabled = true;
-        } else {
-            if (offeringsCooldown) offeringsCooldown.innerText = 'Ready';
-            if (soulsCooldown) soulsCooldown.innerText = 'Ready';
-            if (offeringsBtn) offeringsBtn.disabled = false;
-            if (soulsBtn) soulsBtn.disabled = false;
+        const cooldown = Math.max(0, State.divineCalls.lastAnswered + State.divineCalls.cooldown - Date.now());
+        for (const resource of ['offerings', 'souls']) {
+            const button = document.getElementById(`btn-convert-${resource}`);
+            if (!button) continue;
+            const terms = State.divineCalls.conversionRates[resource];
+            const full = State.adorationCaps.cosmetics - State.adoration < terms.adorationGain;
+            const short = State.resources[resource] < terms.cost;
+            const label = cooldown > 0 ? `${Math.ceil(cooldown / 1000)}s` : full ? 'Vault full' : short ? `Need ${terms.cost} ${resource}` : 'Ready';
+            this.setText(document.getElementById(`cooldown-${resource}`), label);
+            this.setDisabled(button, cooldown > 0 || full || short);
+            button.title = full ? 'Spend Adoration to make room in the vault.' : label;
         }
     },
 
@@ -4750,6 +4862,8 @@ Title on file: ${esc(doc.endTitle)}</pre>
             perfCheckbox.checked = State.settings.performanceMode || false;
         }
 
+        const cursorCheckbox = document.getElementById('custom-cursors');
+        if (cursorCheckbox) cursorCheckbox.checked = State.settings.customCursors === true;
         if (typeof audio !== 'undefined') audio.syncSettingsUI();
         if (typeof media !== 'undefined') media.syncSettingsUI();
     },
@@ -4773,6 +4887,16 @@ Title on file: ${esc(doc.endTitle)}</pre>
 
         const seconds = parseInt(interval) / 1000;
         ui.log(`Autosave interval changed to ${seconds}s`);
+    },
+
+    applyCursorPreference() {
+        document.body.classList.toggle('custom-cursors', State.settings?.customCursors === true);
+    },
+
+    toggleCustomCursors(enabled) {
+        State.settings.customCursors = !!enabled;
+        this.applyCursorPreference();
+        State.save();
     },
 
     togglePerformanceMode(enabled) {

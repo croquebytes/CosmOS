@@ -84,6 +84,8 @@ async function scenario(band) {
        Neither the timer, a click on the scene nor Escape gets past it. */
     const act = page.locator('.fin-act:not(.is-done)');
     await act.waitFor({ timeout: 5000 });
+    assert.ok(await act.evaluate((e) => e.clientWidth >= e.scrollWidth), `${band}: act label overflows its button`);
+    assert.ok((await act.boundingBox()).width >= 90, `${band}: act is trapped in the transcript's marker column`);
     const label = { hostile: 'End Process', curious: 'Sign the rota', complicit: 'Hand over the console' }[band];
     assert.equal((await act.innerText()).trim().toLowerCase(), label.toLowerCase(), `${band} shows the wrong act`);
     await page.waitForTimeout(600);

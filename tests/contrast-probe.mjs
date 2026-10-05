@@ -71,8 +71,8 @@ export const ratioOf = (a, b) => {
  * Every visible text element under `rootSelector` (or the ones matching
  * `only`), with its measured ratio. `page` is a Playwright page.
  */
-export async function measureContrast(page, rootSelector, { only = null } = {}) {
-    const items = await page.evaluate(({ rootSelector, only }) => {
+export async function measureContrast(page, rootSelector, { only = null, includeDisabled = false } = {}) {
+    const items = await page.evaluate(({ rootSelector, only, includeDisabled }) => {
         const root = document.querySelector(rootSelector);
         if (!root) return [];
         // Measure the resting state: a sheet or a toast mid-fade is not a
@@ -106,7 +106,7 @@ export async function measureContrast(page, rootSelector, { only = null } = {}) 
             const cs = getComputedStyle(el);
             if (r.width < 2 || r.height < 2 || cs.visibility === 'hidden' || Number(cs.opacity) === 0) continue;
             if (r.bottom < 0 || r.right < 0 || r.top > innerHeight || r.left > innerWidth) continue;
-            if (el.closest('[disabled], [aria-disabled="true"], [aria-hidden="true"]')) continue;
+            if (el.closest('[aria-hidden="true"]') || (!includeDisabled && el.closest('[disabled], [aria-disabled="true"]'))) continue;
             // Effective opacity up the tree: a faded control is faded text.
             let alpha = 1;
             for (let n = el; n && n.nodeType === 1; n = n.parentElement) alpha *= Number(getComputedStyle(n).opacity);
@@ -131,7 +131,7 @@ export async function measureContrast(page, rootSelector, { only = null } = {}) 
             .crt-overlay, .screen-pulse, .achievement-toast, .achievement-overflow, .document-notification, .adversary-bark, .floating-number, .click-particle { display: none !important; }`;
         document.head.appendChild(style);
         return out;
-    }, { rootSelector, only });
+    }, { rootSelector, only, includeDisabled });
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     const shot = decodePng(await page.screenshot({ animations: 'disabled' }));
     await page.evaluate(() => {
