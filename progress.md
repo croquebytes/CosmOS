@@ -1647,3 +1647,27 @@ three further runs — watch for it.
   the e2e seal step now checks the full-vault reroute, its explanation and the aria countdown.
 - **Follow-up (2026-10-05):** lifetime set to 20s at the user's call (15–20s early game). Late-game
   clutter goes to a collector instead; see `docs/PRAYER_COLLECTOR_PLAN_2026-10-05.md`.
+
+
+### Compact Engine — the command strip (2026-10-19, Claude)
+- Roadmap item 1 from `docs/UI_GAMEPLAY_PLAN_2026-10-04.md`, approved by the user on 2026-10-05.
+- **Command strip** (`#engine-command`): resources, a one-line directive with its progress, and the
+  act row (Perform Miracle, plus **Claim · reward** once the directive is complete). Sticky inside
+  the Engine's scroll container. `.engine-display` needed `height: auto` for that: sticky cannot
+  outlive a parent fixed at 100%. `ui.watchCommandStrip` sets the Engine's scroll-padding to the
+  strip's height, so keyboard focus never lands underneath it.
+- Resources stay three across on phones (they stacked to a column before) and say **FULL** at cap.
+- **Core fold:** after the first Seraph (or any reboot) a "Fold core" control shrinks the well to a
+  64px band that still pulses and still takes a click. Remembered in localStorage per layout
+  (`cosmos.coreFolded.narrow|wide`); narrow folds by default, wide does not. The Seraph reveal is
+  untouched.
+- **Operator panel button** (`ui.operatorAction`) does the next thing: claims a finished directive
+  (reward on the label), or names an affordable milestone and focuses its control in the Engine,
+  or opens the Engine.
+- **Bug fixed:** milestones hardcoded prices. "Breach the Veil" said READY at 200 Souls for a
+  12,000-Soul upgrade; "Commission first Seraph" ignored cost changes. They now read
+  `UpgradeList` / `game.getAutomatonCost`.
+- **Test:** `tests/engine-layout-e2e.mjs` (8), wired as `test:engine:e2e`.
+- **Not done:** Codex's "show the full reward first" for directive rewards above vault room. The
+  Claim label shows the nominal reward, and `claimDirectiveReward` still clips it to the cap. A
+  stray-prayer-style reroute would fix it; left for a follow-up.
