@@ -1691,3 +1691,27 @@ three further runs — watch for it.
 - **Touch:** on coarse pointers, window controls keep their 19×16 glyph but take taps across the
   title bar's height. They are spaced 12px apart so neighbouring targets never overlap.
 - **Test:** `tests/display-settings-e2e.mjs` (6), wired as `test:display:e2e`.
+
+
+### Prophet dispatch from a congregation (2026-10-21, Claude)
+- Roadmap item 3. Dispatch already existed (`Incidents.dispatchProphet`, SEV-3 only, closes the
+  ticket after 120 attended seconds), but it needed a *free* Prophet. The first Prophet arrives
+  with the Globe and is assigned at once, so the button went dark for good.
+- With none free, dispatch now takes one from the dimension with the most Prophets
+  (`Incidents.dispatchSource`) and returns it there (`inc.prophetFrom`, validated in normalise).
+  The ticket button names the congregation and its growth loss
+  ("from Primordial · growth −50% there for 2 min"). The clock says where it returns, and the Globe
+  shows "On site".
+- **Absence rule kept:** `getProductionRates` counts an on-site Prophet home while the queue is on
+  hold and in offline accrual (`includeTransient=false`). The growth cost applies only while
+  the operator is here.
+- **Bug fixed:** `returnProphet` bounded only free Prophets by the total, so a forged dispatch could
+  mint one when every Prophet was assigned. It now counts available + assigned + on site.
+- **Tests:** `tests/incidents.mjs` +4. New `tests/prophet-dispatch-e2e.mjs` (4), wired as
+  `test:dispatch:e2e`. Economy unchanged (the balance sim never dispatches).
+- No new numbers; the plan's "one incident family" was not needed, since dispatch already covers
+  every SEV-3 ticket.
+- **Flake seen:** `tests/e2e-smoke.mjs`, "The universe kept running." heading timed out once in a
+  full run, right after golden. It passed 4/4 alone and in the next full run (1001 checks). The likely
+  cause: the first page autosaves over the seeded `lastUpdateTime` before the second page loads
+  (see the browser-verification memory). Not fixed here; watch for it.
