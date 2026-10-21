@@ -515,6 +515,72 @@ check('a reboot closes every open ticket and brings dispatched Prophets home', (
     assert.equal(env.State.prophets.available, 1, 'a dispatched Prophet was lost in the reboot');
 });
 
+check('with no free Prophet, dispatch takes one from the largest congregation and returns it there', () => {
+    const env = game_();
+    env.State.prophets.total = 3;
+    env.State.prophets.available = 0;
+    env.State.prophets.assignments = { primordial: 1, void: 2 };
+    const inc = realSev3(env);
+    const view = env.Incidents.view(inc);
+    assert.equal(view.dispatch.from, 'void');
+    assert.equal(view.dispatch.assigned, 2);
+    assert.ok(env.Incidents.dispatchProphet(inc.id));
+    assert.equal(env.State.prophets.assignments.void, 1, 'the Prophet left its congregation');
+    assert.equal(env.Incidents.onSiteFrom('void'), 1);
+    play(env, env.Incidents.PROPHET_SECONDS + 1);
+    assert.equal(env.Incidents.find(inc.id), null);
+    assert.equal(env.State.prophets.assignments.void, 2, 'the Prophet did not go home');
+    assert.equal(env.State.prophets.available, 0, 'the Prophet came home to the wrong place');
+});
+
+check('a dispatched Prophet costs growth only while the operator is here', () => {
+    const env = game_();
+    env.State.prophets.total = 2;
+    env.State.prophets.available = 0;
+    env.State.prophets.assignments = { primordial: 2 };
+    const now = Date.now();
+    const base = env.game.getProductionRates(now, true).followerGrowth.primordial;
+    assert.ok(base > 0, 'fixture check: followers grow');
+    env.Incidents.dispatchProphet(realSev3(env).id);
+    const present = env.game.getProductionRates(now, true).followerGrowth.primordial;
+    assert.ok(Math.abs(present - base / 2) < 1e-12, 'one of two Prophets away should halve growth');
+    assert.ok(Math.abs(env.game.getProductionRates(now, false).followerGrowth.primordial - base) < 1e-12,
+        'offline accrual must count the Prophet home');
+    env.State.incidents.onHold = true;
+    assert.ok(Math.abs(env.game.getProductionRates(now, true).followerGrowth.primordial - base) < 1e-12,
+        'a queue on hold must count the Prophet home');
+});
+
+check("a reboot sends a congregation's Prophet back to its congregation", () => {
+    const env = game_();
+    env.State.prophets.total = 1;
+    env.State.prophets.available = 0;
+    env.State.prophets.assignments = { primordial: 1 };
+    env.Incidents.dispatchProphet(realSev3(env).id);
+    env.State.totalStats.soulsGained = (Number(env.State.runSoulsBaseline) || 0) + env.game.getPrestigeThreshold() * 50;
+    env.game.performPrestige({ confirmed: true, certifyOn: 'creation' });
+    assert.equal(env.State.prophets.assignments.primordial, 1);
+    assert.equal(env.State.prophets.available, 0);
+});
+
+check('a forged dispatch cannot mint a Prophet even when every Prophet is assigned', () => {
+    const store = {};
+    const env = game_(store);
+    env.State.prophets.total = 1;
+    env.State.prophets.available = 0;
+    env.State.prophets.assignments = { primordial: 1 };
+    env.State.save();
+    const parsed = JSON.parse(store.cosmos_save);
+    parsed.incidents = { open: [{ id: 'INC-0001', template: 'choir_desync', severity: 3,
+        remaining: 200, sector: '7G', prophet: true, prophetRemaining: 1, prophetFrom: 'primordial' }] };
+    store.cosmos_save = JSON.stringify(parsed);
+    const reloaded = boot(store);
+    reloaded.game.bootstrapModifiers(Date.now());
+    play(reloaded, 3);
+    assert.equal(reloaded.State.prophets.assignments.primordial, 1, 'a forged dispatch minted a Prophet');
+    assert.equal(reloaded.State.prophets.available, 0);
+});
+
 /* ── Persistence ───────────────────────────────────────────────────────── */
 
 check('save → reload keeps open tickets, their effects, and their place in the fold', () => {

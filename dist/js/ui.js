@@ -4105,6 +4105,25 @@ Title on file: ${esc(doc.endTitle)}</pre>
         ui.log(`Selected ${dimId} dimension on globe.`);
     },
 
+    dimensionName(dim) {
+        return dim.charAt(0).toUpperCase() + dim.slice(1);
+    },
+
+    /* A free Prophet costs nothing, and the button says only that. One taken
+       from a congregation names it and what its growth loses while you are
+       here, before you commit. */
+    prophetDispatchButton(id, source) {
+        const minutes = Math.round(Incidents.PROPHET_SECONDS / 60);
+        if (!source?.from) {
+            return `<button type="button" class="incident-btn" onclick="ui.incidentAction('${id}', 'prophet')"
+                title="Closes this ticket after ${minutes} attended minutes. No free Prophet is lost.">Dispatch a Prophet</button>`;
+        }
+        const name = this.dimensionName(source.from);
+        const share = Math.round(100 / source.assigned);
+        return `<button type="button" class="incident-btn" onclick="ui.incidentAction('${id}', 'prophet')"
+            title="Closes this ticket after ${minutes} attended minutes. While you are away the Prophet counts as home.">Dispatch a Prophet from ${name} · growth −${share}% there for ${minutes} min</button>`;
+    },
+
     updateGlobeDisplay() {
         const dimId = this.selectedGlobeDimension;
         if (!dimId) return;
@@ -4120,6 +4139,13 @@ Title on file: ${esc(doc.endTitle)}</pre>
         this.setText(assignedEl, String(State.prophets.assignments[dimId] || 0));
         this.setText(availableEl, String(State.prophets.available));
         this.setText(followersEl, String(Math.floor(State.followers[dimId]?.count || 0)));
+        const onSiteEl = document.getElementById('globe-prophets-onsite');
+        if (onSiteEl) {
+            const onSite = typeof Incidents !== 'undefined' && game.incidentsLive() ? Incidents.onSiteFrom(dimId) : 0;
+            if (onSiteEl.hidden === (onSite > 0)) onSiteEl.hidden = onSite === 0;
+            this.setText(onSiteEl.querySelector('span'), onSite
+                ? `${onSite} at a ticket in Task Manager. Not growing this congregation while you are here.` : '');
+        }
 
         const followerData = State.followers[dimId];
         const timelineAdorationBonus = State.timelines.effects[State.timelines.current].adorationBonus || 1;
@@ -4424,7 +4450,7 @@ Title on file: ${esc(doc.endTitle)}</pre>
            would eat the click on any button the player was reaching for. */
         const signature = JSON.stringify([summary.everFiled, summary.onHold, views.map((v) => [
             v.id, v.severity, !!v.prophet, v.labour ? [v.labour.band.at, v.labour.hits] : null,
-            v.artifact?.id || null, v.canProphet,
+            v.artifact?.id || null, v.canProphet, v.dispatch ? [v.dispatch.from, v.dispatch.assigned] : null,
         ])]);
         if (signature !== this.incidentSignature) {
             this.incidentSignature = signature;
@@ -4439,7 +4465,7 @@ Title on file: ${esc(doc.endTitle)}</pre>
             const clockText = v.held
                 ? 'On hold — clock frozen while you are away'
                 : v.prophet
-                ? `Prophet on site — closes in ${this.formatClock(v.prophet.remaining)}`
+                ? `Prophet on site — closes in ${this.formatClock(v.prophet.remaining)}${v.prophet.from ? `, then back to ${this.dimensionName(v.prophet.from)}` : ''}`
                 : v.severity === 1
                     ? `OUTAGE — ${v.line} on backup · on-call rota contains it in ${this.formatClock(v.remaining)}`
                     : `Escalates to ${v.nextSeverity === 1 ? 'OUTAGE' : `SEV-${v.nextSeverity}`} in ${this.formatClock(v.remaining)}`;
@@ -4492,7 +4518,7 @@ Title on file: ${esc(doc.endTitle)}</pre>
             const extra = [
                 v.artifact ? `<button type="button" class="incident-btn is-sacrifice" onclick="ui.incidentAction('${id}', 'sacrifice')"
                     title="Delete ${esc(v.artifact.name)} from the Recycle Bin to close this ticket">Sacrifice ${esc(v.artifact.name)}</button>` : '',
-                v.canProphet ? `<button type="button" class="incident-btn" onclick="ui.incidentAction('${id}', 'prophet')">Dispatch a Prophet</button>` : '',
+                v.canProphet ? this.prophetDispatchButton(id, v.dispatch) : '',
             ].join('');
 
             return `
