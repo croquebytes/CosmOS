@@ -28,6 +28,7 @@ const system = {
         console.log("CosmOS Initializing...");
         this.trackPresence();
         ui.applyCursorPreference();
+        ui.applyDisplayPreferences();
         const offlineReport = game.initializeSession();
         const testMode = new URLSearchParams(window.location.search).has('testMode');
         const bootDelay = testMode ? 0 : 3000;
@@ -1004,12 +1005,29 @@ const system = {
                                 <input type="checkbox" id="dealer-chatter" class="setting-checkbox" checked onchange="PatienceDealer.setChatter(this.checked)">
                                 <span class="setting-desc">The house speaks at the Patience.exe table.</span>
                             </div>
-                        </div>
-
-                        <div class="setting-row">
-                            <label for="custom-cursors">Brass Cursors:</label>
-                            <input type="checkbox" id="custom-cursors" class="setting-checkbox" onchange="ui.toggleCustomCursors(this.checked)">
-                            <span class="setting-desc">A brass arrow and seal hand. Turn off for system cursors.</span>
+                            <div class="setting-row">
+                                <label for="crt-intensity">CRT Scanlines:</label>
+                                <select id="crt-intensity" class="setting-select" onchange="ui.setCrtIntensity(this.value)">
+                                    <option value="full">Full</option>
+                                    <option value="low">Low</option>
+                                    <option value="off">Off</option>
+                                </select>
+                                <span class="setting-desc">The tube over the whole desktop. Low keeps the texture and calms the text.</span>
+                            </div>
+                            <div class="setting-row">
+                                <label for="text-scale">Text Size:</label>
+                                <select id="text-scale" class="setting-select" onchange="ui.setTextScale(this.value)">
+                                    <option value="1">100%</option>
+                                    <option value="1.15">115%</option>
+                                    <option value="1.3">130%</option>
+                                </select>
+                                <span class="setting-desc">Scales what is inside windows. Window frames keep their size.</span>
+                            </div>
+                            <div class="setting-row">
+                                <label for="custom-cursors">Brass Cursors:</label>
+                                <input type="checkbox" id="custom-cursors" class="setting-checkbox" onchange="ui.toggleCustomCursors(this.checked)">
+                                <span class="setting-desc">A brass arrow and seal hand. Turn off for system cursors.</span>
+                            </div>
                         </div>
 
                         <h3>Sound Settings</h3>

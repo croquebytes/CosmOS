@@ -1671,3 +1671,23 @@ three further runs — watch for it.
 - **Not done:** Codex's "show the full reward first" for directive rewards above vault room. The
   Claim label shows the nominal reward, and `claimDirectiveReward` still clips it to the cap. A
   stray-prayer-style reroute would fix it; left for a follow-up.
+
+
+### Display dials and touch targets (2026-10-21, Claude)
+- Roadmap item 2 from `docs/UI_GAMEPLAY_PLAN_2026-10-04.md`. Merged PR #12 (compact Engine) first.
+- **CRT Scanlines** (Full / Low / Off) and **Text Size** (100 / 115 / 130%) in Divine Settings →
+  Display Settings, with Brass Cursors moved inside that section (it sat just outside it).
+  Full stays the default; Low is the overlay at 40%.
+- **Text Size** zooms each window's contents and the operator panel with CSS `zoom`, because type
+  is px throughout. Frames, title bars and the taskbar keep their size. The zoom sits on
+  `.window-content > *`, not the scroll box, so window geometry is unchanged. The Engine strip's
+  bleed is divided by `--text-zoom` so it still meets the window edge, and its scroll-padding
+  reads the visual height.
+- **Performance Mode no longer owns the CRT.** `settings.crtIntensity` defaults to null, which
+  follows Performance Mode, so a save that used it to clear the screen keeps a clean screen until
+  a level is chosen.
+- **Bug fixed:** Performance Mode's body class was set only by its checkbox, so a saved Performance
+  Mode did nothing to the CSS after a reload. `ui.applyDisplayPreferences` now applies it at boot.
+- **Touch:** on coarse pointers, window controls keep their 19×16 glyph but take taps across the
+  title bar's height. They are spaced 12px apart so neighbouring targets never overlap.
+- **Test:** `tests/display-settings-e2e.mjs` (6), wired as `test:display:e2e`.
