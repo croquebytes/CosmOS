@@ -95,6 +95,7 @@ const ui = {
         this.updateLoopPanels();
         this.updateDimensionDisplay();
         this.updateOperatorStatus();
+        this.updateEngineCommand();
         this.updateIncidentChrome();
         /* The Divine Settings readout was only ever rendered by that window's
            onOpen, so the award and the stability line sat frozen at whatever
@@ -142,47 +143,77 @@ const ui = {
         const progressDetail = (current, target, resource) => current >= target
             ? `READY — ${this.formatNumber(target)} ${resource}`
             : `${this.formatNumber(current)} / ${this.formatNumber(target)} ${resource}`;
+        /* Upgrade milestones quote the upgrade's own price, so the panel never
+           says READY for something the Engine will refuse. ("Breach the Veil"
+           said 200 Souls for an upgrade that costs 12,000.) */
+        const upgradeStep = (id, label) => {
+            const upgrade = UpgradeList.find((u) => u.id === id);
+            const [resource, target] = Object.entries(upgrade.cost)[0];
+            const current = State.resources[resource] || 0;
+            const name = resource.charAt(0).toUpperCase() + resource.slice(1);
+            return {
+                label,
+                detail: progressDetail(current, target, name),
+                ratio: Math.min(1, current / target),
+                ready: current >= target,
+                target: `[data-upgrade-id="${id}"]`
+            };
+        };
 
         if (State.automatons.seraphCount === 0) {
+            const cost = game.getAutomatonCost('seraph');
             return {
                 label: 'Commission first Seraph',
-                detail: progressDetail(State.resources.praise, 10, 'Praise'),
-                ratio: Math.min(1, State.resources.praise / 10)
+                detail: progressDetail(State.resources.praise, cost, 'Praise'),
+                ratio: Math.min(1, State.resources.praise / cost),
+                ready: State.resources.praise >= cost,
+                target: '[data-automaton="seraph"]'
             };
         }
-        if (!State.upgrades.praise_multi_1) {
-            return {
-                label: 'Install Divine Words (+100% output)',
-                detail: progressDetail(State.resources.praise, 50, 'Praise'),
-                ratio: Math.min(1, State.resources.praise / 50)
-            };
-        }
-        if (!State.upgrades.storage_praise_1) {
-            return {
-                label: 'Expand Praise storage',
-                detail: progressDetail(State.resources.praise, 500, 'Praise'),
-                ratio: Math.min(1, State.resources.praise / 500)
-            };
-        }
-        if (!State.unlockedOfferings) {
-            return {
-                label: 'Unlock Ritualistic Procedures',
-                detail: progressDetail(State.resources.praise, 2000, 'Praise'),
-                ratio: Math.min(1, State.resources.praise / 2000)
-            };
-        }
-        if (!State.dimensions.void.unlocked) {
-            return {
-                label: 'Breach the Veil',
-                detail: progressDetail(State.resources.souls, 200, 'Souls'),
-                ratio: Math.min(1, State.resources.souls / 200)
-            };
-        }
+        if (!State.upgrades.praise_multi_1) return upgradeStep('praise_multi_1', 'Install Divine Words (+100% output)');
+        if (!State.upgrades.storage_praise_1) return upgradeStep('storage_praise_1', 'Expand Praise storage');
+        if (!State.unlockedOfferings) return upgradeStep('offering_unlock', 'Unlock Ritualistic Procedures');
+        if (!State.dimensions.void.unlocked) return upgradeStep('void_unlock', 'Breach the Veil');
         return {
             label: 'Stabilize parallel dimensions',
             detail: 'Follow the active Divine Directive',
             ratio: 0
         };
+    },
+
+    /* The operator panel's one button does the next useful thing: claim a
+       finished directive (its reward on the label), take you to a milestone
+       you can afford, or just open the Engine. */
+    operatorAction() {
+        const directive = State.loopSystems?.directives?.active;
+        if (directive && game.getDirectiveProgress(directive).completed) {
+            return { kind: 'claim', label: `Claim directive · ${this.directiveRewardLabel(directive)}` };
+        }
+        const milestone = this.getNextMilestone();
+        if (milestone.ready && milestone.target) {
+            return { kind: 'focus', label: `${milestone.label} →`, target: milestone.target };
+        }
+        return { kind: 'open', label: 'Open Universal Engine' };
+    },
+
+    runOperatorAction() {
+        const action = this.operatorAction();
+        if (action.kind === 'claim') {
+            game.claimDirectiveReward();
+            this.refreshAll();
+            return;
+        }
+        system.openApp('console');
+        if (action.kind !== 'focus') return;
+        /* The rows render on the panel tick; draw once so the target exists.
+           scroll-padding on the Engine keeps it clear of the command strip. */
+        this.refreshAll();
+        this.updateUpgrades();
+        const target = document.querySelector(`#content-console ${action.target}`);
+        if (target) {
+            target.focus({ preventScroll: true });
+            target.scrollIntoView({ block: 'nearest' });
+        }
     },
 
     updateOperatorStatus() {
@@ -223,6 +254,101 @@ const ui = {
             }
         }
         this.setText(sectorEl, State.dimensions.void.unlocked ? 'SECTOR 7G: CONTAINED' : 'SECTOR 7G: UNSTABLE');
+
+        const actionEl = document.getElementById('operator-action-label');
+        if (actionEl) {
+            const action = this.operatorAction();
+            this.setText(actionEl, action.label);
+            actionEl.parentElement.classList.toggle('is-ready', action.kind !== 'open');
+        }
+    },
+
+    /* A directive's reward for a button label, in display notation. The
+       log's getDirectiveRewardText prints raw integers, which late game turns
+       into ten-digit strings no button can hold. */
+    directiveRewardLabel(directive) {
+        const reward = directive?.reward || {};
+        const parts = [['praise', 'Praise'], ['offerings', 'Offerings'], ['souls', 'Souls'], ['adoration', 'Adoration'], ['charge', 'Charge']]
+            .filter(([key]) => reward[key] > 0)
+            .map(([key, name]) => `+${this.formatNumber(Math.floor(reward[key]))} ${name}`);
+        return parts.join(' • ') || 'no reward';
+    },
+
+    /* The Engine's command strip: the active directive in one line, and a
+       Claim button beside Perform Miracle once it is complete. */
+    updateEngineCommand() {
+        const titleEl = document.getElementById('engine-directive-title');
+        if (!titleEl) return;
+        const directive = State.loopSystems?.directives?.active;
+        const progress = directive ? game.getDirectiveProgress(directive) : null;
+        this.setText(titleEl, directive?.title || 'Calibrating…');
+        this.setText(document.getElementById('engine-directive-count'), progress
+            ? `${this.formatNumber(progress.current)} / ${this.formatNumber(progress.target)}` : '');
+        const fill = document.getElementById('engine-directive-fill');
+        if (fill) this.setStyle(fill, 'width', `${Math.round(Math.min(1, progress?.ratio || 0) * 100)}%`);
+        const claim = document.getElementById('engine-claim');
+        if (claim) {
+            const ready = !!progress?.completed;
+            if (claim.hidden === ready) claim.hidden = !ready;
+            if (ready) {
+                const label = `Claim · ${this.directiveRewardLabel(directive)}`;
+                this.setText(claim, label);
+                if (claim.title !== label) claim.title = label;
+            }
+        }
+        document.getElementById('engine-directive')?.classList.toggle('complete', !!progress?.completed);
+        const fold = document.getElementById('core-fold');
+        if (fold && fold.hidden === this.coreFoldable()) this.applyCoreFold();
+    },
+
+    /* After the first Seraph the core can fold to a slim band. The choice is
+       remembered per device and per layout (narrow / wide); a narrow screen
+       folds by default, because there the core costs most of the first view. */
+    coreFoldable() {
+        return (State.automatons?.seraphCount || 0) >= 1 || (State.prestigeLevel || 0) >= 1;
+    },
+
+    coreFoldKey() {
+        return `cosmos.coreFolded.${window.matchMedia?.('(max-width: 640px)').matches ? 'narrow' : 'wide'}`;
+    },
+
+    coreFolded() {
+        if (!this.coreFoldable()) return false;
+        try {
+            const saved = localStorage.getItem(this.coreFoldKey());
+            if (saved !== null) return saved === '1';
+        } catch { /* storage blocked: fall through to the default */ }
+        return this.coreFoldKey().endsWith('narrow');
+    },
+
+    applyCoreFold() {
+        const core = document.getElementById('engine-core');
+        const fold = document.getElementById('core-fold');
+        if (!core || !fold) return;
+        const folded = this.coreFolded();
+        fold.hidden = !this.coreFoldable();
+        core.classList.toggle('is-folded', folded);
+        fold.setAttribute('aria-expanded', String(!folded));
+        this.setText(fold, folded ? 'Unfold core' : 'Fold core');
+    },
+
+    toggleCoreFold() {
+        const folded = !this.coreFolded();
+        try { localStorage.setItem(this.coreFoldKey(), folded ? '1' : '0'); } catch { /* per-session only */ }
+        this.applyCoreFold();
+    },
+
+    /* Keyboard focus must never land under the sticky strip: the Engine's
+       scroll-padding follows the strip's real height. */
+    watchCommandStrip() {
+        const strip = document.getElementById('engine-command');
+        const scroller = document.getElementById('content-console');
+        if (!strip || !scroller || typeof ResizeObserver === 'undefined') return;
+        this.commandStripObserver?.disconnect();
+        this.commandStripObserver = new ResizeObserver(() => {
+            scroller.style.scrollPaddingTop = `${strip.offsetHeight + 8}px`;
+        });
+        this.commandStripObserver.observe(strip);
     },
 
     showOperatorBriefing(force = false) {
@@ -1845,11 +1971,8 @@ const ui = {
             // Add warning styling if near cap
             const parent = p.closest('.stat-box');
             if (parent) {
-                if (current >= cap * 0.9) {
-                    parent.classList.add('near-cap');
-                } else {
-                    parent.classList.remove('near-cap');
-                }
+                parent.classList.toggle('near-cap', current >= cap * 0.9 && current < cap);
+                parent.classList.toggle('is-full', current >= cap);
             }
 
             this.previousValues.praise = current;
@@ -1862,11 +1985,8 @@ const ui = {
             // Add warning styling if near cap
             const parent = o.closest('.stat-box');
             if (parent) {
-                if (current >= cap * 0.9) {
-                    parent.classList.add('near-cap');
-                } else {
-                    parent.classList.remove('near-cap');
-                }
+                parent.classList.toggle('near-cap', current >= cap * 0.9 && current < cap);
+                parent.classList.toggle('is-full', current >= cap);
             }
 
             this.previousValues.offerings = current;
@@ -1879,11 +1999,8 @@ const ui = {
             // Add warning styling if near cap
             const parent = s.closest('.stat-box');
             if (parent) {
-                if (current >= cap * 0.9) {
-                    parent.classList.add('near-cap');
-                } else {
-                    parent.classList.remove('near-cap');
-                }
+                parent.classList.toggle('near-cap', current >= cap * 0.9 && current < cap);
+                parent.classList.toggle('is-full', current >= cap);
             }
 
             this.previousValues.souls = current;

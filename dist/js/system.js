@@ -843,28 +843,42 @@ const system = {
                             <span class="glow-text">SYSTEM STATUS: NOMINAL</span>
                             <span class="uptime">UPTIME: <span id="val-uptime">0</span></span>
                         </div>
-                        <div class="visual-core">
+                        <div class="visual-core" id="engine-core">
                             <canvas id="core-canvas" width="200" height="200"></canvas>
+                            <button type="button" class="core-fold" id="core-fold" hidden onclick="ui.toggleCoreFold()" aria-controls="engine-core" aria-expanded="true">Fold core</button>
                         </div>
-                        <div class="resource-panel">
-                            <div class="stat-box">
-                                <label>PRAISE</label>
-                                <div id="val-praise" class="stat-value" data-breakdown="cap:praise" tabindex="0">0</div>
-                                <div class="stat-rate" data-breakdown="rate:praise" tabindex="0">+<span id="val-praise-rate">0</span>/s</div>
+                        <!-- The command strip stays in view while the Engine scrolls:
+                             what you hold, what you are asked to do, and the act. -->
+                        <div class="engine-command" id="engine-command">
+                            <div class="resource-panel">
+                                <div class="stat-box">
+                                    <label>PRAISE</label>
+                                    <div id="val-praise" class="stat-value" data-breakdown="cap:praise" tabindex="0">0</div>
+                                    <div class="stat-rate" data-breakdown="rate:praise" tabindex="0">+<span id="val-praise-rate">0</span>/s</div>
+                                </div>
+                                <div class="stat-box">
+                                    <label>OFFERINGS</label>
+                                    <div id="val-offerings" class="stat-value" data-breakdown="cap:offerings" tabindex="0">0</div>
+                                    <div class="stat-rate" data-breakdown="rate:offerings" tabindex="0">+<span id="val-offering-rate">0</span>/s</div>
+                                </div>
+                                <div class="stat-box">
+                                    <label>SOULS</label>
+                                    <div id="val-souls" class="stat-value" data-breakdown="cap:souls" tabindex="0">0</div>
+                                    <div class="stat-rate" data-breakdown="rate:souls" tabindex="0">+<span id="val-soul-rate">0</span>/s</div>
+                                </div>
                             </div>
-                            <div class="stat-box">
-                                <label>OFFERINGS</label>
-                                <div id="val-offerings" class="stat-value" data-breakdown="cap:offerings" tabindex="0">0</div>
-                                <div class="stat-rate" data-breakdown="rate:offerings" tabindex="0">+<span id="val-offering-rate">0</span>/s</div>
+                            <div class="engine-directive" id="engine-directive">
+                                <span class="engine-directive-kicker">DIRECTIVE</span>
+                                <span class="engine-directive-title" id="engine-directive-title">Calibrating…</span>
+                                <span class="engine-directive-count" id="engine-directive-count"></span>
+                                <span class="engine-directive-track" aria-hidden="true"><span id="engine-directive-fill"></span></span>
                             </div>
-                            <div class="stat-box">
-                                <label>SOULS</label>
-                                <div id="val-souls" class="stat-value" data-breakdown="cap:souls" tabindex="0">0</div>
-                                <div class="stat-rate" data-breakdown="rate:souls" tabindex="0">+<span id="val-soul-rate">0</span>/s</div>
+                            <div class="engine-acts">
+                                <button class="win-btn divine-btn" onclick="game.manualPraise(event)">Perform Miracle</button>
+                                <button class="win-btn engine-claim" id="engine-claim" hidden onclick="game.claimDirectiveReward()">Claim directive</button>
                             </div>
                         </div>
                         <div class="actions">
-                            <button class="win-btn divine-btn" onclick="game.manualPraise(event)">Perform Miracle</button>
                             <div id="automaton-list" class="automaton-list"></div>
                         </div>
                         <div class="loop-section">
@@ -933,6 +947,8 @@ const system = {
                 onOpen: () => {
                     ui.syncResources();
                     ui.initCoreCanvas();
+                    ui.applyCoreFold();
+                    ui.watchCommandStrip();
                     ui.updateUpgrades();
                     ui.updateSeraphButton();
                     ui.updateCherubButton();
