@@ -1285,6 +1285,7 @@ const system = {
                             <div class="globe-stats">
                                 <div class="stat-line"><strong>Prophets Assigned:</strong> <span id="globe-prophets-assigned">0</span></div>
                                 <div class="stat-line"><strong>Prophets Available:</strong> <span id="globe-prophets-available">0</span></div>
+                                <div class="stat-line globe-onsite" id="globe-prophets-onsite" hidden><strong>On site:</strong> <span></span></div>
                                 <div class="stat-line"><strong>Followers:</strong> <span id="globe-followers">0</span></div>
                                 <div class="stat-line"><strong>Adoration Rate:</strong> <span id="globe-adoration-rate">0</span>/s</div>
                             </div>
