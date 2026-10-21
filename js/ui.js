@@ -346,7 +346,8 @@ const ui = {
         if (!strip || !scroller || typeof ResizeObserver === 'undefined') return;
         this.commandStripObserver?.disconnect();
         this.commandStripObserver = new ResizeObserver(() => {
-            scroller.style.scrollPaddingTop = `${strip.offsetHeight + 8}px`;
+            // Visual height: under Text Size the strip is zoomed, its scroller is not.
+            scroller.style.scrollPaddingTop = `${strip.getBoundingClientRect().height + 8}px`;
         });
         this.commandStripObserver.observe(strip);
     },
@@ -4981,6 +4982,10 @@ Title on file: ${esc(doc.endTitle)}</pre>
 
         const cursorCheckbox = document.getElementById('custom-cursors');
         if (cursorCheckbox) cursorCheckbox.checked = State.settings.customCursors === true;
+        const crtSelect = document.getElementById('crt-intensity');
+        if (crtSelect) crtSelect.value = this.crtIntensity();
+        const scaleSelect = document.getElementById('text-scale');
+        if (scaleSelect) scaleSelect.value = String(this.textScale());
         if (typeof audio !== 'undefined') audio.syncSettingsUI();
         if (typeof media !== 'undefined') media.syncSettingsUI();
     },
@@ -5016,18 +5021,55 @@ Title on file: ${esc(doc.endTitle)}</pre>
         State.save();
     },
 
+    /* Atmosphere and readability are separate dials. Before this, the CRT
+       could only be removed by Performance Mode, so a save that used it for
+       that reason keeps a clean screen: an unset intensity follows it. */
+    CRT_LEVELS: ['full', 'low', 'off'],
+    TEXT_SCALES: [1, 1.15, 1.3],
+
+    crtIntensity() {
+        const chosen = State.settings?.crtIntensity;
+        if (this.CRT_LEVELS.includes(chosen)) return chosen;
+        return State.settings?.performanceMode ? 'off' : 'full';
+    },
+
+    textScale() {
+        const scale = Number(State.settings?.textScale);
+        return this.TEXT_SCALES.includes(scale) ? scale : 1;
+    },
+
+    /* Runs at boot. Performance Mode's class used to be set only by its
+       checkbox, so a saved Performance Mode did nothing after a reload. */
+    applyDisplayPreferences() {
+        const body = document.body;
+        const crt = this.crtIntensity();
+        body.classList.toggle('crt-low', crt === 'low');
+        body.classList.toggle('crt-off', crt === 'off');
+        body.style.setProperty('--text-zoom', String(this.textScale()));
+        body.classList.toggle('text-scaled', this.textScale() !== 1);
+        body.classList.toggle('performance-mode', State.settings?.performanceMode === true);
+    },
+
+    setCrtIntensity(level) {
+        if (!this.CRT_LEVELS.includes(level)) return;
+        State.settings.crtIntensity = level;
+        this.applyDisplayPreferences();
+        State.save();
+    },
+
+    setTextScale(value) {
+        const scale = Number(value);
+        if (!this.TEXT_SCALES.includes(scale)) return;
+        State.settings.textScale = scale;
+        this.applyDisplayPreferences();
+        State.save();
+    },
+
     togglePerformanceMode(enabled) {
         State.settings.performanceMode = enabled;
+        this.applyDisplayPreferences();
         State.save();
-
-        // Apply performance mode to body class for CSS control
-        if (enabled) {
-            document.body.classList.add('performance-mode');
-            ui.log('Performance mode enabled (reduced animations)');
-        } else {
-            document.body.classList.remove('performance-mode');
-            ui.log('Performance mode disabled (full animations)');
-        }
+        ui.log(enabled ? 'Performance mode enabled (reduced animations)' : 'Performance mode disabled (full animations)');
     }
 };
 

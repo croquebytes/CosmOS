@@ -2765,9 +2765,9 @@ body.performance-mode .floating-number {
     animation-duration: 0.3s !important;
 }
 
-body.performance-mode .crt-overlay {
-    display: none;
-}
+/* The CRT has its own dial now (Divine Settings → CRT Scanlines). */
+body.crt-low .crt-overlay { opacity: 0.4; }
+body.crt-off .crt-overlay { display: none; }
 
 /* ========================================
    TASK MANAGER
@@ -9430,14 +9430,15 @@ button.ml-attach:hover:not(:disabled) { border-color: var(--cos-brass-700); back
    through above it; scroll-padding (ui.watchCommandStrip) keeps focused
    controls from landing underneath. */
 .engine-command {
+    --bleed: calc(10px / var(--text-zoom, 1));
     position: sticky;
-    top: -10px;
+    top: calc(-1 * var(--bleed));
     z-index: 3;
     display: flex;
     flex-direction: column;
     gap: 6px;
-    margin: 0 -10px;
-    padding: 8px 10px;
+    margin: 0 calc(-1 * var(--bleed));
+    padding: 8px var(--bleed);
     background: var(--cos-vellum-200);
     border-bottom: 1px solid var(--cos-vellum-400);
     box-shadow: 0 4px 6px -4px rgba(27, 23, 18, 0.35);
@@ -9509,11 +9510,27 @@ button.ml-attach:hover:not(:disabled) { border-color: var(--cos-brass-700); back
 .operator-open-button.is-ready span { display: none; }
 
 @media (max-width: 900px) {
-    .engine-command { top: -8px; margin: 0 -8px; padding: 6px 8px; }
+    .engine-command { --bleed: calc(8px / var(--text-zoom, 1)); padding-top: 6px; padding-bottom: 6px; }
 }
 @media (max-width: 520px) {
     /* The reward is the point of the button: wrap rather than clip it. */
     .engine-claim { white-space: normal; line-height: 1.25; }
     .engine-command .stat-value { font-size: 13px; }
     .engine-command .stat-box label { font-size: 8px; }
+}
+
+/* ── Text Size ─────────────────────────────────────────────────────────
+   Type is set in px throughout, so the dial zooms each window's contents
+   (and the operator panel) rather than the root font size. The frame,
+   title bar and taskbar keep their retro size. Zooming the child, not
+   .window-content itself, keeps the window's scroll box unchanged. */
+body.text-scaled .window-content > *,
+body.text-scaled #operator-status { zoom: var(--text-zoom); }
+
+/* ── Touch ─────────────────────────────────────────────────────────────
+   Window controls keep their 19×16 glyph but take a tap the height of the
+   title bar, spaced so neighbouring targets never overlap. */
+@media (pointer: coarse) {
+    .window-controls button { position: relative; margin-left: 12px; }
+    .window-controls button::after { content: ''; position: absolute; inset: -5px -6px; }
 }

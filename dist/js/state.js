@@ -289,6 +289,8 @@ const State = {
         autosaveInterval: 30000,      // milliseconds (default 30s)
         performanceMode: false,       // reduce animations if true
         customCursors: false,          // optional brass pointer set
+        crtIntensity: null,            // 'full' | 'low' | 'off'; null follows performanceMode (see ui.crtIntensity)
+        textScale: 1,                  // 1, 1.15 or 1.3: zoom on window contents
         briefingSeen: false,
         /* Fate, the dealer at Patience.exe, speaks from a strip inside that
            window. Off silences every one of her lines. Read through
