@@ -382,6 +382,9 @@ const Incidents = {
                 prophetRemaining: prophet
                     ? Math.min(this.PROPHET_SECONDS, finiteAtLeast(raw.prophetRemaining, 0, this.PROPHET_SECONDS))
                     : 0,
+                // The dimension the Prophet was taken from, or null for a free one.
+                prophetFrom: prophet && typeof raw.prophetFrom === 'string'
+                    && Object.hasOwn(State.followers || {}, raw.prophetFrom) ? raw.prophetFrom : null,
                 // Labour progress is a ritual in progress, not state worth
                 // keeping: its clock is wall-time and means nothing on reload.
             });
@@ -719,7 +722,7 @@ const Incidents = {
         const inc = s.open.find((i) => i.id === id);
         if (!inc) return false;
         s.open = s.open.filter((i) => i !== inc);
-        if (inc.prophet) this.returnProphet();
+        if (inc.prophet) this.returnProphet(inc.prophetFrom);
         s.stats.resolved += 1;
         if (method in s.stats) s.stats[method] += 1;
         if (method === 'sacrifice' && inc.severity === 1) s.stats.outagesSacrificed += 1;
@@ -941,27 +944,60 @@ const Incidents = {
     /* ── Prophets: dispatch one to a SEV-3 (DESIGN_DIRECTION §4.3.4) ──────
        A Prophet on site stops the escalation clock and closes the ticket
        after PROPHET_SECONDS of attended time, then comes home. Only SEV-3:
-       a Prophet is a pastoral visit, not an outage response. */
+       a Prophet is a pastoral visit, not an outage response.
+
+       A free Prophet goes first. With none free, one is taken from the
+       dimension that has the most, so the cost is the smallest share of
+       one congregation's growth, and the button says which. It returns to
+       that dimension. The growth it costs is only charged while you are
+       here: game.getProductionRates counts it home while the queue is on
+       hold and in offline accrual, because absence is never punished. */
+    dispatchSource() {
+        if ((State.prophets?.available || 0) >= 1) return { from: null, assigned: 0 };
+        let best = null;
+        for (const [dim, count] of Object.entries(State.prophets?.assignments || {})) {
+            if (!Object.hasOwn(State.followers || {}, dim) || !(count >= 1)) continue;
+            if (!best || count > best.assigned) best = { from: dim, assigned: count };
+        }
+        return best;
+    },
+
     canDispatchProphet(inc) {
-        return !!inc && inc.severity === 3 && !inc.prophet && (State.prophets?.available || 0) >= 1;
+        return !!inc && inc.severity === 3 && !inc.prophet && !!this.dispatchSource();
     },
 
     dispatchProphet(id) {
         const inc = this.find(id);
         if (!this.canDispatchProphet(inc)) return false;
-        State.prophets.available -= 1;
+        const source = this.dispatchSource();
+        if (source.from) State.prophets.assignments[source.from] -= 1;
+        else State.prophets.available -= 1;
         inc.prophet = true;
+        inc.prophetFrom = source.from;
         inc.prophetRemaining = this.PROPHET_SECONDS;
-        ui.log(`[${inc.id}] A Prophet has been dispatched.`);
+        ui.log(`[${inc.id}] A Prophet has been dispatched${source.from ? ` from the ${source.from} congregation` : ''}.`);
         ui.onIncidentsChanged?.();
         return true;
     },
 
-    /* Bounded by the total, so a forged `prophet: true` cannot mint one. */
-    returnProphet() {
+    /* Prophets on site taken from `dim`. */
+    onSiteFrom(dim) {
+        return this.state().open.filter((inc) => inc.prophet && inc.prophetFrom === dim).length;
+    },
+
+    /* Bounded by the total, counting assigned Prophets and those still on
+       site, so a forged `prophet: true` cannot mint one. The ticket being
+       closed has already left the open list. */
+    returnProphet(home = null) {
         if (!State.prophets) return;
         const total = Number(State.prophets.total) || 0;
-        State.prophets.available = Math.min(total, (Number(State.prophets.available) || 0) + 1);
+        const assignments = State.prophets.assignments || {};
+        const assigned = Object.values(assignments).reduce((sum, n) => sum + (Number(n) > 0 ? Number(n) : 0), 0);
+        const onSite = this.state().open.filter((inc) => inc.prophet).length;
+        const available = Number(State.prophets.available) || 0;
+        if (available + assigned + onSite + 1 > total) return;
+        if (home && Object.hasOwn(State.followers || {}, home)) assignments[home] = (Number(assignments[home]) || 0) + 1;
+        else State.prophets.available = available + 1;
     },
 
     /* ── Reboot ───────────────────────────────────────────────────────────
@@ -970,8 +1006,9 @@ const Incidents = {
        clock carry over. */
     clearForReboot(now = Date.now()) {
         const s = this.state();
-        for (const inc of s.open) if (inc.prophet) this.returnProphet();
+        const away = s.open.filter((inc) => inc.prophet);
         s.open = [];
+        for (const inc of away) this.returnProphet(inc.prophetFrom);
         s.debts = [];
         s.spawnClock = 0;
         s.quietUntil = s.attendedSeconds + this.SPAWN_GAP;
@@ -1042,8 +1079,9 @@ const Incidents = {
             labour: inc.labour ? { hits: inc.labour.hits, need: this.labourNeed(inc), band: inc.labour.band } : null,
             cost: cost ? { resource: cost.resource, amount: cost.amount, affordable: cost.affordable } : null,
             debt: this.debtText(inc),
-            prophet: inc.prophet ? { remaining: inc.prophetRemaining } : null,
+            prophet: inc.prophet ? { remaining: inc.prophetRemaining, from: inc.prophetFrom } : null,
             canProphet: this.canDispatchProphet(inc),
+            dispatch: this.canDispatchProphet(inc) ? this.dispatchSource() : null,
             artifact: artifact ? { id: artifact.id, name: artifact.name } : null,
         };
     },

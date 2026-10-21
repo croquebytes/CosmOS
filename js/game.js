@@ -691,9 +691,13 @@ const game = {
         }
 
         const timeline = State.timelines.effects[State.timelines.current] || {};
+        /* A Prophet dispatched to a ticket costs its congregation's growth only
+           while you are here. On hold, or in offline accrual, it counts home. */
+        const prophetsCountHome = !includeTransient || State.incidents?.onHold === true;
         for (const dimKey in State.followers) {
             const followerData = State.followers[dimKey];
-            const assignedProphets = State.prophets.assignments[dimKey] || 0;
+            const assignedProphets = (State.prophets.assignments[dimKey] || 0) +
+                (prophetsCountHome && this.incidentsLive() ? Incidents.onSiteFrom(dimKey) : 0);
             rates.followerGrowth[dimKey] = assignedProphets * followerData.baseGrowthRate *
                 (includeTransient ? State.prophetFeedingBonus(now) : 1) * (timeline.followerBonus || 1) * globalGainBonus;
             rates.adoration += followerData.count * followerData.adorationRate;
