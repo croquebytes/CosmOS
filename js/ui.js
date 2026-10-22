@@ -4001,104 +4001,278 @@ Title on file: ${esc(doc.endTitle)}</pre>
     // === DIVINE GLOBE FUNCTIONS ===
     selectedGlobeDimension: null,
 
+    /* The Divine Globe as an etched brass armillary. Drawn on demand, not
+       per frame: updateGlobeDisplay redraws only when what it shows changes
+       (selection, assignments, reserve, Prophets on site). The old version
+       ran requestAnimationFrame for as long as the window was open, turning
+       a rotation nothing read. Coordinates are logical 400×400; the backing
+       store follows devicePixelRatio and clicks are scaled from the
+       displayed size, so a phone or Text Size zoom still hits the medallion
+       it points at. Numbers stay in the DOM beside it. */
+    GLOBE_SIZE: 400,
+    GLOBE_DIMS: [
+        { id: 'primordial', label: 'PRIMORDIAL', dy: -64, sigil: 'sun' },
+        { id: 'void', label: 'VOID', dy: 64, sigil: 'eye' },
+    ],
+    GLOBE_INK: {
+        brass100: '#f7e6ba', brass300: '#dec483', brass500: '#b4914a', brass700: '#77592b', brass900: '#3e2f16',
+        iron800: '#1a2230', iron900: '#121823', abyss: '#090d15', ichor300: '#cfaaf4',
+    },
+
     initGlobeCanvas() {
         const canvas = document.getElementById('globe-canvas');
         if (!canvas) return;
-
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        canvas.width = canvas.height = this.GLOBE_SIZE * dpr;
         this.globeCtx = canvas.getContext('2d');
-        this.globeRotation = 0;
+        this.globeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        this.globeSignature = null;
         this.globeRegions = [];
-
-        this.startGlobeAnimation();
         if (!canvas.dataset.globeClickBound) {
             canvas.addEventListener('click', (e) => this.handleGlobeClick(e));
+            canvas.addEventListener('mousemove', (e) => {
+                canvas.style.cursor = this.globeRegionAt(e) ? 'pointer' : '';
+            });
             canvas.dataset.globeClickBound = 'true';
         }
+        this.drawGlobe();
     },
 
-    animateGlobe() {
-        if (!this.globeCtx) return;
+    globeState() {
+        const onSite = (dim) => (typeof Incidents !== 'undefined' && game.incidentsLive() ? Incidents.onSiteFrom(dim) : 0);
+        return {
+            selected: this.selectedGlobeDimension,
+            reserve: State.prophets?.available || 0,
+            dims: this.GLOBE_DIMS.map((d) => [State.prophets?.assignments?.[d.id] || 0, onSite(d.id)]),
+        };
+    },
 
+    drawGlobe(force = false) {
         const ctx = this.globeCtx;
-        const canvas = ctx.canvas;
+        if (!ctx || !ctx.canvas.isConnected) { this.globeCtx = null; return; }
+        const state = this.globeState();
+        const signature = JSON.stringify(state);
+        if (!force && signature === this.globeSignature) return;
+        this.globeSignature = signature;
 
-        /* Stop when the window closes. This loop re-armed unconditionally, so
-           opening the Divine Globe once burned a full canvas frame budget for
-           the rest of the session — window closed, tab in the background, any
-           state at all. */
-        if (!canvas.isConnected) {
-            this.globeCtx = null;
-            this.globeRafId = null;
-            return;
-        }
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
-        const radius = 150;
+        const ink = this.GLOBE_INK;
+        const S = this.GLOBE_SIZE, cx = S / 2, cy = S / 2, R = 138;
+        ctx.clearRect(0, 0, S, S);
+        const tilt = -0.32;
+        const band = (from, to, alpha, width) => {
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.strokeStyle = ink.brass500;
+            ctx.lineWidth = width;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, 176, 48, tilt, from, to);
+            ctx.stroke();
+            ctx.restore();
+        };
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // The back of the equatorial band, behind the sphere.
+        band(Math.PI, Math.PI * 2, 0.35, 4);
 
-        // Draw globe sphere
-        const gradient = ctx.createRadialGradient(centerX - 30, centerY - 30, 0, centerX, centerY, radius);
-        gradient.addColorStop(0, '#4a90e2');
-        gradient.addColorStop(0.7, '#2c5f9e');
-        gradient.addColorStop(1, '#1a3a5c');
-
-        ctx.fillStyle = gradient;
+        // The sphere: cast iron, lit from the upper left.
+        const body = ctx.createRadialGradient(cx - 46, cy - 52, 8, cx, cy, R);
+        body.addColorStop(0, ink.iron800);
+        body.addColorStop(0.75, ink.iron900);
+        body.addColorStop(1, ink.abyss);
+        ctx.fillStyle = body;
         ctx.beginPath();
-        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
         ctx.fill();
 
-        // Reset regions array
-        this.globeRegions = [];
-
-        // Draw dimension regions
-        this.drawDimensionRegion(ctx, centerX, centerY - 60, 40, 'primordial', '#ffd700');
-        this.drawDimensionRegion(ctx, centerX, centerY + 60, 40, 'void', '#9c27b0');
-
-        if (!this.reducedMotion()) this.globeRotation += 0.005;
-        this.globeRafId = requestAnimationFrame(() => this.animateGlobe());
-    },
-
-    /* Single entry point, so reopening the window cannot start a second loop
-       racing the first. */
-    startGlobeAnimation() {
-        if (this.globeRafId !== null && this.globeRafId !== undefined) {
-            cancelAnimationFrame(this.globeRafId);
-        }
-        this.globeRafId = null;
-        this.animateGlobe();
-    },
-
-    drawDimensionRegion(ctx, x, y, radius, dimId, color) {
-        ctx.fillStyle = color;
-        ctx.strokeStyle = this.selectedGlobeDimension === dimId ? '#ffffff' : color;
-        ctx.lineWidth = this.selectedGlobeDimension === dimId ? 3 : 1;
-
+        // Etched graticule, clipped to the sphere.
+        ctx.save();
         ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.strokeStyle = ink.brass700;
+        ctx.lineWidth = 0.8;
+        ctx.globalAlpha = 0.5;
+        for (const lat of [-60, -30, 0, 30, 60]) {
+            const rad = lat * Math.PI / 180;
+            const rx = R * Math.cos(rad);
+            ctx.beginPath();
+            ctx.ellipse(cx, cy + R * Math.sin(rad), rx, rx * 0.16, 0, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 0.32;
+        for (const lon of [0, 30, 60]) {
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, Math.max(0.5, R * Math.cos(lon * Math.PI / 180)), R, 0, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        ctx.restore();
+        ctx.strokeStyle = ink.brass500;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
         ctx.stroke();
 
-        this.globeRegions.push({ x, y, radius, dimId });
+        // The meridian ring, engraved every 10°, heavier every 30°.
+        ctx.strokeStyle = ink.brass500;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 160, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = ink.brass700;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 153, 0, Math.PI * 2);
+        ctx.stroke();
+        for (let deg = 0; deg < 360; deg += 10) {
+            const a = deg * Math.PI / 180;
+            const major = deg % 30 === 0;
+            ctx.strokeStyle = major ? ink.brass300 : ink.brass700;
+            ctx.lineWidth = major ? 1.5 : 1;
+            ctx.beginPath();
+            ctx.moveTo(cx + Math.cos(a) * 162, cy + Math.sin(a) * 162);
+            ctx.lineTo(cx + Math.cos(a) * (major ? 172 : 167), cy + Math.sin(a) * (major ? 172 : 167));
+            ctx.stroke();
+        }
+
+        // The front of the equatorial band, over the sphere.
+        band(0, Math.PI, 0.9, 4);
+
+        // Dimensions, and the Prophets serving each.
+        this.globeRegions = [];
+        this.GLOBE_DIMS.forEach((dim, i) => {
+            const [assigned, away] = state.dims[i];
+            this.drawGlobeMedallion(ctx, dim, cx, cy + dim.dy, assigned, away, state.selected === dim.id);
+            this.globeRegions.push({ x: cx, y: cy + dim.dy, radius: 54, dimId: dim.id });
+        });
+
+        // The reserve: free Prophets, waiting on the ring.
+        const reserve = state.reserve;
+        const shown = Math.min(reserve, 9);
+        for (let k = 0; k < shown; k++) {
+            const a = Math.PI / 2 + (k - (shown - 1) / 2) * 0.09;
+            this.drawProphetPin(ctx, cx + Math.cos(a) * 160, cy + Math.sin(a) * 160, true);
+        }
+        ctx.fillStyle = ink.brass300;
+        ctx.font = 'bold 10px "Courier New", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText(reserve ? `RESERVE ${reserve}` : 'RESERVE EMPTY', cx, S - 8);
+    },
+
+    drawGlobeMedallion(ctx, dim, x, y, assigned, away, selected) {
+        const ink = this.GLOBE_INK;
+        const r = 34;
+        if (selected) {
+            ctx.strokeStyle = ink.brass300;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(x, y, r + 8, 0, Math.PI * 2);
+            ctx.stroke();
+            for (let k = 0; k < 4; k++) {
+                const a = k * Math.PI / 2;
+                ctx.beginPath();
+                ctx.moveTo(x + Math.cos(a) * (r + 5), y + Math.sin(a) * (r + 5));
+                ctx.lineTo(x + Math.cos(a) * (r + 11), y + Math.sin(a) * (r + 11));
+                ctx.stroke();
+            }
+        }
+        ctx.fillStyle = ink.iron900;
+        ctx.strokeStyle = selected ? ink.brass100 : ink.brass500;
+        ctx.lineWidth = selected ? 2.5 : 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.strokeStyle = ink.brass700;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(x, y, r - 5, 0, Math.PI * 2);
+        ctx.stroke();
+
+        const tint = dim.sigil === 'eye' ? ink.ichor300 : ink.brass100;
+        ctx.strokeStyle = tint;
+        ctx.fillStyle = tint;
+        ctx.lineWidth = 1.5;
+        if (dim.sigil === 'sun') {
+            for (let k = 0; k < 8; k++) {
+                const a = k * Math.PI / 4;
+                const len = k % 2 ? 11 : 17;
+                ctx.beginPath();
+                ctx.moveTo(x + Math.cos(a) * 7, y + Math.sin(a) * 7);
+                ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
+                ctx.stroke();
+            }
+            ctx.beginPath();
+            ctx.arc(x, y, 4.5, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            ctx.beginPath();
+            ctx.moveTo(x - 17, y);
+            ctx.quadraticCurveTo(x, y - 14, x + 17, y);
+            ctx.quadraticCurveTo(x, y + 14, x - 17, y);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(x, y, 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.fillStyle = selected ? ink.brass100 : ink.brass300;
+        ctx.font = 'bold 10px "Courier New", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(dim.label, x, dim.dy < 0 ? y - r - 18 : y + r + 18);
+
+        // Pins arc on the side facing the sphere's centre (the label takes the
+        // outside): assigned filled, away at a ticket hollow.
+        const pins = [...Array(Math.min(assigned, 12)).fill(true), ...Array(Math.min(away, 4)).fill(false)];
+        const facing = dim.dy < 0 ? Math.PI / 2 : -Math.PI / 2;
+        pins.forEach((filled, k) => {
+            const a = facing + (k + 0.5) * (Math.PI / 8) - (pins.length * Math.PI / 16);
+            this.drawProphetPin(ctx, x + Math.cos(a) * (r + 13), y + Math.sin(a) * (r + 13), filled);
+        });
+        if (assigned > 12) {
+            ctx.fillStyle = ink.brass300;
+            ctx.fillText(`+${assigned - 12}`, x + r + 24, y);
+        }
+    },
+
+    drawProphetPin(ctx, x, y, filled) {
+        const ink = this.GLOBE_INK;
+        ctx.beginPath();
+        ctx.moveTo(x, y - 4.5);
+        ctx.lineTo(x + 3.5, y);
+        ctx.lineTo(x, y + 4.5);
+        ctx.lineTo(x - 3.5, y);
+        ctx.closePath();
+        if (filled) {
+            ctx.fillStyle = ink.brass100;
+            ctx.fill();
+        } else {
+            ctx.strokeStyle = ink.brass300;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+    },
+
+    globeRegionAt(event) {
+        const canvas = event.currentTarget || event.target;
+        const rect = canvas.getBoundingClientRect();
+        if (!rect.width) return null;
+        const scale = this.GLOBE_SIZE / rect.width;
+        const x = (event.clientX - rect.left) * scale;
+        const y = (event.clientY - rect.top) * scale;
+        return (this.globeRegions || []).find((r) => (x - r.x) ** 2 + (y - r.y) ** 2 <= r.radius ** 2) || null;
     },
 
     handleGlobeClick(event) {
-        const canvas = event.target;
-        const rect = canvas.getBoundingClientRect();
-        const clickX = event.clientX - rect.left;
-        const clickY = event.clientY - rect.top;
-
-        for (const region of this.globeRegions) {
-            const distance = Math.sqrt((clickX - region.x) ** 2 + (clickY - region.y) ** 2);
-            if (distance <= region.radius) {
-                this.selectGlobeDimension(region.dimId);
-                return;
-            }
-        }
+        const region = this.globeRegionAt(event);
+        if (region) this.selectGlobeDimension(region.dimId);
     },
 
     selectGlobeDimension(dimId) {
         this.selectedGlobeDimension = dimId;
+        document.querySelectorAll('.globe-dim-btn').forEach((btn) => {
+            btn.setAttribute('aria-pressed', String(btn.dataset.dim === dimId));
+        });
         this.updateGlobeDisplay();
         ui.log(`Selected ${dimId} dimension on globe.`);
     },
@@ -4125,6 +4299,7 @@ Title on file: ${esc(doc.endTitle)}</pre>
     updateGlobeDisplay() {
         const dimId = this.selectedGlobeDimension;
         if (!dimId) return;
+        this.drawGlobe();
 
         const nameEl = document.getElementById('globe-dim-name');
         const assignedEl = document.getElementById('globe-prophets-assigned');
