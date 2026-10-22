@@ -581,6 +581,16 @@ check('a forged dispatch cannot mint a Prophet even when every Prophet is assign
     assert.equal(reloaded.State.prophets.available, 0);
 });
 
+check('Reclamation and its stored prayers survive a Divine Reboot', () => {
+    const env = game_();
+    env.State.prayerBin = { installed: true, entries: [30, 40] };
+    env.State.totalStats.soulsGained = (Number(env.State.runSoulsBaseline) || 0) + env.game.getPrestigeThreshold() * 50;
+    env.game.performPrestige({ confirmed: true, certifyOn: 'creation' });
+    assert.equal(env.State.prestigeLevel, 1, 'fixture check: the reboot happened');
+    assert.equal(env.State.prayerBin.installed, true);
+    assert.deepEqual([...env.State.prayerBin.entries], [30, 40]);
+});
+
 /* ── Persistence ───────────────────────────────────────────────────────── */
 
 check('save → reload keeps open tickets, their effects, and their place in the fold', () => {

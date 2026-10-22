@@ -1398,6 +1398,7 @@ const system = {
                 title: 'Recycle Bin - Deleted Items',
                 initialHTML: `
                     <div class="recyclebin-panel">
+                        <section class="prayer-bin" id="prayer-bin" hidden aria-live="polite"></section>
                         <div class="recyclebin-header">
                             <div class="recyclebin-stats">
                                 <span class="recyclebin-stat">Items: <strong id="recyclebin-item-count">0</strong></span>

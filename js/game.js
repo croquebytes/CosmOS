@@ -377,7 +377,35 @@ const game = {
        Overclock charge. The claim buttons quote this, so a reward is never
        promised and then clipped. Adoration is a few points and clips. */
     directivePayout(directive) {
-        const reward = directive?.reward || {};
+        return this.payoutWithRoom(directive?.reward || {});
+    },
+
+    /* Banks a payout from payoutWithRoom, counting lifetime totals as paid. */
+    applyPaid(paid) {
+        if (paid.praise > 0) {
+            State.resources.praise = Math.min(State.resourceCaps.praise, State.resources.praise + paid.praise);
+            State.totalPraiseEarned += paid.praise;
+            State.totalStats.praiseGained = (State.totalStats.praiseGained || 0) + paid.praise;
+        }
+        if (paid.offerings > 0) {
+            State.resources.offerings = Math.min(State.resourceCaps.offerings, State.resources.offerings + paid.offerings);
+            State.totalOfferingsEarned += paid.offerings;
+            State.totalStats.offeringsGained = (State.totalStats.offeringsGained || 0) + paid.offerings;
+        }
+        if (paid.souls > 0) {
+            State.resources.souls = Math.min(State.resourceCaps.souls, State.resources.souls + paid.souls);
+            State.totalStats.soulsGained = (State.totalStats.soulsGained || 0) + paid.souls;
+        }
+        if (paid.adoration > 0) {
+            State.adoration = Math.min(State.adorationCaps.cosmetics, State.adoration + paid.adoration);
+        }
+        if (paid.charge > 0) {
+            this.gainOverclockCharge(paid.charge);
+        }
+    },
+
+    /* The room-aware payout behind directives and the prayer Bin. */
+    payoutWithRoom(reward) {
         const RESOURCES = ['praise', 'offerings', 'souls'];
         const rates = this.getProductionRates(Date.now(), false);
         const rate = { praise: rates.praiseGross || 0, offerings: rates.offerings || 0, souls: rates.souls || 0 };
@@ -432,27 +460,7 @@ const game = {
         }
 
         const payout = this.directivePayout(directive);
-        const paid = payout.paid;
-        if (paid.praise > 0) {
-            State.resources.praise = Math.min(State.resourceCaps.praise, State.resources.praise + paid.praise);
-            State.totalPraiseEarned += paid.praise;
-            State.totalStats.praiseGained = (State.totalStats.praiseGained || 0) + paid.praise;
-        }
-        if (paid.offerings > 0) {
-            State.resources.offerings = Math.min(State.resourceCaps.offerings, State.resources.offerings + paid.offerings);
-            State.totalOfferingsEarned += paid.offerings;
-            State.totalStats.offeringsGained = (State.totalStats.offeringsGained || 0) + paid.offerings;
-        }
-        if (paid.souls > 0) {
-            State.resources.souls = Math.min(State.resourceCaps.souls, State.resources.souls + paid.souls);
-            State.totalStats.soulsGained = (State.totalStats.soulsGained || 0) + paid.souls;
-        }
-        if (paid.adoration > 0) {
-            State.adoration = Math.min(State.adorationCaps.cosmetics, State.adoration + paid.adoration);
-        }
-        if (paid.charge > 0) {
-            this.gainOverclockCharge(paid.charge);
-        }
+        this.applyPaid(payout.paid);
         if (payout.rerouted) ui.log('[Directive] A full vault: the overflow was paid where there was room.');
 
         loops.directives.completed += 1;
@@ -2682,8 +2690,11 @@ const game = {
             offerings: State.unlockedOfferings ? Math.floor(Math.max(0, rates.offerings || 0) * seconds) : 0,
             souls: Math.floor(Math.max(0, rates.souls || 0) * seconds),
             dock: !!spot?.dock,
+            seconds,
             chainPreview: loops.divineEventChain,
-            expiresAt: Date.now() + this.DIVINE_EVENT_LIFETIME
+            // With Reclamation installed a prayer waits only RECLAIM_WINDOW
+            // before the Recycle Bin takes it.
+            expiresAt: Date.now() + (State.prayerBin?.installed ? this.RECLAIM_WINDOW : this.DIVINE_EVENT_LIFETIME)
         };
 
         ui.showDivineEvent(State.divineEvent);
@@ -2727,11 +2738,72 @@ const game = {
         }
     },
 
-    /* A prayer nobody answered. With Intercession it is filed at half value;
-       it never advances the chain, which belongs to the attentive operator. */
+    /* ── Reclamation Protocol (docs/PRAYER_COLLECTOR_PLAN_2026-10-05.md) ──
+       Late game a prayer can arrive every ~15 seconds. Installed, the Recycle
+       Bin draws in any prayer not answered within RECLAIM_WINDOW and holds up
+       to PRAYER_BIN_CAPACITY of them for one Restore, which pays in full at
+       that moment's production and vault room. Twelve interruptions become
+       one visit. Restoring never advances the chain. A full Bin falls back to
+       Intercession. Bought with Divinity after the first reboot. */
+    RECLAIM_WINDOW: 3000,
+    PRAYER_BIN_CAPACITY: 12,
+    RECLAMATION_COST: 5,
+
+    canInstallReclamation() {
+        return !State.prayerBin?.installed && (State.prestigeLevel || 0) >= 1
+            && this.getAvailableDivinityPoints() >= this.RECLAMATION_COST;
+    },
+
+    installReclamation() {
+        if (!this.canInstallReclamation()) {
+            ui.log(`Reclamation Protocol needs a shipped build and ${this.RECLAMATION_COST} DP.`);
+            this.sfx('error');
+            return false;
+        }
+        State.divinityPointsSpent = (State.divinityPointsSpent || 0) + this.RECLAMATION_COST;
+        State.prayerBin.installed = true;
+        ui.log('Reclamation Protocol installed. The Recycle Bin now keeps the prayers you let go.');
+        this.sfx('purchase');
+        State.save();
+        return true;
+    },
+
+    /* What restoring the Bin pays right now: the stored seconds as Praise,
+       rerouted where there is room by the directive rule. */
+    prayerBinPayout() {
+        const entries = State.prayerBin?.entries || [];
+        const seconds = entries.reduce((sum, s) => sum + s, 0);
+        const gross = Math.max(0, this.getProductionRates(Date.now(), false).praiseGross || 0);
+        return this.payoutWithRoom({ praise: Math.max(10 * entries.length, Math.floor(seconds * gross)) });
+    },
+
+    restorePrayers() {
+        const entries = State.prayerBin?.entries || [];
+        if (!entries.length) return false;
+        const count = entries.length;
+        const payout = this.prayerBinPayout();
+        this.applyPaid(payout.paid);
+        State.prayerBin.entries = [];
+        ui.log(`Restored ${count} prayer${count === 1 ? '' : 's'}: ${ui.describePaid?.(payout) || 'paid'}.`);
+        this.sfx('eventClaim', { chain: 0 });
+        this.updateDirectiveProgress();
+        State.save();
+        return true;
+    },
+
+    /* A prayer nobody answered. The Bin keeps it if it can; otherwise, with
+       Intercession, it is filed at half value. Neither advances the chain,
+       which belongs to the attentive operator. */
     expireDivineEvent() {
         const event = State.divineEvent;
         State.divineEvent = null;
+        const bin = State.prayerBin;
+        if (event && bin?.installed && bin.entries.length < this.PRAYER_BIN_CAPACITY) {
+            const gross = Math.max(1, this.getProductionRates(Date.now(), false).praiseGross || 0);
+            bin.entries.push(Math.min(200, Number.isFinite(event.seconds) ? event.seconds : event.value / gross));
+            ui.reclaimDivineEvent(event);
+            return;
+        }
         ui.hideDivineEvent();
         if (!event || !State.upgrades.prayer_intercession) return;
         const payout = this.divineEventPayout(event);
