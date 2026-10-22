@@ -2,7 +2,7 @@
 project: cosmos
 type: design-plan
 created: 2026-10-05
-status: proposal
+status: bin-built-2026-10-21
 related: progress.md (Stray prayers), docs/UI_GAMEPLAY_PLAN_2026-10-04.md
 ---
 
@@ -68,3 +68,7 @@ All values are proposals. They need a balance-sim run with a prayer-answering po
 1. Bin first with the frog as a cosmetic, or the frog as the main collector?
 2. Restore at 100% (recommended) or a small tax (e.g. 80%) to keep hand-catching attractive?
 3. Unlock cost in Divinity, or a late Praise/Souls upgrade?
+
+## Built (2026-10-21)
+
+The user chose to build the Recycle Bin. The remaining questions were settled with the recommendations above: Restore pays 100%, and the install costs Divinity (**5 DP**, a guess between the first Mandates at 1 DP and a Doctrine rank at 6; untested). It is offered in the Recycle Bin window once a build has shipped. Unlike the outline, it does not require Intercession, because Intercession resets with each run while the install is permanent. Intercession still catches overflow when the Bin is full. The frog familiar is not built.

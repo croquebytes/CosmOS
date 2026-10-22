@@ -563,6 +563,14 @@ const State = {
         }
     },
 
+    /* Reclamation Protocol: the Recycle Bin draws in prayers nobody answered.
+       Entries are seconds of production, priced when restored (see
+       game.restorePrayers). Bought with Divinity, so it survives a reboot. */
+    prayerBin: {
+        installed: false,
+        entries: [],
+    },
+
     // === DOCUMENTS SYSTEM (Enhanced) ===
     documents: {
         collected: [],
@@ -779,6 +787,19 @@ const State = {
         return feeds.reduce((value, feed) => feed && Object.hasOwn(bonuses, feed.resource) &&
             Number.isFinite(feed.expiresAt) && feed.expiresAt > now
             ? value * bonuses[feed.resource] : value, 1);
+    },
+
+    /* A forged bin cannot hold more prayers, or bigger ones, than play makes:
+       twelve entries, each at most the largest prayer a chain and an
+       Overclock can produce (66s × 2.5 × 1.15 ≈ 190s). */
+    normalisePrayerBin() {
+        const bin = this.prayerBin && typeof this.prayerBin === 'object' && !Array.isArray(this.prayerBin) ? this.prayerBin : {};
+        this.prayerBin = {
+            installed: bin.installed === true,
+            entries: (Array.isArray(bin.entries) ? bin.entries : [])
+                .filter((s) => Number.isFinite(s) && s > 0 && s <= 200)
+                .slice(0, 12),
+        };
     },
 
     reconcileProphetFeeds(now = Date.now()) {
@@ -999,6 +1020,7 @@ const State = {
 
             State.mergeInto(this, parsed);
             this.reconcileProphetFeeds();
+            this.normalisePrayerBin();
             return true;
         } catch (error) {
             /* Preserve, never destroy. The player's run is the one thing here

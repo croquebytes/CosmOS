@@ -9554,6 +9554,49 @@ body.text-scaled #operator-status { zoom: var(--text-zoom); }
     .window-controls button::after { content: ''; position: absolute; inset: -5px -6px; }
 }
 
+/* ── Reclamation Protocol ──────────────────────────────────────────────
+   A seal the Bin takes travels to its icon and shrinks; the icon carries a
+   count. The panel at the top of the Bin window offers the install, then
+   the stored prayers and one Restore. */
+.divine-event.is-reclaimed {
+    animation: none;
+    transition: transform 0.6s cubic-bezier(0.55, 0, 0.75, 0.45), opacity 0.6s ease-in;
+    opacity: 0.15;
+}
+#icon-recyclebin { position: relative; }
+.icon-badge {
+    position: absolute;
+    top: 0;
+    right: 6px;
+    min-width: 16px;
+    padding: 1px 4px;
+    color: var(--cos-iron-900);
+    background: var(--cos-brass-300);
+    border: 1px solid var(--cos-brass-700);
+    border-radius: 8px;
+    font: bold 10px/1.2 var(--cos-font-machine);
+    text-align: center;
+}
+.icon-badge[hidden] { display: none; }
+
+.prayer-bin {
+    margin-bottom: 10px;
+    padding: 8px 10px;
+    color: var(--cos-ink-inv);
+    background: var(--cos-iron-900);
+    border: 1px solid var(--cos-brass-700);
+    border-radius: var(--cos-radius);
+}
+.prayer-bin[hidden] { display: none; }
+.prayer-bin-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--cos-brass-300); font: 12px var(--cos-font-machine); letter-spacing: 0.05em; }
+.prayer-bin .code-stamp { color: var(--cos-ink-inv); background: var(--cos-iron-800); border-color: var(--cos-iron-500); }
+.prayer-bin .code-stamp.is-live { color: var(--cos-verd-300); border-color: var(--cos-verd-500); }
+.prayer-bin-desc { margin: 6px 0 8px; color: var(--cos-ink-inv); font: 12px/1.45 var(--cos-font-machine); }
+.prayer-bin-note { margin-left: 8px; color: var(--cos-ink-inv-dim); font: 11px var(--cos-font-machine); }
+@media (prefers-reduced-motion: reduce) {
+    .divine-event.is-reclaimed { transition: none; }
+}
+
 /* A narrow window stacks the Globe: the instrument first, then its numbers.
    Two columns at phone width left a thumbnail in a tall black well. */
 @media (max-width: 640px) {

@@ -1750,3 +1750,18 @@ three further runs — watch for it.
 - **Flake seen:** `tests/devtools-e2e.mjs`, the idle meter's 6s wait for a wakeups/s reading timed out
   once in a full run (machine under load). It passed 52/52 alone, and the six suites after it in the
   chain were run individually and passed.
+
+
+### Reclamation Protocol — the prayer collector (2026-10-21, Claude)
+- Built from `docs/PRAYER_COLLECTOR_PLAN_2026-10-05.md` at the user's call (Recycle Bin first).
+- Offered in the Recycle Bin window after the first reboot: **Install · 5 DP** (a guess, untested).
+  Bought with Divinity, so it is permanent; `State.prayerBin = { installed, entries }`, trimmed on
+  load by `State.normalisePrayerBin` (at most 12 entries of at most 200s each).
+- Installed, a prayer waits `RECLAIM_WINDOW` (3s) instead of 20s. Unanswered, its seconds go to the
+  Bin, and the seal is drawn into the Bin icon (reduced motion: fade). The icon carries a count.
+  Twelve at most; overflow falls to Intercession. Restoring pays the stored seconds at current
+  production via `payoutWithRoom` (100%, rerouted where full) and never advances the chain.
+- Directives and the Bin share `game.payoutWithRoom` and `game.applyPaid`.
+- **Tests:** `economy-feedback.mjs` +5, `incidents.mjs` +1 (survives reboot), new
+  `tests/prayer-bin-e2e.mjs` (4) wired as `test:bin:e2e`.
+- Not built: the frog familiar skin.
