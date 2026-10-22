@@ -90,4 +90,36 @@ test('Intercession files a missed prayer at half value without touching the chai
     assert.equal(State.resources.praise,200); assert.equal(State.divineEvent,null);
     assert.equal(State.loopSystems.divineEventChain,2); assert.equal(State.loopSystems.totalDivineEventsClaimed,0);
 });
+test('a directive reward banks what fits and pays the overflow where there is room', () => {
+    const {State,game}=boot();
+    game.getProductionRates = () => ({ praiseGross: 10, offerings: 2, souls: 0.5 });
+    Object.assign(State.resourceCaps, { praise: 1000, offerings: 100, souls: 100 });
+    Object.assign(State.resources, { praise: 0, offerings: 0, souls: 0 });
+    const directive = { reward: { praise: 400, souls: 3, charge: 20 } };
+    assert.deepEqual({...game.directivePayout(directive).paid}, { praise: 400, offerings: 0, souls: 3, adoration: 0, charge: 20 });
+    State.resources.praise = 900; // room for 100: 300 Praise = 30s = 60 Offerings
+    const full = game.directivePayout(directive);
+    assert.equal(full.rerouted, true);
+    assert.deepEqual({...full.paid}, { praise: 100, offerings: 60, souls: 3, adoration: 0, charge: 20 });
+    Object.assign(State.resources, { praise: 1000, offerings: 100 }); // 40s left over: 20 Souls
+    assert.deepEqual({...game.directivePayout(directive).paid}, { praise: 0, offerings: 0, souls: 23, adoration: 0, charge: 20 });
+    State.resources.souls = 100; // nowhere left: Overclock charge
+    assert.deepEqual({...game.directivePayout(directive).paid}, { praise: 0, offerings: 0, souls: 0, adoration: 0, charge: 45 });
+});
+test('claiming a directive pays exactly the quoted payout', () => {
+    const {State,game}=boot(); game.ensureLoopState();
+    game.getProductionRates = () => ({ praiseGross: 10, offerings: 2, souls: 0.5 });
+    Object.assign(State.resourceCaps, { praise: 1000, offerings: 100, souls: 100 });
+    Object.assign(State.resources, { praise: 900, offerings: 0, souls: 0 });
+    game.getDirectiveProgress = () => ({ current: 1, target: 1, ratio: 1, completed: true });
+    game.generateDirective = () => {}; game.checkAchievements = () => {};
+    State.loopSystems.directives.active = { title: 'T', reward: { praise: 400, souls: 3 } };
+    const quoted = {...game.directivePayout(State.loopSystems.directives.active).paid};
+    const earned = State.totalPraiseEarned;
+    game.claimDirectiveReward();
+    assert.equal(State.resources.praise, 900 + quoted.praise);
+    assert.equal(State.resources.offerings, quoted.offerings);
+    assert.equal(State.resources.souls, quoted.souls);
+    assert.equal(State.totalPraiseEarned - earned, quoted.praise, 'lifetime totals count what was paid');
+});
 console.log(`\n${passed} passed\n`);

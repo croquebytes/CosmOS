@@ -91,7 +91,14 @@ try {
     assert.equal(ready.label, 'Breach the Veil');
     assert.equal(ready.ready, false);
     assert.match(ready.detail, /500 \/ 12\.0K Souls/);
-    assert.equal(await desk.evaluate(() => ui.directiveRewardLabel({ reward: { praise: 1234567890, souls: 3, charge: 20 } })), '+1.2B Praise • +3 Souls • +20 Charge');
+    assert.equal(await desk.evaluate(() => {
+        Object.assign(State.resourceCaps, { praise: 1e12, souls: 1e6 });
+        return ui.directiveRewardLabel({ reward: { praise: 1234567890, souls: 3, charge: 20 } });
+    }), '+1.2B Praise • +3 Souls • +20 Charge');
+    assert.match(await desk.evaluate(() => {
+        State.resources.praise = State.resourceCaps.praise;
+        return ui.directiveRewardLabel({ reward: { praise: 500 } });
+    }), /\(vault full, rerouted\)$/);
     step('milestones quote the upgrade price: Breach the Veil is not READY at 500 of 12,000 Souls; rewards read in display notation');
     await desk.context().close();
 

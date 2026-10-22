@@ -263,15 +263,15 @@ const ui = {
         }
     },
 
-    /* A directive's reward for a button label, in display notation. The
-       log's getDirectiveRewardText prints raw integers, which late game turns
-       into ten-digit strings no button can hold. */
+    /* What claiming a directive will actually pay (game.directivePayout), in
+       display notation, for the claim buttons and the directive card. Says
+       so when a full vault moved part of it elsewhere. */
     directiveRewardLabel(directive) {
-        const reward = directive?.reward || {};
+        const { paid, rerouted } = game.directivePayout(directive);
         const parts = [['praise', 'Praise'], ['offerings', 'Offerings'], ['souls', 'Souls'], ['adoration', 'Adoration'], ['charge', 'Charge']]
-            .filter(([key]) => reward[key] > 0)
-            .map(([key, name]) => `+${this.formatNumber(Math.floor(reward[key]))} ${name}`);
-        return parts.join(' • ') || 'no reward';
+            .filter(([key]) => paid[key] > 0)
+            .map(([key, name]) => `+${this.formatNumber(paid[key])} ${name}`);
+        return (parts.join(' • ') || 'no reward') + (rerouted ? ' (vault full, rerouted)' : '');
     },
 
     /* The Engine's command strip: the active directive in one line, and a
@@ -2111,9 +2111,7 @@ const ui = {
                 this.setStyle(directiveFillEl, 'width', `${Math.max(0, Math.min(100, (progress.ratio || 0) * 100))}%`);
             }
             if (directiveRewardEl) {
-                this.setText(directiveRewardEl, (typeof game !== 'undefined' && typeof game.getDirectiveRewardText === 'function')
-                    ? game.getDirectiveRewardText(directive)
-                    : 'Reward: --');
+                this.setText(directiveRewardEl, `Reward: ${this.directiveRewardLabel(directive)}`);
             }
 
             if (claimBtn) this.setDisabled(claimBtn, !progress.completed);
