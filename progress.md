@@ -1729,3 +1729,24 @@ three further runs — watch for it.
 - **Tests:** `tests/economy-feedback.mjs` +2. `tests/engine-layout-e2e.mjs` gives its formatting check
   vault room and adds a rerouted-label check. Economy unchanged: the balance sim never claims
   directives.
+
+
+### The Divine Globe, in brass (2026-10-21, Claude)
+- Roadmap item 5, drawn in code at the user's choice (no paid generation).
+- **Armillary:** an iron sphere with an etched graticule, a brass meridian ring engraved every 10°
+  (heavier every 30°) and a tilted equatorial band. Each dimension is a medallion with its own sigil
+  (Primordial a sun in brass; Void an eye in ichor). The selection is a brighter ring with four notches;
+  nothing pulses. Prophets are pins on the medallion's inner side: filled when serving, hollow when
+  away at a ticket. Free Prophets wait on the ring as "RESERVE n".
+- **Cost:** the old Globe ran requestAnimationFrame for as long as its window was open, advancing a
+  rotation nothing read. `drawGlobe` now runs on the 10Hz panel tick and repaints only when its
+  state signature changes (selection, assignments, reserve, on-site).
+- **Bugs fixed:** clicks ignored the canvas's displayed size, so on a phone or under Text Size they
+  could miss the medallion. They are now scaled from the bounding rect. At phone width the window
+  kept two columns and left a thumbnail globe in a tall black well; it now stacks.
+- **Accessibility:** Primordial/Void buttons (`aria-pressed`) select by keyboard; the canvas is a
+  labelled image, and every number stays in the DOM.
+- **Test:** `tests/globe-e2e.mjs` (5), wired as `test:globe:e2e`.
+- **Flake seen:** `tests/devtools-e2e.mjs`, the idle meter's 6s wait for a wakeups/s reading timed out
+  once in a full run (machine under load). It passed 52/52 alone, and the six suites after it in the
+  chain were run individually and passed.
