@@ -370,6 +370,51 @@ const game = {
         }
     },
 
+    /* What claiming a directive pays right now. Each resource banks what its
+       vault can hold. The overflow is re-priced as seconds of that resource's
+       production and paid in another resource with room — the rule stray
+       prayers use — and whatever still has nowhere to go becomes up to 25
+       Overclock charge. The claim buttons quote this, so a reward is never
+       promised and then clipped. Adoration is a few points and clips. */
+    directivePayout(directive) {
+        const reward = directive?.reward || {};
+        const RESOURCES = ['praise', 'offerings', 'souls'];
+        const rates = this.getProductionRates(Date.now(), false);
+        const rate = { praise: rates.praiseGross || 0, offerings: rates.offerings || 0, souls: rates.souls || 0 };
+        const room = {};
+        const paid = { praise: 0, offerings: 0, souls: 0, adoration: 0, charge: Math.max(0, Math.floor(reward.charge || 0)) };
+        for (const r of RESOURCES) room[r] = Math.max(0, Math.floor((State.resourceCaps[r] || 0) - (State.resources[r] || 0)));
+
+        let seconds = 0;
+        let stranded = false;
+        let rerouted = false;
+        for (const r of RESOURCES) {
+            const amount = Math.max(0, Math.floor(reward[r] || 0));
+            const banked = Math.min(amount, room[r]);
+            paid[r] += banked;
+            room[r] -= banked;
+            const over = amount - banked;
+            if (over <= 0) continue;
+            rerouted = true;
+            if (rate[r] > 0) seconds += over / rate[r];
+            else stranded = true;
+        }
+        for (const r of RESOURCES) {
+            if (seconds <= 0) break;
+            if (rate[r] <= 0 || room[r] < 1) continue;
+            const amount = Math.floor(Math.min(seconds * rate[r], room[r]));
+            if (amount < 1) continue;
+            paid[r] += amount;
+            room[r] -= amount;
+            seconds -= amount / rate[r];
+        }
+        if (stranded || seconds * Math.max(...Object.values(rate)) >= 1) paid.charge += 25;
+
+        const adorationRoom = Math.max(0, (State.adorationCaps?.cosmetics || 0) - (State.adoration || 0));
+        paid.adoration = Math.min(Math.max(0, Math.floor(reward.adoration || 0)), Math.floor(adorationRoom));
+        return { paid, rerouted };
+    },
+
     claimDirectiveReward() {
         this.ensureLoopState();
         const loops = State.loopSystems;
@@ -386,28 +431,29 @@ const game = {
             return;
         }
 
-        const reward = directive.reward || {};
-
-        if (reward.praise > 0) {
-            State.resources.praise = Math.min(State.resourceCaps.praise, State.resources.praise + reward.praise);
-            State.totalPraiseEarned += reward.praise;
-            State.totalStats.praiseGained = (State.totalStats.praiseGained || 0) + reward.praise;
+        const payout = this.directivePayout(directive);
+        const paid = payout.paid;
+        if (paid.praise > 0) {
+            State.resources.praise = Math.min(State.resourceCaps.praise, State.resources.praise + paid.praise);
+            State.totalPraiseEarned += paid.praise;
+            State.totalStats.praiseGained = (State.totalStats.praiseGained || 0) + paid.praise;
         }
-        if (reward.offerings > 0) {
-            State.resources.offerings = Math.min(State.resourceCaps.offerings, State.resources.offerings + reward.offerings);
-            State.totalOfferingsEarned += reward.offerings;
-            State.totalStats.offeringsGained = (State.totalStats.offeringsGained || 0) + reward.offerings;
+        if (paid.offerings > 0) {
+            State.resources.offerings = Math.min(State.resourceCaps.offerings, State.resources.offerings + paid.offerings);
+            State.totalOfferingsEarned += paid.offerings;
+            State.totalStats.offeringsGained = (State.totalStats.offeringsGained || 0) + paid.offerings;
         }
-        if (reward.souls > 0) {
-            State.resources.souls = Math.min(State.resourceCaps.souls, State.resources.souls + reward.souls);
-            State.totalStats.soulsGained = (State.totalStats.soulsGained || 0) + reward.souls;
+        if (paid.souls > 0) {
+            State.resources.souls = Math.min(State.resourceCaps.souls, State.resources.souls + paid.souls);
+            State.totalStats.soulsGained = (State.totalStats.soulsGained || 0) + paid.souls;
         }
-        if (reward.adoration > 0) {
-            State.adoration = Math.min(State.adorationCaps.cosmetics, State.adoration + reward.adoration);
+        if (paid.adoration > 0) {
+            State.adoration = Math.min(State.adorationCaps.cosmetics, State.adoration + paid.adoration);
         }
-        if (reward.charge > 0) {
-            this.gainOverclockCharge(reward.charge);
+        if (paid.charge > 0) {
+            this.gainOverclockCharge(paid.charge);
         }
+        if (payout.rerouted) ui.log('[Directive] A full vault: the overflow was paid where there was room.');
 
         loops.directives.completed += 1;
         loops.directives.lastCompletedAt = Date.now();

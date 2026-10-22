@@ -1715,3 +1715,17 @@ three further runs — watch for it.
   full run, right after golden. It passed 4/4 alone and in the next full run (1001 checks). The likely
   cause: the first page autosaves over the seeded `lastUpdateTime` before the second page loads
   (see the browser-verification memory). Not fixed here; watch for it.
+
+
+### Directive rewards pay where there is room (2026-10-21, Claude)
+- A directive's reward was clipped to each vault on claim, while the labels quoted the full amount.
+- `game.directivePayout(directive)`: each resource banks what fits. The overflow is re-priced as
+  seconds of that resource's production and paid in another resource with room (the stray-prayer
+  rule), and anything with nowhere to go becomes +25 Overclock charge. Adoration (a few points)
+  still clips.
+- The Engine's Claim button, the operator panel button and the directive card all quote this
+  payout via `ui.directiveRewardLabel`, with "(vault full, rerouted)" when it applies. The claim
+  pays exactly what was quoted, and lifetime totals count what was paid.
+- **Tests:** `tests/economy-feedback.mjs` +2. `tests/engine-layout-e2e.mjs` gives its formatting check
+  vault room and adds a rerouted-label check. Economy unchanged: the balance sim never claims
+  directives.
