@@ -108,6 +108,7 @@ const ui = {
         this.updateDivineCallsDisplay();
         this.updateShopDisplay();
         this.updateDivineEventDisplay(now);
+        this.renderPrayerBin();
         // The ship dialog quotes terms that move underneath it. See
         // refreshShipDialog — it returns immediately when the dialog is closed.
         this.refreshShipDialog();
@@ -3061,6 +3062,7 @@ const ui = {
         const rerouted = payout.resource !== 'praise';
         const note = rerouted ? 'Praise vault full'
             : novice ? 'Prayers drift through the OS. Answer one before it fades.'
+            : State.prayerBin?.installed ? 'Answer now, or the Recycle Bin keeps it.'
             : 'Answer before it fades. Three in a row pays Souls.';
         const live = (loops.divineEventChain || 0) > 0 && now - (loops.lastDivineEventClaimAt || 0) <= 15000;
         const caught = live ? loops.divineEventChain % 3 : 0;
@@ -3072,6 +3074,87 @@ const ui = {
         element.querySelectorAll('.pe-chain i').forEach((pip, i) => pip.classList.toggle('on', i < caught));
         element.querySelector('.pe-ring').style.strokeDashoffset = String(100 - left * 100);
         element.setAttribute('aria-label', `Answer stray prayer: ${paid}. ${seconds} seconds left.${rerouted ? ' Praise vault full.' : ''}`);
+    },
+
+    /* The Bin takes an unanswered prayer: the seal is drawn into the Recycle
+       Bin icon along one short curve, and the icon's count ticks up. Reduced
+       motion fades it instead. */
+    reclaimDivineEvent() {
+        const element = document.getElementById('divine-event');
+        const icon = document.getElementById('icon-recyclebin');
+        if (element && icon && !this.reducedMotion()) {
+            const from = element.querySelector('.pe-seal')?.getBoundingClientRect() || element.getBoundingClientRect();
+            const to = icon.getBoundingClientRect();
+            const dx = to.left + to.width / 2 - (from.left + from.width / 2);
+            const dy = to.top + to.height / 2 - (from.top + from.height / 2);
+            element.removeAttribute('id');
+            element.style.pointerEvents = 'none';
+            element.classList.add('is-reclaimed');
+            element.style.transform = `translate(${dx}px, ${dy}px) scale(0.25)`;
+            setTimeout(() => element.remove(), 650);
+        } else {
+            this.hideDivineEvent();
+        }
+        this.updatePrayerBinBadge();
+    },
+
+    updatePrayerBinBadge() {
+        const icon = document.getElementById('icon-recyclebin');
+        if (!icon) return;
+        const count = State.prayerBin?.entries?.length || 0;
+        let badge = icon.querySelector('.icon-badge');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'icon-badge';
+            badge.setAttribute('aria-hidden', 'true');
+            icon.appendChild(badge);
+        }
+        this.setText(badge, String(count));
+        badge.hidden = count === 0;
+        const title = count ? `Recycle Bin: ${count} reclaimed prayer${count === 1 ? '' : 's'} to restore` : 'Recycle Bin';
+        if (icon.title !== title) icon.title = title;
+        icon.setAttribute('aria-label', title);
+    },
+
+    /* A payout from game.payoutWithRoom as one line of text. */
+    describePaid(payout) {
+        const paid = payout?.paid || {};
+        const parts = [['praise', 'Praise'], ['offerings', 'Offerings'], ['souls', 'Souls'], ['adoration', 'Adoration'], ['charge', 'Charge']]
+            .filter(([key]) => paid[key] > 0)
+            .map(([key, name]) => `+${this.formatNumber(paid[key])} ${name}`);
+        return (parts.join(' • ') || 'nothing') + (payout?.rerouted ? ' (vault full, rerouted)' : '');
+    },
+
+    /* The Reclamation panel at the top of the Recycle Bin: an install offer
+       after the first reboot, then the reclaimed prayers and one Restore.
+       Rebuilt only when what it says changes. */
+    renderPrayerBin() {
+        this.updatePrayerBinBadge();
+        const host = document.getElementById('prayer-bin');
+        if (!host) return;
+        const bin = State.prayerBin || { installed: false, entries: [] };
+        const offered = bin.installed || (State.prestigeLevel || 0) >= 1;
+        if (host.hidden === offered) host.hidden = !offered;
+        if (!offered) return;
+        const count = bin.entries.length;
+        const quote = count ? this.describePaid(game.prayerBinPayout()) : '';
+        const affordable = game.getAvailableDivinityPoints() >= game.RECLAMATION_COST;
+        const signature = JSON.stringify([bin.installed, count, quote, affordable]);
+        if (host.dataset.signature === signature) return;
+        host.dataset.signature = signature;
+        const seconds = Math.round(game.RECLAIM_WINDOW / 1000);
+        if (!bin.installed) {
+            host.innerHTML = `
+                <div class="prayer-bin-head"><strong>Reclamation Protocol</strong><span class="code-stamp">NOT INSTALLED</span></div>
+                <p class="prayer-bin-desc">The Bin draws in any prayer you leave for ${seconds} seconds and keeps up to ${game.PRAYER_BIN_CAPACITY}. Restore them all at once, at full value. Answering by hand still builds your chain.</p>
+                <button type="button" class="win-btn prayer-bin-act" onclick="game.installReclamation(); ui.renderPrayerBin();"${affordable ? '' : ' disabled'}>Install · ${game.RECLAMATION_COST} DP</button>
+                ${affordable ? '' : `<span class="prayer-bin-note">Needs ${game.RECLAMATION_COST} available Divinity.</span>`}`;
+            return;
+        }
+        host.innerHTML = `
+            <div class="prayer-bin-head"><strong>Reclaimed prayers</strong><span class="code-stamp is-live">${count} / ${game.PRAYER_BIN_CAPACITY}</span></div>
+            <p class="prayer-bin-desc">${count ? `Restoring now pays ${quote}.` : `Prayers you leave for ${seconds} seconds collect here.`}${count >= game.PRAYER_BIN_CAPACITY ? ' The Bin is full: new prayers fall to Intercession.' : ''}</p>
+            <button type="button" class="win-btn prayer-bin-act" onclick="game.restorePrayers(); ui.renderPrayerBin();"${count ? '' : ' disabled'}>Restore prayers</button>`;
     },
 
     hideDivineEvent() {
