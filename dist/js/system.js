@@ -1277,10 +1277,14 @@ const system = {
                 initialHTML: `
                     <div class="globe-panel">
                         <div class="globe-container">
-                            <canvas id="globe-canvas" width="400" height="400"></canvas>
+                            <canvas id="globe-canvas" width="400" height="400" role="img" aria-label="Brass armillary: the dimensions and the Prophets serving each. Use the Dimension buttons to choose."></canvas>
                         </div>
 
                         <div class="globe-info">
+                            <div class="globe-dims" role="group" aria-label="Dimension">
+                                <button type="button" class="globe-dim-btn" data-dim="primordial" aria-pressed="true" onclick="ui.selectGlobeDimension('primordial')">Primordial</button>
+                                <button type="button" class="globe-dim-btn" data-dim="void" aria-pressed="false" onclick="ui.selectGlobeDimension('void')">Void</button>
+                            </div>
                             <h3 id="globe-dim-name">Select a Dimension</h3>
                             <div class="globe-stats">
                                 <div class="stat-line"><strong>Prophets Assigned:</strong> <span id="globe-prophets-assigned">0</span></div>
